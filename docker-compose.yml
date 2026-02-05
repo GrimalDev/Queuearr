@@ -9,7 +9,7 @@ services:
     ports:
       - "3000:${QUEUEARR_PORT:-80}"
     volumes:
-      - queuearr-data:/app/data
+      - ${DATA_PATH}:/app/data
     environment:
       - PORT=${QUEUEARR_PORT:-80}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}

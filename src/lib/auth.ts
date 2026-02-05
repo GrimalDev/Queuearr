@@ -1,6 +1,7 @@
 import NextAuth, { AuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { PlexAuthClient } from '@/lib/api/plex';
+import { upsertUser } from '@/lib/db/users';
 
 declare module 'next-auth' {
   interface Session {
@@ -60,19 +61,29 @@ export const authOptions: AuthOptions = {
             return null;
           }
 
-          const hasAccess = await plexClient.validateServerAccess(authToken, serverMachineId);
-          if (!hasAccess) {
-            console.error('User does not have access to the configured Plex server');
-            return null;
-          }
+           const hasAccess = await plexClient.validateServerAccess(authToken, serverMachineId);
+           if (!hasAccess) {
+             console.error('User does not have access to the configured Plex server');
+             return null;
+           }
 
-          return {
-            id: plexUser.id.toString(),
-            name: plexUser.username || plexUser.title,
-            email: plexUser.email,
-            image: plexUser.thumb,
-            plexToken: authToken,
-          };
+           const user = {
+             id: plexUser.id.toString(),
+             name: plexUser.username || plexUser.title,
+             email: plexUser.email,
+             image: plexUser.thumb,
+             plexToken: authToken,
+           };
+
+           await upsertUser({
+             id: user.id,
+             username: user.name || plexUser.id.toString(),
+             email: user.email,
+             avatarUrl: user.image,
+             plexToken: user.plexToken,
+           });
+
+           return user;
         } catch (error) {
           console.error('Plex authentication error:', error);
           return null;

@@ -27,7 +27,6 @@ See the full setup guide in [docs/SETUP.md](docs/SETUP.md).
 [x] Radarr/Sonarr search
 [x] Sending Download request
 [] Monitor Download status
-[] Monitor Download status
 [] Profile option
 [] Select and save video content language and video quality
 [] Select language setting on the website

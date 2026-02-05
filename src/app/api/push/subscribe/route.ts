@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { addSubscription, removeSubscription, isVapidConfigured } from '@/lib/push';
+import { upsertUser } from '@/lib/db/users';
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -19,6 +20,14 @@ export async function POST(request: NextRequest) {
     if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
       return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 });
     }
+
+    await upsertUser({
+      id: session.user.id,
+      username: session.user.name || session.user.id,
+      email: session.user.email,
+      avatarUrl: session.user.image,
+      plexToken: session.user.plexToken,
+    });
 
     await addSubscription(subscription, session.user.id);
 
