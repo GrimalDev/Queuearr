@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { Providers } from '@/components/providers';
 import { MainNav } from '@/components/features/main-nav';
 import { AlertsPanel } from '@/components/features/alerts-panel';
+import { InstallPrompt } from '@/components/pwa/install-prompt';
 
 export default async function DashboardLayout({
   children,
@@ -22,6 +23,7 @@ export default async function DashboardLayout({
         <MainNav />
         <main className="flex-1 container mx-auto py-6">{children}</main>
         <AlertsPanel />
+        <InstallPrompt />
       </div>
     </Providers>
   );

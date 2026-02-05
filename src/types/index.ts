@@ -334,6 +334,7 @@ export interface SearchResult {
   inLibrary: boolean;
   libraryId?: number;
   popularity?: number;
+  popularitySource?: string;
 }
 
 export interface QueueItem {

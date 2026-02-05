@@ -48,6 +48,7 @@ export function useSearch() {
                 inLibrary: m.inLibrary,
                 libraryId: m.libraryId,
                 popularity: m.popularity ?? m.ratings?.tmdb?.votes ?? 0,
+                popularitySource: m.popularity !== undefined ? 'Radarr' : 'TMDB votes',
               }))
             );
           } else if (response.status === 504) {
@@ -79,6 +80,7 @@ export function useSearch() {
                 inLibrary: s.inLibrary,
                 libraryId: s.libraryId,
                 popularity: s.ratings?.votes ?? 0,
+                popularitySource: 'Sonarr votes',
               }))
             );
           } else if (response.status === 504) {

@@ -8,6 +8,8 @@ services:
     restart: unless-stopped
     ports:
       - "3000:${QUEUEARR_PORT:-80}"
+    volumes:
+      - queuearr-data:/app/data
     environment:
       - PORT=${QUEUEARR_PORT:-80}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
@@ -20,3 +22,10 @@ services:
       - TRANSMISSION_URL=${TRANSMISSION_URL}
       - TRANSMISSION_USERNAME=${TRANSMISSION_USERNAME}
       - TRANSMISSION_PASSWORD=${TRANSMISSION_PASSWORD}
+      - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@queuearr.local}
+      - QUEUEARR_DATA_DIR=/app/data
+
+volumes:
+  queuearr-data:
