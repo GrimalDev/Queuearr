@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { Plus, Check, Film, Tv, Calendar, Loader2 } from 'lucide-react';
+import { Plus, Check, Film, Tv, Calendar, Loader2, Star } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,9 @@ export function SearchResults() {
   const { searchResults, isSearching, searchQuery } = useSearch();
   const { addAlert } = useAppStore();
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
+
+  const formatSortScore = (value: number) =>
+    value.toLocaleString(undefined, { maximumFractionDigits: 1 });
 
   const handleAdd = async (result: SearchResult) => {
     setAddingIds((prev) => new Set(prev).add(result.id));
@@ -150,6 +153,15 @@ export function SearchResults() {
                   <>
                     <span>•</span>
                     <span className="capitalize">{result.status}</span>
+                  </>
+                )}
+                {result.popularity !== undefined && (
+                  <>
+                    <span>•</span>
+                    <span className="flex items-center gap-1">
+                      <Star className="h-3 w-3" />
+                      {formatSortScore(result.popularity)}
+                    </span>
                   </>
                 )}
               </div>
