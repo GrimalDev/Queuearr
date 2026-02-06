@@ -141,7 +141,7 @@ export function useSearch() {
   };
 }
 
-export function useQueue(pollInterval = 5000) {
+export function useQueue() {
   const { queueItems, isLoadingQueue, setQueueItems, setIsLoadingQueue, addAlert } = useAppStore();
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const previousProblematicRef = useRef<Set<string>>(new Set());
@@ -345,9 +345,7 @@ export function useQueue(pollInterval = 5000) {
 
   useEffect(() => {
     fetchQueue();
-    const interval = setInterval(fetchQueue, pollInterval);
-    return () => clearInterval(interval);
-  }, [fetchQueue, pollInterval]);
+  }, [fetchQueue]);
 
   return {
     queueItems,

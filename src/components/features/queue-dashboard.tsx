@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import {
   Download,
-  Upload,
   AlertTriangle,
   CheckCircle2,
   Clock,
@@ -31,16 +30,12 @@ const formatBytes = (bytes: number): string => {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 };
 
-const formatSpeed = (bytesPerSecond: number): string => {
-  return `${formatBytes(bytesPerSecond)}/s`;
-};
-
 const statusConfig: Record<
   QueueItemStatus,
   { icon: typeof Download; color: string; label: string }
 > = {
   downloading: { icon: Download, color: 'text-blue-500', label: 'Downloading' },
-  seeding: { icon: Upload, color: 'text-green-500', label: 'Seeding' },
+  seeding: { icon: CheckCircle2, color: 'text-green-500', label: 'Seeding' },
   paused: { icon: Pause, color: 'text-yellow-500', label: 'Paused' },
   queued: { icon: Clock, color: 'text-gray-500', label: 'Queued' },
   completed: { icon: CheckCircle2, color: 'text-green-500', label: 'Completed' },
@@ -97,21 +92,7 @@ function QueueItemCard({ item }: { item: QueueItem }) {
           <Progress value={item.progress} className="h-2" />
         </div>
 
-        <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
-          <div className="flex items-center gap-4">
-            {item.downloadSpeed !== undefined && item.downloadSpeed > 0 && (
-              <span className="flex items-center gap-1">
-                <Download className="h-3 w-3" />
-                {formatSpeed(item.downloadSpeed)}
-              </span>
-            )}
-            {item.uploadSpeed !== undefined && item.uploadSpeed > 0 && (
-              <span className="flex items-center gap-1">
-                <Upload className="h-3 w-3" />
-                {formatSpeed(item.uploadSpeed)}
-              </span>
-            )}
-          </div>
+        <div className="mt-3 flex items-center justify-end text-sm text-muted-foreground">
           {item.eta && item.status === 'downloading' && (
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
@@ -160,12 +141,6 @@ export function QueueDashboard() {
     (item) => item.status === 'queued' || item.status === 'pending'
   );
 
-  const totalDownloadSpeed = queueItems.reduce(
-    (acc, item) => acc + (item.downloadSpeed || 0),
-    0
-  );
-  const totalUploadSpeed = queueItems.reduce((acc, item) => acc + (item.uploadSpeed || 0), 0);
-
   if (isLoadingQueue && queueItems.length === 0) {
     return (
       <div className="space-y-4">
@@ -211,7 +186,7 @@ export function QueueDashboard() {
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -225,27 +200,11 @@ export function QueueDashboard() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Download Speed
+              Queued
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold flex items-center gap-2">
-              <Download className="h-5 w-5 text-blue-500" />
-              {formatSpeed(totalDownloadSpeed)}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Upload Speed
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold flex items-center gap-2">
-              <Upload className="h-5 w-5 text-green-500" />
-              {formatSpeed(totalUploadSpeed)}
-            </div>
+            <div className="text-2xl font-bold">{queuedItems.length}</div>
           </CardContent>
         </Card>
         <Card className={cn(problemItems.length > 0 && 'border-red-500/50')}>

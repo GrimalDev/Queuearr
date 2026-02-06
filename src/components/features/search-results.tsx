@@ -111,7 +111,7 @@ export function SearchResults() {
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {searchResults.map((result) => (
         <Card key={result.id} className="overflow-hidden group">
-          <div className="relative aspect-[2/3] bg-muted">
+          <div className="relative aspect-[10/14] bg-muted">
             {result.posterUrl ? (
               <Image
                 src={result.posterUrl}
@@ -166,9 +166,7 @@ export function SearchResults() {
                 )}
               </div>
             </div>
-            {result.overview && (
-              <p className="text-sm text-muted-foreground line-clamp-3">{result.overview}</p>
-            )}
+
             <Button
               className="w-full"
               variant={result.inLibrary ? 'secondary' : 'default'}
@@ -188,7 +186,7 @@ export function SearchResults() {
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  Add to {result.type === 'movie' ? 'Radarr' : 'Sonarr'}
+                  Grab Title
                 </>
               )}
             </Button>
