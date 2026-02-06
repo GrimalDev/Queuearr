@@ -151,6 +151,11 @@ export function useQueue(pollInterval = 5000) {
 
     try {
       const items: QueueItem[] = [];
+      const transmissionHashMap = new Map<string, TransmissionTorrent & {
+        statusString: string;
+        isProblematic: boolean;
+        problemReason?: string;
+      }>();
 
       const [radarrRes, sonarrRes, transmissionRes] = await Promise.allSettled([
         fetch('/api/radarr/queue'),
@@ -158,51 +163,11 @@ export function useQueue(pollInterval = 5000) {
         fetch('/api/transmission'),
       ]);
 
-      if (radarrRes.status === 'fulfilled' && radarrRes.value.ok) {
-        const radarrQueue: RadarrQueueItem[] = await radarrRes.value.json();
-        items.push(
-          ...radarrQueue.map((item) => ({
-            id: `radarr-${item.id}`,
-            source: 'radarr' as const,
-            title: item.movie?.title || item.title,
-            subtitle: item.movie?.year?.toString(),
-            status: mapRadarrStatus(item.status, item.trackedDownloadState),
-            progress: item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0,
-            size: item.size,
-            sizeRemaining: item.sizeleft,
-            eta: item.timeleft,
-            isStalled: item.trackedDownloadState === 'importPending',
-            hasError: !!item.errorMessage || (item.statusMessages?.length ?? 0) > 0,
-            errorMessage: item.errorMessage || item.statusMessages?.[0]?.messages?.[0],
-            downloadClient: item.downloadClient,
-            indexer: item.indexer,
-          }))
-        );
-      }
-
-      if (sonarrRes.status === 'fulfilled' && sonarrRes.value.ok) {
-        const sonarrQueue: SonarrQueueItem[] = await sonarrRes.value.json();
-        items.push(
-          ...sonarrQueue.map((item) => ({
-            id: `sonarr-${item.id}`,
-            source: 'sonarr' as const,
-            title: item.series?.title || item.title,
-            subtitle: item.episode
-              ? `S${item.episode.seasonNumber.toString().padStart(2, '0')}E${item.episode.episodeNumber.toString().padStart(2, '0')} - ${item.episode.title}`
-              : undefined,
-            status: mapSonarrStatus(item.status, item.trackedDownloadState),
-            progress: item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0,
-            size: item.size,
-            sizeRemaining: item.sizeleft,
-            eta: item.timeleft,
-            isStalled: item.trackedDownloadState === 'importPending',
-            hasError: !!item.errorMessage || (item.statusMessages?.length ?? 0) > 0,
-            errorMessage: item.errorMessage || item.statusMessages?.[0]?.messages?.[0],
-            downloadClient: item.downloadClient,
-            indexer: item.indexer,
-          }))
-        );
-      }
+      let transmissionStats: {
+        downloadQueueEnabled?: boolean;
+        downloadQueueSize?: number;
+        activeTorrentCount?: number;
+      } | null = null;
 
       if (transmissionRes.status === 'fulfilled' && transmissionRes.value.ok) {
         const data: {
@@ -211,24 +176,142 @@ export function useQueue(pollInterval = 5000) {
             isProblematic: boolean;
             problemReason?: string;
           })[];
+          stats: {
+            downloadQueueEnabled: boolean;
+            downloadQueueSize: number;
+            activeTorrentCount: number;
+          };
         } = await transmissionRes.value.json();
+        
+        transmissionStats = data.stats;
+        
+        for (const torrent of data.torrents) {
+          transmissionHashMap.set(torrent.hashString.toLowerCase(), torrent);
+        }
+      }
+
+      if (radarrRes.status === 'fulfilled' && radarrRes.value.ok) {
+        const radarrQueue: RadarrQueueItem[] = await radarrRes.value.json();
         items.push(
-          ...data.torrents.map((torrent) => ({
-            id: `transmission-${torrent.id}`,
-            source: 'transmission' as const,
-            title: torrent.name,
-            status: mapTransmissionStatus(torrent.status, torrent.isFinished),
-            progress: torrent.percentDone * 100,
-            size: torrent.sizeWhenDone,
-            sizeRemaining: torrent.leftUntilDone,
-            downloadSpeed: torrent.rateDownload,
-            uploadSpeed: torrent.rateUpload,
-            eta: torrent.eta > 0 ? formatEta(torrent.eta) : undefined,
-            isStalled: torrent.isStalled,
-            hasError: torrent.error > 0 || torrent.isProblematic,
-            errorMessage: torrent.errorString || torrent.problemReason,
-          }))
+          ...radarrQueue.map((item) => {
+            const downloadHash = item.downloadId?.toLowerCase();
+            const matchedTorrent = downloadHash ? transmissionHashMap.get(downloadHash) : undefined;
+            
+            if (matchedTorrent) {
+              transmissionHashMap.delete(downloadHash!);
+            }
+
+            const transmissionStatus = matchedTorrent
+              ? mapTransmissionStatus(matchedTorrent.status, matchedTorrent.isFinished)
+              : undefined;
+            const radarrStatus = mapRadarrStatus(item.status, item.trackedDownloadState);
+            const effectiveStatus = transmissionStatus ?? radarrStatus;
+
+            const isQueuedInTransmission = matchedTorrent?.status === TransmissionStatus.DOWNLOAD_WAIT;
+            const isActivelyDownloading = matchedTorrent?.status === TransmissionStatus.DOWNLOAD;
+            
+            const hasRealError = (!!item.errorMessage || (item.statusMessages?.length ?? 0) > 0) &&
+              !isQueuedInTransmission;
+            const transmissionHasError = matchedTorrent?.isProblematic && isActivelyDownloading;
+
+            return {
+              id: `radarr-${item.id}`,
+              source: 'radarr' as const,
+              title: item.movie?.title || item.title,
+              subtitle: item.movie?.year?.toString(),
+              status: effectiveStatus,
+              progress: matchedTorrent
+                ? matchedTorrent.percentDone * 100
+                : item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0,
+              size: matchedTorrent?.sizeWhenDone || item.size,
+              sizeRemaining: matchedTorrent?.leftUntilDone || item.sizeleft,
+              downloadSpeed: matchedTorrent?.rateDownload,
+              uploadSpeed: matchedTorrent?.rateUpload,
+              eta: matchedTorrent?.eta && matchedTorrent.eta > 0 
+                ? formatEta(matchedTorrent.eta) 
+                : item.timeleft,
+              isStalled: !!(matchedTorrent?.isStalled && isActivelyDownloading),
+              hasError: !!(hasRealError || transmissionHasError),
+              errorMessage: hasRealError
+                ? (item.errorMessage || item.statusMessages?.[0]?.messages?.[0])
+                : matchedTorrent?.problemReason,
+              downloadClient: item.downloadClient,
+              indexer: item.indexer,
+            };
+          })
         );
+      }
+
+      if (sonarrRes.status === 'fulfilled' && sonarrRes.value.ok) {
+        const sonarrQueue: SonarrQueueItem[] = await sonarrRes.value.json();
+        items.push(
+          ...sonarrQueue.map((item) => {
+            const downloadHash = item.downloadId?.toLowerCase();
+            const matchedTorrent = downloadHash ? transmissionHashMap.get(downloadHash) : undefined;
+            
+            if (matchedTorrent) {
+              transmissionHashMap.delete(downloadHash!);
+            }
+
+            const transmissionStatus = matchedTorrent
+              ? mapTransmissionStatus(matchedTorrent.status, matchedTorrent.isFinished)
+              : undefined;
+            const sonarrStatus = mapSonarrStatus(item.status, item.trackedDownloadState);
+            const effectiveStatus = transmissionStatus ?? sonarrStatus;
+
+            const isQueuedInTransmission = matchedTorrent?.status === TransmissionStatus.DOWNLOAD_WAIT;
+            const isActivelyDownloading = matchedTorrent?.status === TransmissionStatus.DOWNLOAD;
+
+            const hasRealError = (!!item.errorMessage || (item.statusMessages?.length ?? 0) > 0) &&
+              !isQueuedInTransmission;
+            const transmissionHasError = matchedTorrent?.isProblematic && isActivelyDownloading;
+
+            return {
+              id: `sonarr-${item.id}`,
+              source: 'sonarr' as const,
+              title: item.series?.title || item.title,
+              subtitle: item.episode
+                ? `S${item.episode.seasonNumber.toString().padStart(2, '0')}E${item.episode.episodeNumber.toString().padStart(2, '0')} - ${item.episode.title}`
+                : undefined,
+              status: effectiveStatus,
+              progress: matchedTorrent
+                ? matchedTorrent.percentDone * 100
+                : item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0,
+              size: matchedTorrent?.sizeWhenDone || item.size,
+              sizeRemaining: matchedTorrent?.leftUntilDone || item.sizeleft,
+              downloadSpeed: matchedTorrent?.rateDownload,
+              uploadSpeed: matchedTorrent?.rateUpload,
+              eta: matchedTorrent?.eta && matchedTorrent.eta > 0
+                ? formatEta(matchedTorrent.eta)
+                : item.timeleft,
+              isStalled: !!(matchedTorrent?.isStalled && isActivelyDownloading),
+              hasError: !!(hasRealError || transmissionHasError),
+              errorMessage: hasRealError
+                ? (item.errorMessage || item.statusMessages?.[0]?.messages?.[0])
+                : matchedTorrent?.problemReason,
+              downloadClient: item.downloadClient,
+              indexer: item.indexer,
+            };
+          })
+        );
+      }
+
+      for (const torrent of transmissionHashMap.values()) {
+        items.push({
+          id: `transmission-${torrent.id}`,
+          source: 'transmission' as const,
+          title: torrent.name,
+          status: mapTransmissionStatus(torrent.status, torrent.isFinished),
+          progress: torrent.percentDone * 100,
+          size: torrent.sizeWhenDone,
+          sizeRemaining: torrent.leftUntilDone,
+          downloadSpeed: torrent.rateDownload,
+          uploadSpeed: torrent.rateUpload,
+          eta: torrent.eta > 0 ? formatEta(torrent.eta) : undefined,
+          isStalled: torrent.isStalled && torrent.status === TransmissionStatus.DOWNLOAD,
+          hasError: torrent.isProblematic && torrent.status === TransmissionStatus.DOWNLOAD,
+          errorMessage: torrent.problemReason,
+        });
       }
 
       const currentProblematic = new Set(
@@ -280,6 +363,7 @@ function mapRadarrStatus(
 ): QueueItem['status'] {
   if (trackedDownloadState === 'importPending') return 'importing';
   if (trackedDownloadState === 'failedPending') return 'failed';
+  if (trackedDownloadState === 'importBlocked') return 'warning';
 
   switch (status.toLowerCase()) {
     case 'downloading':
@@ -287,6 +371,7 @@ function mapRadarrStatus(
     case 'paused':
       return 'paused';
     case 'queued':
+    case 'delay':
       return 'queued';
     case 'completed':
       return 'completed';
@@ -305,6 +390,7 @@ function mapSonarrStatus(
 ): QueueItem['status'] {
   if (trackedDownloadState === 'importPending') return 'importing';
   if (trackedDownloadState === 'failedPending') return 'failed';
+  if (trackedDownloadState === 'importBlocked') return 'warning';
 
   switch (status.toLowerCase()) {
     case 'downloading':
@@ -312,6 +398,7 @@ function mapSonarrStatus(
     case 'paused':
       return 'paused';
     case 'queued':
+    case 'delay':
       return 'queued';
     case 'completed':
       return 'completed';

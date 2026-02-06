@@ -20,8 +20,13 @@ export async function GET() {
       transmission.getSessionStats(),
     ]);
 
+    const queueSettings = {
+      downloadQueueEnabled: stats.downloadQueueEnabled,
+      downloadQueueSize: stats.downloadQueueSize,
+    };
+
     const torrentsWithProblems = torrents.map((torrent) => {
-      const problemCheck = transmission.isProblematic(torrent);
+      const problemCheck = transmission.isProblematic(torrent, queueSettings);
       return {
         ...torrent,
         statusString: transmission.getStatusString(torrent.status),

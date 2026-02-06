@@ -298,6 +298,10 @@ export interface TransmissionSessionStats {
   torrentCount: number;
   downloadSpeed: number;
   uploadSpeed: number;
+  downloadQueueSize: number;
+  downloadQueueEnabled: boolean;
+  seedQueueSize: number;
+  seedQueueEnabled: boolean;
   currentStats: {
     uploadedBytes: number;
     downloadedBytes: number;

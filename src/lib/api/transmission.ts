@@ -133,8 +133,15 @@ export class TransmissionClient {
     activeTorrentCount: number;
     pausedTorrentCount: number;
     torrentCount: number;
+    downloadQueueSize: number;
+    downloadQueueEnabled: boolean;
+    seedQueueSize: number;
+    seedQueueEnabled: boolean;
   }> {
-    const allData = await this.client.getAllData();
+    const [allData, session] = await Promise.all([
+      this.client.getAllData(),
+      this.client.getSession(),
+    ]);
     const torrents = allData.torrents || [];
     
     let downloadSpeed = 0;
@@ -152,12 +159,18 @@ export class TransmissionClient {
       }
     }
 
+    const sessionArgs = session.arguments as unknown as Record<string, unknown>;
+
     return {
       downloadSpeed,
       uploadSpeed,
       activeTorrentCount,
       pausedTorrentCount,
       torrentCount: torrents.length,
+      downloadQueueSize: (sessionArgs['download-queue-size'] as number) ?? 5,
+      downloadQueueEnabled: (sessionArgs['download-queue-enabled'] as boolean) ?? false,
+      seedQueueSize: (sessionArgs['seed-queue-size'] as number) ?? 5,
+      seedQueueEnabled: (sessionArgs['seed-queue-enabled'] as boolean) ?? false,
     };
   }
 
@@ -183,7 +196,10 @@ export class TransmissionClient {
     return statusMap[status] || 'unknown';
   }
 
-  isProblematic(torrent: TransmissionTorrent): {
+  isProblematic(
+    torrent: TransmissionTorrent,
+    queueSettings?: { downloadQueueEnabled: boolean; downloadQueueSize: number }
+  ): {
     isProblematic: boolean;
     reason?: string;
   } {
@@ -191,8 +207,20 @@ export class TransmissionClient {
       return { isProblematic: true, reason: torrent.errorString || 'Unknown error' };
     }
 
-    if (torrent.isStalled) {
-      return { isProblematic: true, reason: 'Torrent is stalled' };
+    const isQueuedOrWaiting =
+      torrent.status === TransmissionStatus.DOWNLOAD_WAIT ||
+      torrent.status === TransmissionStatus.SEED_WAIT ||
+      torrent.status === TransmissionStatus.CHECK_WAIT;
+
+    if (isQueuedOrWaiting) {
+      return { isProblematic: false };
+    }
+
+    if (torrent.isStalled && torrent.status === TransmissionStatus.DOWNLOAD) {
+      const hasBeenDownloadingAWhile = Date.now() / 1000 - torrent.activityDate > 300;
+      if (hasBeenDownloadingAWhile) {
+        return { isProblematic: true, reason: 'Torrent is stalled' };
+      }
     }
 
     if (
@@ -201,7 +229,10 @@ export class TransmissionClient {
       torrent.peersSendingToUs === 0 &&
       torrent.leftUntilDone > 0
     ) {
-      return { isProblematic: true, reason: 'No active peers sending data' };
+      const timeSinceActivity = Date.now() / 1000 - torrent.activityDate;
+      if (timeSinceActivity > 300) {
+        return { isProblematic: true, reason: 'No active peers sending data' };
+      }
     }
 
     return { isProblematic: false };
