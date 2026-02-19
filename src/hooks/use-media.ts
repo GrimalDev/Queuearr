@@ -380,6 +380,8 @@ export function useQueue() {
 
   useEffect(() => {
     fetchQueue();
+    const id = setInterval(fetchQueue, 5_000);
+    return () => clearInterval(id);
   }, [fetchQueue]);
 
   return {

@@ -12,6 +12,7 @@ import {
   Tv,
   HardDrive,
   RotateCcw,
+  Trash2,
   Users,
   Bug,
   ChevronDown,
@@ -54,13 +55,17 @@ const statusConfig: Record<
 function QueueItemCard({
   item,
   onRetry,
+  onDelete,
   isAdmin,
   isRetrying = false,
+  isDeleting = false,
 }: {
   item: QueueItem;
   onRetry?: () => void;
+  onDelete?: () => void;
   isAdmin?: boolean;
   isRetrying?: boolean;
+  isDeleting?: boolean;
 }) {
   const [showDebug, setShowDebug] = useState(false);
   const config = statusConfig[item.status];
@@ -111,6 +116,19 @@ function QueueItemCard({
                 onClick={() => setShowDebug((v) => !v)}
               >
                 {showDebug ? <ChevronUp className="h-3.5 w-3.5" /> : <Bug className="h-3.5 w-3.5" />}
+              </Button>
+            )}
+            {onDelete && !isRetrying && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                onClick={onDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting
+                  ? <RotateCcw className="h-3.5 w-3.5 animate-spin" />
+                  : <Trash2 className="h-3.5 w-3.5" />}
               </Button>
             )}
           </div>
@@ -252,6 +270,26 @@ export function QueueDashboard() {
   const isAdmin = session?.user?.role === 'admin';
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [retryingItems, setRetryingItems] = useState<Map<string, QueueItem>>(new Map());
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+
+  const handleForceDelete = async (item: QueueItem) => {
+    if (!item.sourceId || (item.source !== 'radarr' && item.source !== 'sonarr')) return;
+    setDeletingIds((prev) => new Set(prev).add(item.id));
+    try {
+      await fetch(`/api/${item.source}/queue`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [item.sourceId], retry: false, mediaId: item.mediaId }),
+      });
+      await refresh();
+    } finally {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  };
 
   const handleRetry = async (item: QueueItem) => {
     if (!item.sourceId || (item.source !== 'radarr' && item.source !== 'sonarr')) return;
@@ -396,7 +434,9 @@ export function QueueDashboard() {
               item={item}
               isAdmin={isAdmin}
               isRetrying={retryingItems.has(item.id)}
+              isDeleting={deletingIds.has(item.id)}
               onRetry={item.hasError && item.sourceId && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
+              onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
             />
           ))}
         </div>
@@ -413,7 +453,9 @@ export function QueueDashboard() {
                   item={item}
                   isAdmin={isAdmin}
                   isRetrying={retryingItems.has(item.id)}
+                  isDeleting={deletingIds.has(item.id)}
                   onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
+                  onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
                 />
               ))}
             </div>
@@ -431,7 +473,9 @@ export function QueueDashboard() {
                 item={item}
                 isAdmin={isAdmin}
                 isRetrying={retryingItems.has(item.id)}
+                isDeleting={deletingIds.has(item.id)}
                 onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
+                onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
               />
             ))}
           </div>

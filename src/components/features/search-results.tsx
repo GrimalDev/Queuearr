@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { Plus, Check, Film, Tv, Calendar, Loader2, Star, Bell, BellOff, Download } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ import { SearchResult } from '@/types';
 export function SearchResults() {
   const { searchResults, isSearching, searchQuery } = useSearch();
   const { addAlert } = useAppStore();
+  const router = useRouter();
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
   const [watchingStates, setWatchingStates] = useState<Map<string, boolean>>(new Map());
 
@@ -43,6 +45,7 @@ export function SearchResults() {
           message: `${result.title} has been added to ${result.type === 'movie' ? 'Radarr' : 'Sonarr'}`,
           source: result.type === 'movie' ? 'radarr' : 'sonarr',
         });
+        router.push('/queue');
       } else {
         throw new Error('Failed to add');
       }
