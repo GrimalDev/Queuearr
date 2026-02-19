@@ -5,6 +5,7 @@ import {
   SonarrQualityProfile,
   SonarrLanguageProfile,
   SonarrRootFolder,
+  Release,
 } from '@/types';
 
 interface SonarrConfig {
@@ -124,6 +125,18 @@ export class SonarrClient {
 
   async triggerEpisodeSearch(episodeIds: number[]): Promise<void> {
     await this.client.post('/api/v3/command', { name: 'EpisodeSearch', episodeIds });
+  }
+
+  async getReleases(episodeId: number): Promise<Release[]> {
+    const response = await this.client.get<Release[]>('/api/v3/release', {
+      params: { episodeId },
+      timeout: 60_000,
+    });
+    return response.data;
+  }
+
+  async grabRelease(guid: string, indexerId: number): Promise<void> {
+    await this.client.post('/api/v3/release', { guid, indexerId });
   }
 
   async getQualityProfiles(): Promise<SonarrQualityProfile[]> {

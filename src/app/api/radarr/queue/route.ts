@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
+import { smartGrab } from '@/lib/smart-grab';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -42,7 +43,7 @@ export async function DELETE(request: NextRequest) {
     };
     await radarr.deleteQueueItemBulk(ids, { blocklist: retry });
     if (retry && mediaId) {
-      await radarr.triggerSearch([mediaId]);
+      await smartGrab({ source: 'radarr', mediaId });
     }
     return NextResponse.json({ success: true });
   } catch (error) {

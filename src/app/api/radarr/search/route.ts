@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { isAxiosError } from 'axios';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
+import { smartGrab } from '@/lib/smart-grab';
 import {
   getActiveMediaIds,
   upsertMonitoredDownload,
@@ -111,12 +112,16 @@ export async function POST(request: NextRequest) {
       year,
       qualityProfileId: qpId,
       rootFolderPath: rfPath,
-      searchForMovie: searchForMovie ?? true,
+      searchForMovie: false,
     });
 
     if (movie.id) {
       const monitored = await upsertMonitoredDownload('radarr', movie.id, movie.title);
       await addUserToDownload(monitored.id, session.user.id);
+      // Smart grab in background — don't await so the response stays fast
+      void smartGrab({ source: 'radarr', mediaId: movie.id }).catch((err) =>
+        console.error('[smart-grab] radarr initial grab failed:', err)
+      );
     }
 
     return NextResponse.json(movie, { status: 201 });

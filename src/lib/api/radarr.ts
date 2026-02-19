@@ -4,6 +4,7 @@ import {
   RadarrQueueItem,
   RadarrQualityProfile,
   RadarrRootFolder,
+  Release,
 } from '@/types';
 
 interface RadarrConfig {
@@ -116,6 +117,18 @@ export class RadarrClient {
 
   async triggerSearch(movieIds: number[]): Promise<void> {
     await this.client.post('/api/v3/command', { name: 'MoviesSearch', movieIds });
+  }
+
+  async getReleases(movieId: number): Promise<Release[]> {
+    const response = await this.client.get<Release[]>('/api/v3/release', {
+      params: { movieId },
+      timeout: 60_000,
+    });
+    return response.data;
+  }
+
+  async grabRelease(guid: string, indexerId: number): Promise<void> {
+    await this.client.post('/api/v3/release', { guid, indexerId });
   }
 
   async getQualityProfiles(): Promise<RadarrQualityProfile[]> {

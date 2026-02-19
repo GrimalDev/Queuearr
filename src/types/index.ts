@@ -375,7 +375,20 @@ export interface QueueItem {
   dbLastBytesAt?: number | null;
 }
 
-export type QueueItemStatus = 
+export interface Release {
+  guid: string;
+  indexerId: number;
+  title: string;
+  seeders?: number;
+  leechers?: number;
+  size?: number;
+  rejections?: string[];
+  qualityWeight?: number;
+  customFormatScore?: number;
+  downloadAllowed?: boolean;
+}
+
+export type QueueItemStatus =
   | 'downloading'
   | 'seeding'
   | 'paused'
