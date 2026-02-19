@@ -198,8 +198,19 @@ async function checkDownloads(): Promise<void> {
         const hasRemainingWork = matchedTorrent ? matchedTorrent.leftUntilDone > 0 : true;
 
         if (isActiveDownload && hasRemainingWork) {
-          if (download.lastBytesAt !== null) {
-            if (now - download.lastBytesAt > BYTES_STALL_MS) effectiveStatus = 'stalled';
+          // Prefer Transmission's activityDate (seconds) when available — it's updated at
+          // torrent-client granularity, not just on watcher poll cycles.
+          const transmissionActivityMs =
+            matchedTorrent?.activityDate && matchedTorrent.activityDate > 0
+              ? matchedTorrent.activityDate * 1000
+              : null;
+          const effectiveLastBytesAt =
+            transmissionActivityMs !== null && download.lastBytesAt !== null
+              ? Math.max(download.lastBytesAt, transmissionActivityMs)
+              : transmissionActivityMs ?? download.lastBytesAt;
+
+          if (effectiveLastBytesAt !== null) {
+            if (now - effectiveLastBytesAt > BYTES_STALL_MS) effectiveStatus = 'stalled';
           } else if (now - download.createdAt > NEVER_STARTED_STALL_MS) {
             effectiveStatus = 'stalled';
           }
