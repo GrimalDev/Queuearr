@@ -25,5 +25,3 @@ function initializeDatabase() {
 
 export const db = initializeDatabase();
 export { schema };
-
-import '@/lib/download-watcher';

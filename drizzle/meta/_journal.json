@@ -15,6 +15,20 @@
       "when": 1771459200000,
       "tag": "0001_add_user_role",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1771459200001,
+      "tag": "0002_monitored_downloads",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1771459200002,
+      "tag": "0003_download_activity_timestamps",
+      "breakpoints": true
     }
   ]
 }

@@ -38,6 +38,9 @@ export interface ActiveMonitoredDownload {
   mediaId: number;
   title: string;
   lastStatus: string | null;
+  createdAt: number;
+  lastActivityAt: number | null;
+  lastBytesAt: number | null;
   userIds: string[];
 }
 
@@ -49,6 +52,9 @@ export async function getActiveMonitoredDownloads(): Promise<ActiveMonitoredDown
       mediaId: monitoredDownloads.mediaId,
       title: monitoredDownloads.title,
       lastStatus: monitoredDownloads.lastStatus,
+      createdAt: monitoredDownloads.createdAt,
+      lastActivityAt: monitoredDownloads.lastActivityAt,
+      lastBytesAt: monitoredDownloads.lastBytesAt,
       userId: monitoredDownloadUsers.userId,
     })
     .from(monitoredDownloads)
@@ -67,6 +73,9 @@ export async function getActiveMonitoredDownloads(): Promise<ActiveMonitoredDown
         mediaId: row.mediaId,
         title: row.title,
         lastStatus: row.lastStatus,
+        createdAt: row.createdAt,
+        lastActivityAt: row.lastActivityAt,
+        lastBytesAt: row.lastBytesAt,
         userIds: [],
       });
     }
@@ -136,5 +145,19 @@ export async function markDownloadCompleted(id: number): Promise<void> {
   await db
     .update(monitoredDownloads)
     .set({ completedAt: Date.now() })
+    .where(eq(monitoredDownloads.id, id));
+}
+
+export async function updateDownloadActivity(
+  id: number,
+  hasBytesActivity: boolean
+): Promise<void> {
+  const now = Date.now();
+  await db
+    .update(monitoredDownloads)
+    .set({
+      lastActivityAt: now,
+      ...(hasBytesActivity ? { lastBytesAt: now } : {}),
+    })
     .where(eq(monitoredDownloads.id, id));
 }

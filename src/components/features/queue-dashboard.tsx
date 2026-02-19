@@ -179,8 +179,10 @@ function QueueItemCard({ item, onRetry, isAdmin }: { item: QueueItem; onRetry?: 
                 let display: React.ReactNode;
                 if (value === null || value === undefined) {
                   display = <span className="text-muted-foreground/50">—</span>;
-                } else if (dateKeys.includes(key) && typeof value === 'number' && (value as number) > 0) {
-                  display = new Date(value * 1000).toLocaleString();
+                } else if (dateKeys.includes(key) && typeof value === 'number') {
+                  display = value > 0
+                    ? new Date(value * 1000).toLocaleString()
+                    : <span className="text-muted-foreground/50">—</span>;
                 } else {
                   display = String(value);
                 }
