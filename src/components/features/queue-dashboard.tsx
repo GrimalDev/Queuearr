@@ -13,6 +13,9 @@ import {
   HardDrive,
   RotateCcw,
   Users,
+  Bug,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +23,7 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useSession } from 'next-auth/react';
 import { useQueue } from '@/hooks/use-media';
 import { QueueItem, QueueItemStatus } from '@/types';
 import { cn } from '@/lib/utils';
@@ -47,8 +51,9 @@ const statusConfig: Record<
   pending: { icon: Clock, color: 'text-gray-500', label: 'Pending' },
 };
 
-function QueueItemCard({ item, onRetry }: { item: QueueItem; onRetry?: () => Promise<void> }) {
+function QueueItemCard({ item, onRetry, isAdmin }: { item: QueueItem; onRetry?: () => Promise<void>; isAdmin?: boolean }) {
   const [isRetrying, setIsRetrying] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
   const config = statusConfig[item.status];
   const StatusIcon = config.icon;
 
@@ -92,6 +97,16 @@ function QueueItemCard({ item, onRetry }: { item: QueueItem; onRetry?: () => Pro
             >
               {item.hasError ? 'Error' : config.label}
             </Badge>
+            {isAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-muted-foreground"
+                onClick={() => setShowDebug((v) => !v)}
+              >
+                {showDebug ? <ChevronUp className="h-3.5 w-3.5" /> : <Bug className="h-3.5 w-3.5" />}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -151,6 +166,34 @@ function QueueItemCard({ item, onRetry }: { item: QueueItem; onRetry?: () => Pro
             </div>
           </div>
         )}
+
+        {showDebug && (
+          <div className="mt-3 rounded-md border border-dashed border-muted-foreground/30 bg-muted/40 p-3">
+            <div className="flex items-center gap-1.5 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              <Bug className="h-3 w-3" />
+              Debug
+            </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs font-mono">
+              {(Object.entries(item) as [string, unknown][]).map(([key, value]) => {
+                const dateKeys = ['addedDate', 'doneDate', 'activityDate'];
+                let display: React.ReactNode;
+                if (value === null || value === undefined) {
+                  display = <span className="text-muted-foreground/50">—</span>;
+                } else if (dateKeys.includes(key) && typeof value === 'number' && value > 0) {
+                  display = new Date(value * 1000).toLocaleString();
+                } else {
+                  display = String(value);
+                }
+                return (
+                  <div key={key} className="contents">
+                    <dt className="text-muted-foreground truncate">{key}</dt>
+                    <dd className="text-foreground truncate">{display}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -168,6 +211,8 @@ async function retryQueueItem(item: QueueItem, refresh: () => Promise<void>) {
 
 export function QueueDashboard() {
   const { queueItems, isLoadingQueue, lastFetch, refresh } = useQueue();
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === 'admin';
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleRefresh = async () => {
@@ -282,6 +327,7 @@ export function QueueDashboard() {
             <QueueItemCard
               key={item.id}
               item={item}
+              isAdmin={isAdmin}
               onRetry={item.hasError && item.sourceId ? () => retryQueueItem(item, refresh) : undefined}
             />
           ))}
@@ -294,7 +340,7 @@ export function QueueDashboard() {
           <ScrollArea className="h-[400px]">
             <div className="space-y-3">
               {activeDownloads.map((item) => (
-                <QueueItemCard key={item.id} item={item} />
+                <QueueItemCard key={item.id} item={item} isAdmin={isAdmin} />
               ))}
             </div>
           </ScrollArea>
@@ -306,7 +352,7 @@ export function QueueDashboard() {
           <h3 className="text-lg font-semibold text-muted-foreground">Queued</h3>
           <div className="space-y-3">
             {queuedItems.map((item) => (
-              <QueueItemCard key={item.id} item={item} />
+              <QueueItemCard key={item.id} item={item} isAdmin={isAdmin} />
             ))}
           </div>
         </div>

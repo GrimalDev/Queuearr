@@ -362,6 +362,9 @@ export interface QueueItem {
   addedAt?: string;
   peersConnected?: number;
   peersSendingToUs?: number;
+  addedDate?: number;
+  doneDate?: number;
+  activityDate?: number;
 }
 
 export type QueueItemStatus = 

@@ -240,6 +240,9 @@ export function useQueue() {
               indexer: item.indexer,
               peersConnected: matchedTorrent?.peersConnected,
               peersSendingToUs: matchedTorrent?.peersSendingToUs,
+              addedDate: matchedTorrent?.addedDate,
+              doneDate: matchedTorrent?.doneDate,
+              activityDate: matchedTorrent?.activityDate,
             };
           })
         );
@@ -297,6 +300,9 @@ export function useQueue() {
               indexer: item.indexer,
               peersConnected: matchedTorrent?.peersConnected,
               peersSendingToUs: matchedTorrent?.peersSendingToUs,
+              addedDate: matchedTorrent?.addedDate,
+              doneDate: matchedTorrent?.doneDate,
+              activityDate: matchedTorrent?.activityDate,
             };
           })
         );
@@ -319,6 +325,9 @@ export function useQueue() {
           errorMessage: torrent.problemReason,
           peersConnected: torrent.peersConnected,
           peersSendingToUs: torrent.peersSendingToUs,
+          addedDate: torrent.addedDate,
+          doneDate: torrent.doneDate,
+          activityDate: torrent.activityDate,
         });
       }
 
