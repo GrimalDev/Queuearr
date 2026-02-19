@@ -216,8 +216,10 @@ export class TransmissionClient {
       return { isProblematic: false };
     }
 
+    const referenceDate = torrent.activityDate > 0 ? torrent.activityDate : torrent.addedDate;
+
     if (torrent.isStalled && torrent.status === TransmissionStatus.DOWNLOAD) {
-      const hasBeenDownloadingAWhile = Date.now() / 1000 - torrent.activityDate > 30;
+      const hasBeenDownloadingAWhile = Date.now() / 1000 - referenceDate > 30;
       if (hasBeenDownloadingAWhile) {
         return { isProblematic: true, reason: 'Torrent is stalled' };
       }
@@ -229,7 +231,7 @@ export class TransmissionClient {
       torrent.peersSendingToUs === 0 &&
       torrent.leftUntilDone > 0
     ) {
-      const timeSinceActivity = Date.now() / 1000 - torrent.activityDate;
+      const timeSinceActivity = Date.now() / 1000 - referenceDate;
       if (timeSinceActivity > 30) {
         return { isProblematic: true, reason: 'No active peers sending data' };
       }

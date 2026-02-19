@@ -3,6 +3,12 @@ import { getServerSession } from 'next-auth';
 import { isAxiosError } from 'axios';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
+import {
+  getActiveMediaIds,
+  upsertMonitoredDownload,
+  addUserToDownload,
+  isUserWatching,
+} from '@/lib/db/monitored-downloads';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -23,15 +29,34 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const results = await radarr.searchMovies(query);
-    const existingMovies = await radarr.getMovies();
+    const [results, existingMovies, activeMediaIds] = await Promise.all([
+      radarr.searchMovies(query),
+      radarr.getMovies(),
+      getActiveMediaIds('radarr'),
+    ]);
+
     const existingTmdbIds = new Set(existingMovies.map((m) => m.tmdbId));
 
-    const enrichedResults = results.map((movie) => ({
-      ...movie,
-      inLibrary: existingTmdbIds.has(movie.tmdbId),
-      libraryId: existingMovies.find((m) => m.tmdbId === movie.tmdbId)?.id,
-    }));
+    const enrichedResults = await Promise.all(
+      results.map(async (movie) => {
+        const libraryMovie = existingMovies.find((m) => m.tmdbId === movie.tmdbId);
+        const libraryId = libraryMovie?.id;
+        const monitoredId = libraryId !== undefined ? activeMediaIds.get(libraryId) : undefined;
+        const isDownloading = monitoredId !== undefined;
+        const watching = isDownloading
+          ? await isUserWatching(monitoredId!, session.user.id)
+          : false;
+
+        return {
+          ...movie,
+          inLibrary: existingTmdbIds.has(movie.tmdbId),
+          libraryId,
+          isDownloading,
+          monitoredId,
+          isWatching: watching,
+        };
+      })
+    );
 
     return NextResponse.json(enrichedResults);
   } catch (error) {
@@ -88,6 +113,11 @@ export async function POST(request: NextRequest) {
       rootFolderPath: rfPath,
       searchForMovie: searchForMovie ?? true,
     });
+
+    if (movie.id) {
+      const monitored = await upsertMonitoredDownload('radarr', movie.id, movie.title);
+      await addUserToDownload(monitored.id, session.user.id);
+    }
 
     return NextResponse.json(movie, { status: 201 });
   } catch (error) {

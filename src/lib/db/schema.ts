@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { InferSelectModel, InferInsertModel } from 'drizzle-orm';
 
 export const users = sqliteTable('users', {
@@ -23,7 +23,47 @@ export const pushSubscriptions = sqliteTable('push_subscriptions', {
   createdAt: integer('created_at', { mode: 'timestamp' }),
 });
 
+export const monitoredDownloads = sqliteTable(
+  'monitored_downloads',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    source: text('source').notNull(),
+    mediaId: integer('media_id').notNull(),
+    title: text('title').notNull(),
+    lastStatus: text('last_status'),
+    completedAt: integer('completed_at'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    sourceMediaIdUnique: uniqueIndex('monitored_downloads_source_media_id_unique').on(
+      t.source,
+      t.mediaId
+    ),
+  })
+);
+
+export const monitoredDownloadUsers = sqliteTable(
+  'monitored_download_users',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    downloadId: integer('download_id')
+      .notNull()
+      .references(() => monitoredDownloads.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({
+    downloadUserUnique: uniqueIndex('monitored_download_users_download_user_unique').on(
+      t.downloadId,
+      t.userId
+    ),
+  })
+);
+
 export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;
 export type PushSubscription = InferSelectModel<typeof pushSubscriptions>;
 export type NewPushSubscription = InferInsertModel<typeof pushSubscriptions>;
+export type MonitoredDownload = InferSelectModel<typeof monitoredDownloads>;
+export type MonitoredDownloadUser = InferSelectModel<typeof monitoredDownloadUsers>;

@@ -339,6 +339,9 @@ export interface SearchResult {
   libraryId?: number;
   popularity?: number;
   popularitySource?: string;
+  isDownloading?: boolean;
+  monitoredId?: number;
+  isWatching?: boolean;
 }
 
 export interface QueueItem {

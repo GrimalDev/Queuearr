@@ -3,6 +3,12 @@ import { getServerSession } from 'next-auth';
 import { isAxiosError } from 'axios';
 import { createSonarrClient } from '@/lib/api/sonarr';
 import { authOptions } from '@/lib/auth';
+import {
+  getActiveMediaIds,
+  upsertMonitoredDownload,
+  addUserToDownload,
+  isUserWatching,
+} from '@/lib/db/monitored-downloads';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -23,15 +29,34 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const results = await sonarr.searchSeries(query);
-    const existingSeries = await sonarr.getSeries();
+    const [results, existingSeries, activeMediaIds] = await Promise.all([
+      sonarr.searchSeries(query),
+      sonarr.getSeries(),
+      getActiveMediaIds('sonarr'),
+    ]);
+
     const existingTvdbIds = new Set(existingSeries.map((s) => s.tvdbId));
 
-    const enrichedResults = results.map((series) => ({
-      ...series,
-      inLibrary: existingTvdbIds.has(series.tvdbId),
-      libraryId: existingSeries.find((s) => s.tvdbId === series.tvdbId)?.id,
-    }));
+    const enrichedResults = await Promise.all(
+      results.map(async (series) => {
+        const librarySeries = existingSeries.find((s) => s.tvdbId === series.tvdbId);
+        const libraryId = librarySeries?.id;
+        const monitoredId = libraryId !== undefined ? activeMediaIds.get(libraryId) : undefined;
+        const isDownloading = monitoredId !== undefined;
+        const watching = isDownloading
+          ? await isUserWatching(monitoredId!, session.user.id)
+          : false;
+
+        return {
+          ...series,
+          inLibrary: existingTvdbIds.has(series.tvdbId),
+          libraryId,
+          isDownloading,
+          monitoredId,
+          isWatching: watching,
+        };
+      })
+    );
 
     return NextResponse.json(enrichedResults);
   } catch (error) {
@@ -98,6 +123,11 @@ export async function POST(request: NextRequest) {
       rootFolderPath: rfPath,
       searchForMissingEpisodes: searchForMissingEpisodes ?? true,
     });
+
+    if (series.id) {
+      const monitored = await upsertMonitoredDownload('sonarr', series.id, series.title);
+      await addUserToDownload(monitored.id, session.user.id);
+    }
 
     return NextResponse.json(series, { status: 201 });
   } catch (error) {
