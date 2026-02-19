@@ -204,7 +204,7 @@ async function retryQueueItem(item: QueueItem, refresh: () => Promise<void>) {
   await fetch(`/api/${item.source}/queue`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ids: [item.sourceId] }),
+    body: JSON.stringify({ ids: [item.sourceId], retry: true, mediaId: item.mediaId }),
   });
   await refresh();
 }

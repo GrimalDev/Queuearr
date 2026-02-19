@@ -217,6 +217,7 @@ export function useQueue() {
             return {
               id: `radarr-${item.id}`,
               sourceId: item.id,
+              mediaId: item.movieId,
               source: 'radarr' as const,
               title: item.movie?.title || item.title,
               subtitle: item.movie?.year?.toString(),
@@ -275,6 +276,7 @@ export function useQueue() {
             return {
               id: `sonarr-${item.id}`,
               sourceId: item.id,
+              mediaId: item.seriesId,
               source: 'sonarr' as const,
               title: item.series?.title || item.title,
               subtitle: item.episode

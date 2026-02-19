@@ -99,16 +99,23 @@ export class RadarrClient {
     });
   }
 
-  async deleteQueueItemBulk(ids: number[]): Promise<void> {
+  async deleteQueueItemBulk(
+    ids: number[],
+    options: { blocklist?: boolean } = {}
+  ): Promise<void> {
     await this.client.delete('/api/v3/queue/bulk', {
       params: {
         removeFromClient: true,
-        blocklist: false,
+        blocklist: options.blocklist ?? false,
         skipRedownload: false,
         changeCategory: false,
       },
       data: { ids },
     });
+  }
+
+  async triggerSearch(movieIds: number[]): Promise<void> {
+    await this.client.post('/api/v3/command', { name: 'MoviesSearch', movieIds });
   }
 
   async getQualityProfiles(): Promise<RadarrQualityProfile[]> {

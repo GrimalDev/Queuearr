@@ -347,6 +347,7 @@ export interface SearchResult {
 export interface QueueItem {
   id: string;
   sourceId?: number;
+  mediaId?: number;
   source: 'radarr' | 'sonarr' | 'transmission';
   title: string;
   subtitle?: string;

@@ -35,8 +35,15 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const { ids } = await request.json() as { ids: number[] };
-    await radarr.deleteQueueItemBulk(ids);
+    const { ids, retry, mediaId } = await request.json() as {
+      ids: number[];
+      retry?: boolean;
+      mediaId?: number;
+    };
+    await radarr.deleteQueueItemBulk(ids, { blocklist: retry });
+    if (retry && mediaId) {
+      await radarr.triggerSearch([mediaId]);
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Radarr queue delete error:', error);
