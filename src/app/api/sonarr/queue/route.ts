@@ -35,14 +35,19 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const { ids, retry, mediaId } = await request.json() as {
+    const { ids, retry, mediaId, episodeId } = await request.json() as {
       ids: number[];
       retry?: boolean;
       mediaId?: number;
+      episodeId?: number;
     };
     await sonarr.deleteQueueItemBulk(ids, { blocklist: retry });
-    if (retry && mediaId) {
-      await sonarr.triggerSearch(mediaId);
+    if (retry) {
+      if (episodeId) {
+        await sonarr.triggerEpisodeSearch([episodeId]);
+      } else if (mediaId) {
+        await sonarr.triggerSearch(mediaId);
+      }
     }
     return NextResponse.json({ success: true });
   } catch (error) {

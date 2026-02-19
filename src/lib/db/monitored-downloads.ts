@@ -12,7 +12,7 @@ export async function upsertMonitoredDownload(
 
   await db
     .insert(monitoredDownloads)
-    .values({ source, mediaId, title, createdAt: now })
+    .values({ source, mediaId, title, createdAt: now, lastActivityAt: now, lastBytesAt: now })
     .onConflictDoNothing();
 
   const existing = await db.query.monitoredDownloads.findFirst({

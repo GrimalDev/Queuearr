@@ -348,6 +348,7 @@ export interface QueueItem {
   id: string;
   sourceId?: number;
   mediaId?: number;
+  episodeId?: number;
   source: 'radarr' | 'sonarr' | 'transmission';
   title: string;
   subtitle?: string;
@@ -363,12 +364,15 @@ export interface QueueItem {
   errorMessage?: string;
   downloadClient?: string;
   indexer?: string;
-  addedAt?: string;
+  estimatedCompletionTime?: string;
   peersConnected?: number;
   peersSendingToUs?: number;
   addedDate?: number;
   doneDate?: number;
   activityDate?: number;
+  dbCreatedAt?: number;
+  dbLastActivityAt?: number | null;
+  dbLastBytesAt?: number | null;
 }
 
 export type QueueItemStatus = 

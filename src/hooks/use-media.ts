@@ -157,11 +157,22 @@ export function useQueue() {
         problemReason?: string;
       }>();
 
-      const [radarrRes, sonarrRes, transmissionRes] = await Promise.allSettled([
+      const [radarrRes, sonarrRes, transmissionRes, monitoredRes] = await Promise.allSettled([
         fetch('/api/radarr/queue'),
         fetch('/api/sonarr/queue'),
         fetch('/api/transmission'),
+        fetch('/api/downloads/watch'),
       ]);
+
+      // Build source+mediaId → DB timestamps map
+      type MonitoredRow = { source: string; mediaId: number; createdAt: number; lastActivityAt: number | null; lastBytesAt: number | null };
+      const monitoredMap = new Map<string, MonitoredRow>();
+      if (monitoredRes.status === 'fulfilled' && monitoredRes.value.ok) {
+        const rows: MonitoredRow[] = await monitoredRes.value.json();
+        for (const row of rows) {
+          monitoredMap.set(`${row.source}:${row.mediaId}`, row);
+        }
+      }
 
       let transmissionStats: {
         downloadQueueEnabled?: boolean;
@@ -239,11 +250,13 @@ export function useQueue() {
                 : matchedTorrent?.problemReason,
               downloadClient: item.downloadClient,
               indexer: item.indexer,
+              estimatedCompletionTime: item.estimatedCompletionTime,
               peersConnected: matchedTorrent?.peersConnected,
               peersSendingToUs: matchedTorrent?.peersSendingToUs,
               addedDate: matchedTorrent?.addedDate,
               doneDate: matchedTorrent?.doneDate,
               activityDate: matchedTorrent?.activityDate,
+              ...(() => { const m = item.movieId ? monitoredMap.get(`radarr:${item.movieId}`) : undefined; return m ? { dbCreatedAt: m.createdAt, dbLastActivityAt: m.lastActivityAt, dbLastBytesAt: m.lastBytesAt } : {}; })(),
             };
           })
         );
@@ -277,6 +290,7 @@ export function useQueue() {
               id: `sonarr-${item.id}`,
               sourceId: item.id,
               mediaId: item.seriesId,
+              episodeId: item.episodeId,
               source: 'sonarr' as const,
               title: item.series?.title || item.title,
               subtitle: item.episode
@@ -300,11 +314,13 @@ export function useQueue() {
                 : matchedTorrent?.problemReason,
               downloadClient: item.downloadClient,
               indexer: item.indexer,
+              estimatedCompletionTime: item.estimatedCompletionTime,
               peersConnected: matchedTorrent?.peersConnected,
               peersSendingToUs: matchedTorrent?.peersSendingToUs,
               addedDate: matchedTorrent?.addedDate,
               doneDate: matchedTorrent?.doneDate,
               activityDate: matchedTorrent?.activityDate,
+              ...(() => { const m = item.seriesId ? monitoredMap.get(`sonarr:${item.seriesId}`) : undefined; return m ? { dbCreatedAt: m.createdAt, dbLastActivityAt: m.lastActivityAt, dbLastBytesAt: m.lastBytesAt } : {}; })(),
             };
           })
         );

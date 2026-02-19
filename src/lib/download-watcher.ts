@@ -166,9 +166,13 @@ async function checkDownloads(): Promise<void> {
         .find((t) => t !== undefined) ?? null;
 
       // Update activity timestamps whenever the download is in the queue
+      const now = Date.now();
       if (queueItems.length > 0) {
         const hasBytesActivity = (matchedTorrent?.rateDownload ?? 0) > 0;
         await updateDownloadActivity(download.id, hasBytesActivity);
+        // Mirror the DB update in-memory so the stall check below uses current data
+        download.lastActivityAt = now;
+        if (hasBytesActivity) download.lastBytesAt = now;
       }
 
       let effectiveStatus = resolveStatus(queueItems, torrentsByHash);
@@ -190,7 +194,6 @@ async function checkDownloads(): Promise<void> {
 
       // Timestamp-based stall check (independent of Transmission's own stall detection)
       if (effectiveStatus !== null) {
-        const now = Date.now();
         const isActiveDownload = effectiveStatus === 'downloading' || effectiveStatus === 'queued';
         const hasRemainingWork = matchedTorrent ? matchedTorrent.leftUntilDone > 0 : true;
 

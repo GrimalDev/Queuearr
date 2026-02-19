@@ -197,8 +197,10 @@ function QueueItemCard({
               {(Object.entries(item) as [string, unknown][]).map(([key, value]) => {
                 // Unix-seconds timestamps from Transmission
                 const epochSecKeys = ['addedDate', 'doneDate', 'activityDate'];
+                // Unix-ms timestamps from our DB
+                const epochMsKeys = ['dbCreatedAt', 'dbLastActivityAt', 'dbLastBytesAt'];
                 // ISO string dates from Radarr/Sonarr
-                const isoDateKeys = ['addedAt'];
+                const isoDateKeys = ['estimatedCompletionTime'];
                 let display: React.ReactNode;
                 if (value === null || value === undefined) {
                   display = <span className="text-muted-foreground/50">—</span>;
@@ -206,6 +208,8 @@ function QueueItemCard({
                   display = value > 0
                     ? new Date(value * 1000).toLocaleString()
                     : <span className="text-muted-foreground/50">—</span>;
+                } else if (epochMsKeys.includes(key) && typeof value === 'number') {
+                  display = new Date(value).toLocaleString();
                 } else if (isoDateKeys.includes(key) && typeof value === 'string') {
                   const d = new Date(value);
                   display = isNaN(d.getTime())
@@ -243,7 +247,7 @@ export function QueueDashboard() {
       await fetch(`/api/${item.source}/queue`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [item.sourceId], retry: true, mediaId: item.mediaId }),
+        body: JSON.stringify({ ids: [item.sourceId], retry: true, mediaId: item.mediaId, episodeId: item.episodeId }),
       });
       await refresh();
     } catch {

@@ -122,6 +122,10 @@ export class SonarrClient {
     await this.client.post('/api/v3/command', { name: 'SeriesSearch', seriesId });
   }
 
+  async triggerEpisodeSearch(episodeIds: number[]): Promise<void> {
+    await this.client.post('/api/v3/command', { name: 'EpisodeSearch', episodeIds });
+  }
+
   async getQualityProfiles(): Promise<SonarrQualityProfile[]> {
     const response = await this.client.get<SonarrQualityProfile[]>('/api/v3/qualityprofile');
     return response.data;
