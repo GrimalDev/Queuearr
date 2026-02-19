@@ -99,6 +99,18 @@ export class RadarrClient {
     });
   }
 
+  async deleteQueueItemBulk(ids: number[]): Promise<void> {
+    await this.client.delete('/api/v3/queue/bulk', {
+      params: {
+        removeFromClient: true,
+        blocklist: false,
+        skipRedownload: false,
+        changeCategory: false,
+      },
+      data: { ids },
+    });
+  }
+
   async getQualityProfiles(): Promise<RadarrQualityProfile[]> {
     const response = await this.client.get<RadarrQualityProfile[]>('/api/v3/qualityprofile');
     return response.data;

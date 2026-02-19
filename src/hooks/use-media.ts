@@ -216,6 +216,7 @@ export function useQueue() {
 
             return {
               id: `radarr-${item.id}`,
+              sourceId: item.id,
               source: 'radarr' as const,
               title: item.movie?.title || item.title,
               subtitle: item.movie?.year?.toString(),
@@ -237,6 +238,8 @@ export function useQueue() {
                 : matchedTorrent?.problemReason,
               downloadClient: item.downloadClient,
               indexer: item.indexer,
+              peersConnected: matchedTorrent?.peersConnected,
+              peersSendingToUs: matchedTorrent?.peersSendingToUs,
             };
           })
         );
@@ -268,6 +271,7 @@ export function useQueue() {
 
             return {
               id: `sonarr-${item.id}`,
+              sourceId: item.id,
               source: 'sonarr' as const,
               title: item.series?.title || item.title,
               subtitle: item.episode
@@ -291,6 +295,8 @@ export function useQueue() {
                 : matchedTorrent?.problemReason,
               downloadClient: item.downloadClient,
               indexer: item.indexer,
+              peersConnected: matchedTorrent?.peersConnected,
+              peersSendingToUs: matchedTorrent?.peersSendingToUs,
             };
           })
         );
@@ -311,6 +317,8 @@ export function useQueue() {
           isStalled: torrent.isStalled && torrent.status === TransmissionStatus.DOWNLOAD,
           hasError: torrent.isProblematic && torrent.status === TransmissionStatus.DOWNLOAD,
           errorMessage: torrent.problemReason,
+          peersConnected: torrent.peersConnected,
+          peersSendingToUs: torrent.peersSendingToUs,
         });
       }
 

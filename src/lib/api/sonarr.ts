@@ -103,6 +103,18 @@ export class SonarrClient {
     });
   }
 
+  async deleteQueueItemBulk(ids: number[]): Promise<void> {
+    await this.client.delete('/api/v3/queue/bulk', {
+      params: {
+        removeFromClient: true,
+        blocklist: false,
+        skipRedownload: false,
+        changeCategory: false,
+      },
+      data: { ids },
+    });
+  }
+
   async getQualityProfiles(): Promise<SonarrQualityProfile[]> {
     const response = await this.client.get<SonarrQualityProfile[]>('/api/v3/qualityprofile');
     return response.data;

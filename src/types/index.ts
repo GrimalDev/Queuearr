@@ -343,6 +343,7 @@ export interface SearchResult {
 
 export interface QueueItem {
   id: string;
+  sourceId?: number;
   source: 'radarr' | 'sonarr' | 'transmission';
   title: string;
   subtitle?: string;
@@ -359,6 +360,8 @@ export interface QueueItem {
   downloadClient?: string;
   indexer?: string;
   addedAt?: string;
+  peersConnected?: number;
+  peersSendingToUs?: number;
 }
 
 export type QueueItemStatus = 

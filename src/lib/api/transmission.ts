@@ -217,7 +217,7 @@ export class TransmissionClient {
     }
 
     if (torrent.isStalled && torrent.status === TransmissionStatus.DOWNLOAD) {
-      const hasBeenDownloadingAWhile = Date.now() / 1000 - torrent.activityDate > 300;
+      const hasBeenDownloadingAWhile = Date.now() / 1000 - torrent.activityDate > 30;
       if (hasBeenDownloadingAWhile) {
         return { isProblematic: true, reason: 'Torrent is stalled' };
       }
@@ -230,7 +230,7 @@ export class TransmissionClient {
       torrent.leftUntilDone > 0
     ) {
       const timeSinceActivity = Date.now() / 1000 - torrent.activityDate;
-      if (timeSinceActivity > 300) {
+      if (timeSinceActivity > 30) {
         return { isProblematic: true, reason: 'No active peers sending data' };
       }
     }

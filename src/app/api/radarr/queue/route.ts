@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
@@ -20,5 +20,26 @@ export async function GET() {
   } catch (error) {
     console.error('Radarr queue error:', error);
     return NextResponse.json({ error: 'Failed to get queue' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const radarr = createRadarrClient();
+  if (!radarr) {
+    return NextResponse.json({ error: 'Radarr not configured' }, { status: 503 });
+  }
+
+  try {
+    const { ids } = await request.json() as { ids: number[] };
+    await radarr.deleteQueueItemBulk(ids);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Radarr queue delete error:', error);
+    return NextResponse.json({ error: 'Failed to remove from queue' }, { status: 500 });
   }
 }

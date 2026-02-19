@@ -11,6 +11,8 @@ import {
   Film,
   Tv,
   HardDrive,
+  RotateCcw,
+  Users,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -45,9 +47,20 @@ const statusConfig: Record<
   pending: { icon: Clock, color: 'text-gray-500', label: 'Pending' },
 };
 
-function QueueItemCard({ item }: { item: QueueItem }) {
+function QueueItemCard({ item, onRetry }: { item: QueueItem; onRetry?: () => Promise<void> }) {
+  const [isRetrying, setIsRetrying] = useState(false);
   const config = statusConfig[item.status];
   const StatusIcon = config.icon;
+
+  const handleRetry = async () => {
+    if (!onRetry) return;
+    setIsRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   return (
     <Card className={cn('transition-all', item.hasError && 'border-red-500/50')}>
@@ -92,7 +105,13 @@ function QueueItemCard({ item }: { item: QueueItem }) {
           <Progress value={item.progress} className="h-2" />
         </div>
 
-        <div className="mt-3 flex items-center justify-end text-sm text-muted-foreground">
+        <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
+          {item.peersConnected != null ? (
+            <span className="flex items-center gap-1">
+              <Users className="h-3 w-3" />
+              {item.peersSendingToUs ?? 0}/{item.peersConnected}
+            </span>
+          ) : <span />}
           {item.eta && item.status === 'downloading' && (
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
@@ -101,11 +120,25 @@ function QueueItemCard({ item }: { item: QueueItem }) {
           )}
         </div>
 
-        {item.hasError && item.errorMessage && (
+        {item.hasError && (
           <div className="mt-3 p-2 rounded-md bg-red-500/10 text-red-500 text-sm">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-              <span>{item.errorMessage}</span>
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <span>{item.errorMessage || 'Download error'}</span>
+              </div>
+              {onRetry && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10 shrink-0"
+                  onClick={handleRetry}
+                  disabled={isRetrying}
+                >
+                  <RotateCcw className={cn('h-3.5 w-3.5 mr-1', isRetrying && 'animate-spin')} />
+                  Retry
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -121,6 +154,16 @@ function QueueItemCard({ item }: { item: QueueItem }) {
       </CardContent>
     </Card>
   );
+}
+
+async function retryQueueItem(item: QueueItem, refresh: () => Promise<void>) {
+  if (!item.sourceId || (item.source !== 'radarr' && item.source !== 'sonarr')) return;
+  await fetch(`/api/${item.source}/queue`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: [item.sourceId] }),
+  });
+  await refresh();
 }
 
 export function QueueDashboard() {
@@ -236,7 +279,11 @@ export function QueueDashboard() {
             Issues Detected
           </h3>
           {problemItems.map((item) => (
-            <QueueItemCard key={item.id} item={item} />
+            <QueueItemCard
+              key={item.id}
+              item={item}
+              onRetry={item.hasError && item.sourceId ? () => retryQueueItem(item, refresh) : undefined}
+            />
           ))}
         </div>
       )}
@@ -244,7 +291,7 @@ export function QueueDashboard() {
       {activeDownloads.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-lg font-semibold">Active Downloads</h3>
-          <ScrollArea className="h-[400px] pr-4">
+          <ScrollArea className="h-[400px]">
             <div className="space-y-3">
               {activeDownloads.map((item) => (
                 <QueueItemCard key={item.id} item={item} />
