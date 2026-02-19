@@ -1,18 +1,22 @@
 import { createRadarrClient } from '@/lib/api/radarr';
 import { createSonarrClient } from '@/lib/api/sonarr';
+import { createTransmissionClient } from '@/lib/api/transmission';
 import { sendToUser } from '@/lib/push';
 import {
   getActiveMonitoredDownloads,
   updateDownloadStatus,
   markDownloadCompleted,
 } from '@/lib/db/monitored-downloads';
-import type { RadarrQueueItem, SonarrQueueItem } from '@/types';
+import type { RadarrQueueItem, SonarrQueueItem, TransmissionTorrent } from '@/types';
 
 type DownloadStatus = 'downloading' | 'queued' | 'importing' | 'warning' | 'failed' | 'stalled' | 'error';
 
 const STATUS_PRIORITY: DownloadStatus[] = ['error', 'failed', 'stalled', 'warning', 'importing', 'downloading', 'queued'];
 
-function resolveStatus(items: { status: string; trackedDownloadState?: string; trackedDownloadStatus?: string; errorMessage?: string }[]): DownloadStatus | null {
+function resolveStatus(
+  items: { status: string; trackedDownloadState?: string; trackedDownloadStatus?: string; errorMessage?: string; downloadId?: string }[],
+  torrentsByHash: Map<string, TransmissionTorrent>
+): DownloadStatus | null {
   if (items.length === 0) return null;
 
   const statuses = items.map((item) => {
@@ -22,9 +26,26 @@ function resolveStatus(items: { status: string; trackedDownloadState?: string; t
 
     if (item.errorMessage || tss === 'error') return 'error' as DownloadStatus;
     if (s === 'failed' || tds === 'downloadfailed') return 'failed' as DownloadStatus;
-    if (tds === 'stalled' || tss === 'warning' && tds.includes('stall')) return 'stalled' as DownloadStatus;
+    if (tds === 'stalled' || (tss === 'warning' && tds.includes('stall'))) return 'stalled' as DownloadStatus;
     if (tss === 'warning') return 'warning' as DownloadStatus;
     if (s === 'importing' || tds === 'importpending' || tds === 'importing') return 'importing' as DownloadStatus;
+
+    // Cross-reference with Transmission using the torrent hash (downloadId)
+    if (item.downloadId) {
+      const torrent = torrentsByHash.get(item.downloadId.toLowerCase());
+      if (torrent) {
+        const transmission = createTransmissionClient();
+        if (transmission) {
+          const { isProblematic, reason } = transmission.isProblematic(torrent);
+          if (isProblematic) {
+            // Distinguish error (local error / tracker error) from stall
+            if (torrent.error > 0) return 'error' as DownloadStatus;
+            return 'stalled' as DownloadStatus;
+          }
+        }
+      }
+    }
+
     if (s === 'downloading' || tds === 'downloading') return 'downloading' as DownloadStatus;
     return 'queued' as DownloadStatus;
   });
@@ -47,6 +68,10 @@ const NOTIFICATION_MESSAGES: Record<string, { title: (t: string) => string; body
   error: {
     title: (t) => `${t} download failed`,
     body: 'The download encountered an error',
+  },
+  stalled: {
+    title: (t) => `${t} download is stalled`,
+    body: 'No peers are sending data',
   },
   importing: {
     title: (t) => `${t} is being imported`,
@@ -78,15 +103,24 @@ async function checkDownloads(): Promise<void> {
 
     const radarr = createRadarrClient();
     const sonarr = createSonarrClient();
+    const transmission = createTransmissionClient();
 
-    const [radarrQueue, sonarrQueue] = await Promise.all([
+    const [radarrQueue, sonarrQueue, transmissionTorrents] = await Promise.all([
       radarr
         ? radarr.getQueue(false).then((q) => q.records).catch(() => [] as RadarrQueueItem[])
         : Promise.resolve([] as RadarrQueueItem[]),
       sonarr
         ? sonarr.getQueue().then((q) => q.records).catch(() => [] as SonarrQueueItem[])
         : Promise.resolve([] as SonarrQueueItem[]),
+      transmission
+        ? transmission.getTorrents().catch(() => [] as TransmissionTorrent[])
+        : Promise.resolve([] as TransmissionTorrent[]),
     ]);
+
+    // Build hash → torrent map for O(1) lookup (hashes are lowercase in Transmission)
+    const torrentsByHash = new Map<string, TransmissionTorrent>(
+      transmissionTorrents.map((t) => [t.hashString.toLowerCase(), t])
+    );
 
     for (const download of monitored) {
       const queueItems =
@@ -94,7 +128,7 @@ async function checkDownloads(): Promise<void> {
           ? radarrQueue.filter((item) => item.movieId === download.mediaId)
           : sonarrQueue.filter((item) => item.seriesId === download.mediaId);
 
-      const effectiveStatus = resolveStatus(queueItems);
+      const effectiveStatus = resolveStatus(queueItems, torrentsByHash);
 
       if (queueItems.length === 0 && download.lastStatus !== null) {
         // Left the queue → completed
