@@ -133,12 +133,25 @@ function QueueItemCard({
               {item.peersSendingToUs ?? 0}/{item.peersConnected}
             </span>
           ) : <span />}
-          {item.eta && item.status === 'downloading' && (
-            <span className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              ETA: {item.eta}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {item.eta && item.status === 'downloading' && (
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                ETA: {item.eta}
+              </span>
+            )}
+            {!item.hasError && !item.isStalled && !isRetrying && onRetry && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-muted-foreground hover:text-foreground"
+                onClick={onRetry}
+              >
+                <RotateCcw className="h-3 w-3 mr-1" />
+                Force Retry
+              </Button>
+            )}
+          </div>
         </div>
 
         {isRetrying && (
@@ -395,7 +408,13 @@ export function QueueDashboard() {
           <ScrollArea className="h-[400px]">
             <div className="space-y-3">
               {activeDownloads.map((item) => (
-                <QueueItemCard key={item.id} item={item} isAdmin={isAdmin} />
+                <QueueItemCard
+                  key={item.id}
+                  item={item}
+                  isAdmin={isAdmin}
+                  isRetrying={retryingItems.has(item.id)}
+                  onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
+                />
               ))}
             </div>
           </ScrollArea>
@@ -407,7 +426,13 @@ export function QueueDashboard() {
           <h3 className="text-lg font-semibold text-muted-foreground">Queued</h3>
           <div className="space-y-3">
             {queuedItems.map((item) => (
-              <QueueItemCard key={item.id} item={item} isAdmin={isAdmin} />
+              <QueueItemCard
+                key={item.id}
+                item={item}
+                isAdmin={isAdmin}
+                isRetrying={retryingItems.has(item.id)}
+                onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
+              />
             ))}
           </div>
         </div>
