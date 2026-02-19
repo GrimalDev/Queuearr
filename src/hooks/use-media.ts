@@ -264,11 +264,33 @@ export function useQueue() {
 
       if (sonarrRes.status === 'fulfilled' && sonarrRes.value.ok) {
         const sonarrQueue: SonarrQueueItem[] = await sonarrRes.value.json();
+
+        // Group items by downloadId — season packs create one entry per episode
+        // but all share the same torrent hash. We only want one card per download.
+        const byDownloadId = new Map<string, SonarrQueueItem[]>();
+        const noHash: SonarrQueueItem[] = [];
+        for (const item of sonarrQueue) {
+          const hash = item.downloadId?.toLowerCase();
+          if (hash) {
+            const group = byDownloadId.get(hash) ?? [];
+            group.push(item);
+            byDownloadId.set(hash, group);
+          } else {
+            noHash.push(item);
+          }
+        }
+
+        // One representative per group (first item), plus items with no hash
+        const representatives = [
+          ...Array.from(byDownloadId.values()).map((group) => group[0]),
+          ...noHash,
+        ];
+
         items.push(
-          ...sonarrQueue.map((item) => {
+          ...representatives.map((item) => {
             const downloadHash = item.downloadId?.toLowerCase();
             const matchedTorrent = downloadHash ? transmissionHashMap.get(downloadHash) : undefined;
-            
+
             if (matchedTorrent) {
               transmissionHashMap.delete(downloadHash!);
             }
@@ -286,6 +308,20 @@ export function useQueue() {
               !isQueuedInTransmission;
             const transmissionHasError = matchedTorrent?.isProblematic && isActivelyDownloading;
 
+            const groupSize = downloadHash ? (byDownloadId.get(downloadHash)?.length ?? 1) : 1;
+            const isPack = groupSize > 1;
+            let subtitle: string | undefined;
+            if (isPack) {
+              const season = item.episode?.seasonNumber;
+              subtitle = season !== undefined
+                ? `Season ${season} Pack (${groupSize} episodes)`
+                : `Pack (${groupSize} episodes)`;
+            } else {
+              subtitle = item.episode
+                ? `S${item.episode.seasonNumber.toString().padStart(2, '0')}E${item.episode.episodeNumber.toString().padStart(2, '0')} - ${item.episode.title}`
+                : undefined;
+            }
+
             return {
               id: `sonarr-${item.id}`,
               sourceId: item.id,
@@ -293,9 +329,7 @@ export function useQueue() {
               episodeId: item.episodeId,
               source: 'sonarr' as const,
               title: item.series?.title || item.title,
-              subtitle: item.episode
-                ? `S${item.episode.seasonNumber.toString().padStart(2, '0')}E${item.episode.episodeNumber.toString().padStart(2, '0')} - ${item.episode.title}`
-                : undefined,
+              subtitle,
               status: effectiveStatus,
               progress: matchedTorrent
                 ? matchedTorrent.percentDone * 100
