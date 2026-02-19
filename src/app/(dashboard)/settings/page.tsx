@@ -1,20 +1,177 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Check, X, Loader2, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
+import { Check, X, Loader2, RefreshCw, Trash2, ShieldCheck, ShieldOff, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { NotificationManager } from '@/components/pwa/notification-manager';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface ServiceStatus {
   name: string;
   configured: boolean;
   connected: boolean;
   error?: string;
+}
+
+interface UserRecord {
+  id: string;
+  username: string;
+  email: string | null;
+  avatarUrl: string | null;
+  role: string;
+}
+
+const PAGE_SIZE = 10;
+
+interface UsersPage {
+  users: UserRecord[];
+  total: number;
+}
+
+function UsersManager() {
+  const { data: session } = useSession();
+  const [data, setData] = useState<UsersPage>({ users: [], total: 0 });
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+
+  const fetchUsers = useCallback(async (p: number, q: string) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(p), limit: String(PAGE_SIZE) });
+      if (q) params.set('search', q);
+      const res = await fetch(`/api/admin/users?${params}`);
+      if (res.ok) setData(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchUsers(page, search); }, [fetchUsers, page, search]);
+
+  const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+
+  const handleSearch = (value: string) => {
+    setSearch(value);
+    setPage(0);
+  };
+
+  const toggleRole = async (user: UserRecord) => {
+    const newRole = user.role === 'admin' ? 'user' : 'admin';
+    await fetch(`/api/admin/users/${user.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: newRole }),
+    });
+    await fetchUsers(page, search);
+  };
+
+  const removeUser = async (user: UserRecord) => {
+    await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+    await fetchUsers(page, search);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by name or email…"
+          value={search}
+          onChange={(e) => handleSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : data.users.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-6">No users found.</p>
+      ) : (
+        data.users.map((user) => {
+          const isSelf = user.id === session?.user?.id;
+          return (
+            <div key={user.id} className="flex items-center justify-between p-3 rounded-lg border">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-9 w-9">
+                  <AvatarImage src={user.avatarUrl || undefined} alt={user.username} />
+                  <AvatarFallback>{user.username[0].toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-medium text-sm">{user.username}</p>
+                  {user.email && <p className="text-xs text-muted-foreground">{user.email}</p>}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                  {user.role}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={isSelf}
+                  onClick={() => toggleRole(user)}
+                  title={user.role === 'admin' ? 'Demote to user' : 'Promote to admin'}
+                >
+                  {user.role === 'admin' ? (
+                    <ShieldOff className="h-4 w-4" />
+                  ) : (
+                    <ShieldCheck className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={isSelf}
+                  onClick={() => removeUser(user)}
+                  title="Delete user"
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          );
+        })
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-1">
+          <p className="text-xs text-muted-foreground">
+            {data.total} user{data.total !== 1 ? 's' : ''}
+            {search ? ' found' : ''} &mdash; page {page + 1} of {totalPages}
+          </p>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              disabled={page === 0}
+              onClick={() => setPage(page - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              disabled={page >= totalPages - 1}
+              onClick={() => setPage(page + 1)}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function SettingsPage() {
@@ -72,6 +229,18 @@ export default function SettingsPage() {
           Configure your Queuearr instance
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Users</CardTitle>
+          <CardDescription>
+            Manage user accounts and admin privileges
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <UsersManager />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -146,8 +315,6 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
-
-      <NotificationManager />
 
       <Card>
         <CardHeader>

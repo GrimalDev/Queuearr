@@ -11,6 +11,7 @@ declare module 'next-auth' {
       email?: string | null;
       image?: string | null;
       plexToken: string;
+      role: string;
     };
   }
 
@@ -20,6 +21,7 @@ declare module 'next-auth' {
     email?: string | null;
     image?: string | null;
     plexToken: string;
+    role: string;
   }
 }
 
@@ -27,6 +29,7 @@ declare module 'next-auth/jwt' {
   interface JWT {
     plexToken?: string;
     id?: string;
+    role?: string;
   }
 }
 
@@ -67,21 +70,22 @@ export const authOptions: AuthOptions = {
              return null;
            }
 
-           const user = {
+           const dbUser = await upsertUser({
              id: plexUser.id.toString(),
-             name: plexUser.username || plexUser.title,
+             username: plexUser.username || plexUser.title || plexUser.id.toString(),
              email: plexUser.email,
-             image: plexUser.thumb,
+             avatarUrl: plexUser.thumb,
              plexToken: authToken,
-           };
-
-           await upsertUser({
-             id: user.id,
-             username: user.name || plexUser.id.toString(),
-             email: user.email,
-             avatarUrl: user.image,
-             plexToken: user.plexToken,
            });
+
+           const user = {
+             id: dbUser.id,
+             name: dbUser.username,
+             email: dbUser.email,
+             image: dbUser.avatarUrl,
+             plexToken: authToken,
+             role: dbUser.role,
+           };
 
            return user;
         } catch (error) {
@@ -96,6 +100,7 @@ export const authOptions: AuthOptions = {
       if (user) {
         token.plexToken = user.plexToken;
         token.id = user.id;
+        token.role = user.role;
       }
       return token;
     },
@@ -103,6 +108,7 @@ export const authOptions: AuthOptions = {
       if (session.user) {
         session.user.plexToken = token.plexToken as string;
         session.user.id = token.id as string;
+        session.user.role = token.role as string;
       }
       return session;
     },

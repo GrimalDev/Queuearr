@@ -12,6 +12,9 @@ import {
   Menu,
   Film,
   User,
+  BellOff,
+  BellRing,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -24,17 +27,21 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { usePushNotifications } from '@/hooks/use-push-notifications';
 
-const navItems = [
-  { href: '/', label: 'Search', icon: Search },
-  { href: '/queue', label: 'Queue', icon: Download },
-  { href: '/settings', label: 'Settings', icon: Settings },
+const allNavItems = [
+  { href: '/', label: 'Search', icon: Search, adminOnly: false },
+  { href: '/queue', label: 'Queue', icon: Download, adminOnly: false },
+  { href: '/settings', label: 'Settings', icon: Settings, adminOnly: true },
 ];
 
 export function MainNav() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isAdmin = session?.user?.role === 'admin';
+  const { isSupported, isSubscribed, permissionState, isLoading, subscribe, unsubscribe } = usePushNotifications();
+  const navItems = allNavItems.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -92,13 +99,35 @@ export function MainNav() {
                     )}
                   </div>
                 </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/settings">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Settings
-                  </Link>
-                </DropdownMenuItem>
+                {isAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/settings">
+                        <Settings className="mr-2 h-4 w-4" />
+                        Settings
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {isSupported && permissionState !== 'denied' && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={isSubscribed ? unsubscribe : subscribe}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : isSubscribed ? (
+                        <BellOff className="mr-2 h-4 w-4" />
+                      ) : (
+                        <BellRing className="mr-2 h-4 w-4" />
+                      )}
+                      {isSubscribed ? 'Disable Notifications' : 'Enable Notifications'}
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })}>
                   <LogOut className="mr-2 h-4 w-4" />
