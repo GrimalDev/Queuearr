@@ -4,6 +4,8 @@ import { authOptions } from '@/lib/auth';
 import { addSubscription, removeSubscription, isVapidConfigured } from '@/lib/push';
 import { upsertUser } from '@/lib/db/users';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) {

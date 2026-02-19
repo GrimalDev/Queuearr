@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { sendToUser, isVapidConfigured } from '@/lib/push';
 
+export const dynamic = 'force-dynamic';
+
 const MAX_TITLE_LENGTH = 200;
 const MAX_BODY_LENGTH = 1000;
 
