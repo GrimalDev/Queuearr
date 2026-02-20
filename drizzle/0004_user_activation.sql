@@ -1,3 +1,3 @@
 ALTER TABLE `users` ADD `active` integer NOT NULL DEFAULT 0;
--- Activate all existing users (they predate the approval system)
+--> statement-breakpoint
 UPDATE `users` SET `active` = 1;
