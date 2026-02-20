@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { setUserRole, deleteUser } from '@/lib/db/users';
+import { setUserRole, setUserActive, deleteUser } from '@/lib/db/users';
 
 export async function PATCH(
   request: NextRequest,
@@ -14,17 +14,25 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const { role } = await request.json() as { role: string };
+  const body = await request.json() as { role?: string; active?: boolean };
 
-  if (!['user', 'admin'].includes(role)) {
-    return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+  if (body.role !== undefined) {
+    if (!['user', 'admin'].includes(body.role)) {
+      return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+    }
+    if (id === session.user.id && body.role !== 'admin') {
+      return NextResponse.json({ error: 'Cannot demote yourself' }, { status: 400 });
+    }
+    await setUserRole(id, body.role);
   }
 
-  if (id === session.user.id && role !== 'admin') {
-    return NextResponse.json({ error: 'Cannot demote yourself' }, { status: 400 });
+  if (body.active !== undefined) {
+    if (id === session.user.id && !body.active) {
+      return NextResponse.json({ error: 'Cannot deactivate yourself' }, { status: 400 });
+    }
+    await setUserActive(id, body.active);
   }
 
-  await setUserRole(id, role);
   return NextResponse.json({ success: true });
 }
 

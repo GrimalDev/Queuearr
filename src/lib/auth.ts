@@ -1,7 +1,8 @@
 import NextAuth, { AuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { PlexAuthClient } from '@/lib/api/plex';
-import { upsertUser } from '@/lib/db/users';
+import { upsertUser, getAdminUserIds } from '@/lib/db/users';
+import { sendToUser } from '@/lib/push';
 
 declare module 'next-auth' {
   interface Session {
@@ -70,13 +71,29 @@ export const authOptions: AuthOptions = {
              return null;
            }
 
-           const dbUser = await upsertUser({
+           const { user: dbUser, isNew } = await upsertUser({
              id: plexUser.id.toString(),
              username: plexUser.username || plexUser.title || plexUser.id.toString(),
              email: plexUser.email,
              avatarUrl: plexUser.thumb,
              plexToken: authToken,
            });
+
+           // Notify all admins when a new non-admin user registers
+           if (isNew && dbUser.role !== 'admin') {
+             getAdminUserIds().then((adminIds) =>
+               Promise.allSettled(
+                 adminIds.map((id) =>
+                   sendToUser(id, {
+                     title: 'New user registered',
+                     body: `${dbUser.username} is waiting for approval`,
+                     url: '/settings',
+                     tag: 'new-user-registration',
+                   })
+                 )
+               )
+             ).catch(() => {});
+           }
 
            const user = {
              id: dbUser.id,

@@ -8,6 +8,7 @@ export const users = sqliteTable('users', {
   avatarUrl: text('avatar_url'),
   plexToken: text('plex_token').notNull(),
   role: text('role').notNull().default('user'),
+  active: integer('active', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp' }),
   updatedAt: integer('updated_at', { mode: 'timestamp' }),
 });

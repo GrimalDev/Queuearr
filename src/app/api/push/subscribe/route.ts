@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       email: session.user.email,
       avatarUrl: session.user.image,
       plexToken: session.user.plexToken,
-    });
+    }); // isNew intentionally ignored — re-subscription, not first login
 
     await addSubscription(subscription, session.user.id);
 
