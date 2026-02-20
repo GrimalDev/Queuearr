@@ -154,11 +154,16 @@ export function useQueue() {
   const { queueItems, isLoadingQueue, setQueueItems, setIsLoadingQueue, addAlert } = useAppStore();
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'admin';
+  const isAdminRef = useRef(isAdmin);
+  useEffect(() => { isAdminRef.current = isAdmin; }, [isAdmin]);
+  const hasFetchedRef = useRef(false);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const previousProblematicRef = useRef<Set<string>>(new Set());
 
   const fetchQueue = useCallback(async () => {
-    setIsLoadingQueue(true);
+    if (!hasFetchedRef.current) {
+      setIsLoadingQueue(true);
+    }
 
     try {
       const items: QueueItem[] = [];
@@ -373,7 +378,7 @@ export function useQueue() {
         );
       }
 
-      if (isAdmin) {
+      if (isAdminRef.current) {
         for (const torrent of transmissionHashMap.values()) {
           items.push({
             id: `transmission-${torrent.id}`,
@@ -420,12 +425,18 @@ export function useQueue() {
       previousProblematicRef.current = currentProblematic;
       setQueueItems(items);
       setLastFetch(new Date());
+      if (!hasFetchedRef.current) {
+        hasFetchedRef.current = true;
+        setIsLoadingQueue(false);
+      }
     } catch (error) {
       console.error('Queue fetch error:', error);
-    } finally {
-      setIsLoadingQueue(false);
+      if (!hasFetchedRef.current) {
+        hasFetchedRef.current = true;
+        setIsLoadingQueue(false);
+      }
     }
-  }, [isAdmin, setIsLoadingQueue, setQueueItems, addAlert]);
+  }, [setIsLoadingQueue, setQueueItems, addAlert]);
 
   useEffect(() => {
     fetchQueue();
