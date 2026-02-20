@@ -9,6 +9,14 @@ const DATA_DIR = process.env.QUEUEARR_DATA_DIR || join(process.cwd(), 'data');
 const DB_PATH = join(DATA_DIR, 'queuearr.db');
 
 function initializeDatabase() {
+  // During `next build`, multiple worker processes collect page data simultaneously
+  // and would race on creating/migrating the same SQLite file. Use an in-memory DB
+  // at build time — no real DB operations happen during static analysis anyway.
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    const sqlite = new Database(':memory:');
+    return drizzle(sqlite, { schema });
+  }
+
   if (!existsSync(DATA_DIR)) {
     mkdirSync(DATA_DIR, { recursive: true });
   }
