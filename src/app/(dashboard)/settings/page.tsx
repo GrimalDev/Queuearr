@@ -14,6 +14,7 @@ interface ServiceStatus {
   configured: boolean;
   connected: boolean;
   error?: string;
+  url?: string;
 }
 
 interface UserRecord {
@@ -337,31 +338,38 @@ export default function SettingsPage() {
   const checkServices = async () => {
     setIsTesting(true);
     try {
-      const results: ServiceStatus[] = [];
+      const [radarrRes, sonarrRes, transmissionRes, urlsRes] = await Promise.all([
+        fetch('/api/radarr/queue').catch(() => null),
+        fetch('/api/sonarr/queue').catch(() => null),
+        fetch('/api/transmission').catch(() => null),
+        fetch('/api/admin/services').catch(() => null),
+      ]);
 
-      const radarrRes = await fetch('/api/radarr/queue').catch(() => null);
-      results.push({
-        name: 'Radarr',
-        configured: radarrRes?.status !== 503,
-        connected: radarrRes?.ok || false,
-        error: radarrRes?.status === 503 ? 'Not configured' : radarrRes?.ok ? undefined : 'Connection failed',
-      });
+      const urls: Record<string, string | null> = urlsRes?.ok ? await urlsRes.json() : {};
 
-      const sonarrRes = await fetch('/api/sonarr/queue').catch(() => null);
-      results.push({
-        name: 'Sonarr',
-        configured: sonarrRes?.status !== 503,
-        connected: sonarrRes?.ok || false,
-        error: sonarrRes?.status === 503 ? 'Not configured' : sonarrRes?.ok ? undefined : 'Connection failed',
-      });
-
-      const transmissionRes = await fetch('/api/transmission').catch(() => null);
-      results.push({
-        name: 'Transmission',
-        configured: transmissionRes?.status !== 503,
-        connected: transmissionRes?.ok || false,
-        error: transmissionRes?.status === 503 ? 'Not configured' : transmissionRes?.ok ? undefined : 'Connection failed',
-      });
+      const results: ServiceStatus[] = [
+        {
+          name: 'Radarr',
+          configured: radarrRes?.status !== 503,
+          connected: radarrRes?.ok || false,
+          error: radarrRes?.status === 503 ? 'Not configured' : radarrRes?.ok ? undefined : 'Connection failed',
+          url: urls.Radarr ?? undefined,
+        },
+        {
+          name: 'Sonarr',
+          configured: sonarrRes?.status !== 503,
+          connected: sonarrRes?.ok || false,
+          error: sonarrRes?.status === 503 ? 'Not configured' : sonarrRes?.ok ? undefined : 'Connection failed',
+          url: urls.Sonarr ?? undefined,
+        },
+        {
+          name: 'Transmission',
+          configured: transmissionRes?.status !== 503,
+          connected: transmissionRes?.ok || false,
+          error: transmissionRes?.status === 503 ? 'Not configured' : transmissionRes?.ok ? undefined : 'Connection failed',
+          url: urls.Transmission ?? undefined,
+        },
+      ];
 
       setServices(results);
     } catch (error) {
@@ -434,12 +442,6 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-4">
               {services.map((service) => {
-                const uriMap: Record<string, string | undefined> = {
-                  Radarr: process.env.NEXT_PUBLIC_RADARR_URL,
-                  Sonarr: process.env.NEXT_PUBLIC_SONARR_URL,
-                  Transmission: process.env.NEXT_PUBLIC_TRANSMISSION_URL,
-                };
-                const uri = uriMap[service.name];
                 return (
                   <div
                     key={service.name}
@@ -458,7 +460,7 @@ export default function SettingsPage() {
                       <div>
                         <p className="font-medium">{service.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {service.error ?? uri ?? '—'}
+                          {service.error ?? service.url ?? '—'}
                         </p>
                       </div>
                     </div>
