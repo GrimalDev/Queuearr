@@ -45,7 +45,7 @@ export function MainNav() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-16 items-center justify-between">
+      <div className="container mx-auto flex h-14 items-center justify-between px-4">
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2 font-bold text-xl">
             <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
@@ -93,7 +93,7 @@ export function MainNav() {
                       <p className="font-medium">{session.user.name}</p>
                     )}
                     {session.user.email && (
-                      <p className="w-[200px] truncate text-sm text-muted-foreground">
+                      <p className="max-w-[200px] truncate text-sm text-muted-foreground">
                         {session.user.email}
                       </p>
                     )}
@@ -143,7 +143,7 @@ export function MainNav() {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="w-[300px] sm:w-[400px]">
+            <SheetContent side="right" className="w-[85vw] max-w-[400px]">
               <nav className="flex flex-col gap-2 mt-8">
                 {navItems.map((item) => {
                   const Icon = item.icon;

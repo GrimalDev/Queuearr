@@ -23,7 +23,6 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { useSession } from 'next-auth/react';
 import { useQueue } from '@/hooks/use-media';
 import { QueueItem, QueueItemStatus } from '@/types';
@@ -364,9 +363,9 @@ export function QueueDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-2xl font-bold">Download Queue</h2>
+          <h2 className="text-xl sm:text-2xl font-bold">Download Queue</h2>
           {lastFetch && (
             <p className="text-sm text-muted-foreground">
               Last updated: {lastFetch.toLocaleTimeString()}
@@ -445,21 +444,19 @@ export function QueueDashboard() {
       {activeDownloads.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-lg font-semibold">Active Downloads</h3>
-          <ScrollArea className="h-[400px]">
-            <div className="space-y-3">
-              {activeDownloads.map((item) => (
-                <QueueItemCard
-                  key={item.id}
-                  item={item}
-                  isAdmin={isAdmin}
-                  isRetrying={retryingItems.has(item.id)}
-                  isDeleting={deletingIds.has(item.id)}
-                  onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
-                  onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
-                />
-              ))}
-            </div>
-          </ScrollArea>
+          <div className="space-y-3">
+            {activeDownloads.map((item) => (
+              <QueueItemCard
+                key={item.id}
+                item={item}
+                isAdmin={isAdmin}
+                isRetrying={retryingItems.has(item.id)}
+                isDeleting={deletingIds.has(item.id)}
+                onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
+                onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
+              />
+            ))}
+          </div>
         </div>
       )}
 

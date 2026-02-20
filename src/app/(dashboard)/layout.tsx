@@ -27,7 +27,7 @@ export default async function DashboardLayout({
     <Providers>
       <div className="min-h-screen flex flex-col">
         <MainNav />
-        <main className="flex-1 container mx-auto py-6">{children}</main>
+        <main className="flex-1 container mx-auto py-6 px-4">{children}</main>
         <InstallPrompt />
       </div>
     </Providers>

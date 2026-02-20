@@ -107,18 +107,18 @@ function UsersManager() {
         data.users.map((user) => {
           const isSelf = user.id === session?.user?.id;
           return (
-            <div key={user.id} className="flex items-center justify-between p-3 rounded-lg border">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-9 w-9">
+            <div key={user.id} className="flex items-center justify-between gap-2 p-3 rounded-lg border">
+              <div className="flex items-center gap-3 min-w-0">
+                <Avatar className="h-9 w-9 shrink-0">
                   <AvatarImage src={user.avatarUrl || undefined} alt={user.username} />
                   <AvatarFallback>{user.username[0].toUpperCase()}</AvatarFallback>
                 </Avatar>
-                <div>
-                  <p className="font-medium text-sm">{user.username}</p>
-                  {user.email && <p className="text-xs text-muted-foreground">{user.email}</p>}
+                <div className="min-w-0">
+                  <p className="font-medium text-sm truncate">{user.username}</p>
+                  {user.email && <p className="text-xs text-muted-foreground truncate">{user.email}</p>}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 shrink-0">
                 <Badge variant={user.active ? (user.role === 'admin' ? 'default' : 'secondary') : 'outline'}>
                   {!user.active ? 'pending' : user.role}
                 </Badge>
@@ -312,12 +312,12 @@ function PushNotificationsManager() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between p-4 rounded-lg border">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-lg border">
         <div className="flex items-center gap-3">
           {isSubscribed ? (
-            <Bell className="h-5 w-5 text-green-500" />
+            <Bell className="h-5 w-5 text-green-500 shrink-0" />
           ) : (
-            <BellOff className="h-5 w-5 text-muted-foreground" />
+            <BellOff className="h-5 w-5 text-muted-foreground shrink-0" />
           )}
           <div>
             <p className="font-medium text-sm">This device</p>
@@ -411,7 +411,7 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Settings</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Settings</h1>
         <p className="text-muted-foreground mt-1">
           Configure your Queuearr instance
         </p>
@@ -445,14 +445,14 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <CardTitle>Service Status</CardTitle>
               <CardDescription>
                 Check the connection status of your configured services
               </CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={checkServices} disabled={isTesting}>
+            <Button variant="outline" size="sm" onClick={checkServices} disabled={isTesting} className="shrink-0">
               <RefreshCw className={`h-4 w-4 mr-2 ${isTesting ? 'animate-spin' : ''}`} />
               Test Connections
             </Button>
@@ -469,9 +469,9 @@ export default function SettingsPage() {
                 return (
                   <div
                     key={service.name}
-                    className="flex items-center justify-between p-4 rounded-lg border"
+                    className="flex items-center justify-between gap-3 p-4 rounded-lg border"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div
                         className={`h-3 w-3 rounded-full shrink-0 ${
                           service.connected
@@ -481,9 +481,9 @@ export default function SettingsPage() {
                               : 'bg-gray-400'
                         }`}
                       />
-                      <div>
+                      <div className="min-w-0">
                         <p className="font-medium">{service.name}</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground truncate">
                           {service.error ?? service.url ?? '—'}
                         </p>
                       </div>

@@ -37,7 +37,7 @@ export function SearchBar() {
           placeholder={`Search for ${searchType === 'movies' ? 'movies' : 'series'}...`}
           value={inputValue}
           onChange={handleInputChange}
-          className="pl-10 pr-10 h-12 text-lg"
+          className="pl-10 pr-10 h-10 sm:h-12 text-base sm:text-lg"
         />
         {isSearching && (
           <Loader2 className="absolute right-10 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
