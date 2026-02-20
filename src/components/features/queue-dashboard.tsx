@@ -133,6 +133,21 @@ function QueueItemCard({
           </div>
         </div>
 
+        {(item.quality || item.indexer) && (
+          <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+            {item.quality && (
+              <Badge variant="outline" className="text-xs px-1.5 py-0 font-normal">
+                {item.quality}
+              </Badge>
+            )}
+            {item.indexer && (
+              <Badge variant="outline" className="text-xs px-1.5 py-0 font-normal text-muted-foreground">
+                {item.indexer}
+              </Badge>
+            )}
+          </div>
+        )}
+
         <div className="mt-3 space-y-2">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">

@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import {
   SonarrSeries,
+  SonarrEpisode,
   SonarrQueueItem,
   SonarrQualityProfile,
   SonarrLanguageProfile,
@@ -119,8 +120,19 @@ export class SonarrClient {
     });
   }
 
+  async getEpisodes(seriesId: number): Promise<SonarrEpisode[]> {
+    const response = await this.client.get<SonarrEpisode[]>('/api/v3/episode', {
+      params: { seriesId },
+    });
+    return response.data;
+  }
+
   async triggerSearch(seriesId: number): Promise<void> {
     await this.client.post('/api/v3/command', { name: 'SeriesSearch', seriesId });
+  }
+
+  async triggerSeasonSearch(seriesId: number, seasonNumber: number): Promise<void> {
+    await this.client.post('/api/v3/command', { name: 'SeasonSearch', seriesId, seasonNumber });
   }
 
   async triggerEpisodeSearch(episodeIds: number[]): Promise<void> {

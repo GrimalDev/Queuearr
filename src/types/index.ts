@@ -40,6 +40,20 @@ export interface RadarrMovie {
   status?: string;
 }
 
+export interface MediaQuality {
+  quality: {
+    id: number;
+    name: string;
+    source: string;
+    resolution: number;
+  };
+  revision: {
+    version: number;
+    real: number;
+    isRepack: boolean;
+  };
+}
+
 export interface RadarrQueueItem {
   id: number;
   movieId?: number;
@@ -60,6 +74,7 @@ export interface RadarrQueueItem {
   timeleft?: string;
   estimatedCompletionTime?: string;
   downloadClientHasPostImportCategory?: boolean;
+  quality?: MediaQuality;
 }
 
 export interface RadarrQualityProfile {
@@ -168,6 +183,7 @@ export interface SonarrQueueItem {
   sizeleft: number;
   timeleft?: string;
   estimatedCompletionTime?: string;
+  quality?: MediaQuality;
 }
 
 export interface SonarrEpisode {
@@ -342,6 +358,10 @@ export interface SearchResult {
   isDownloading?: boolean;
   monitoredId?: number;
   isWatching?: boolean;
+  /** Movies: whether a file exists on disk */
+  hasFile?: boolean;
+  /** Series: season list with statistics (from Sonarr lookup or library) */
+  seasons?: SonarrSeason[];
 }
 
 export interface QueueItem {
@@ -364,6 +384,7 @@ export interface QueueItem {
   errorMessage?: string;
   downloadClient?: string;
   indexer?: string;
+  quality?: string;
   estimatedCompletionTime?: string;
   peersConnected?: number;
   peersSendingToUs?: number;

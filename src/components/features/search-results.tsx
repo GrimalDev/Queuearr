@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Plus, Check, Film, Tv, Calendar, Loader2, Star, Bell, BellOff, Download } from 'lucide-react';
+import { Plus, Check, Film, Tv, Calendar, Loader2, Star, Bell, BellOff, Download, List } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useSearch } from '@/hooks/use-media';
 import { useAppStore } from '@/store/app-store';
 import { SearchResult } from '@/types';
+import { SeriesBrowser } from './series-browser';
 
 export function SearchResults() {
   const { searchResults, isSearching, searchQuery } = useSearch();
@@ -18,6 +19,8 @@ export function SearchResults() {
   const router = useRouter();
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
   const [watchingStates, setWatchingStates] = useState<Map<string, boolean>>(new Map());
+  const [browsingSeries, setBrowsingSeries] = useState<SearchResult | null>(null);
+  const [grabbingMovieIds, setGrabbingMovieIds] = useState<Set<string>>(new Set());
 
   const formatSortScore = (value: number) =>
     value.toLocaleString(undefined, { maximumFractionDigits: 1 });
@@ -106,6 +109,26 @@ export function SearchResults() {
     }
   };
 
+  const handleGrabMissingMovie = async (result: SearchResult) => {
+    if (!result.libraryId) return;
+    setGrabbingMovieIds((prev) => new Set(prev).add(result.id));
+    try {
+      const res = await fetch(`/api/radarr/movie/${result.libraryId}/grab`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to grab');
+      addAlert({
+        type: 'success',
+        title: 'Download started',
+        message: `Searching for ${result.title}…`,
+        source: 'radarr',
+      });
+      router.push('/queue');
+    } catch {
+      addAlert({ type: 'error', title: 'Download failed', message: `Could not start download for ${result.title}.`, source: 'radarr' });
+    } finally {
+      setGrabbingMovieIds((prev) => { const n = new Set(prev); n.delete(result.id); return n; });
+    }
+  };
+
   if (isSearching) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -152,6 +175,8 @@ export function SearchResults() {
   }
 
   return (
+    <>
+    <SeriesBrowser result={browsingSeries} onClose={() => setBrowsingSeries(null)} />
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {searchResults.map((result) => {
         const isWatching =
@@ -225,13 +250,54 @@ export function SearchResults() {
                 </div>
               </div>
 
-              {result.isDownloading ? (
-                <div className="flex gap-2">
+              {result.type === 'series' ? (
+                /* ── Series: main grab button + secondary browse link ── */
+                <div className="space-y-1.5">
+                  {result.isDownloading ? (
+                    <div className="flex gap-2">
+                      <Button className="flex-1" variant="secondary" disabled>
+                        <Download className="h-4 w-4 mr-2" />
+                        Downloading
+                      </Button>
+                      <Button
+                        variant={isWatching ? 'default' : 'outline'}
+                        size="icon"
+                        onClick={() => handleToggleWatch(result)}
+                        title={isWatching ? 'Unsubscribe from notifications' : 'Get notified when done'}
+                      >
+                        {isWatching ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      className="w-full"
+                      variant={result.inLibrary ? 'secondary' : 'default'}
+                      disabled={result.inLibrary || addingIds.has(result.id)}
+                      onClick={() => handleAdd(result)}
+                    >
+                      {addingIds.has(result.id) ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Adding…</>
+                      ) : result.inLibrary ? (
+                        <><Check className="h-4 w-4 mr-2" />Already Added</>
+                      ) : (
+                        <><Plus className="h-4 w-4 mr-2" />Grab Title</>
+                      )}
+                    </Button>
+                  )}
                   <Button
-                    className="flex-1"
-                    variant="secondary"
-                    disabled
+                    className="w-full"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setBrowsingSeries(result)}
                   >
+                    <List className="h-3.5 w-3.5 mr-1.5" />
+                    Browse Episodes
+                  </Button>
+                </div>
+              ) : result.isDownloading ? (
+                /* ── Movie: currently downloading ── */
+                <div className="flex gap-2">
+                  <Button className="flex-1" variant="secondary" disabled>
                     <Download className="h-4 w-4 mr-2" />
                     Downloading
                   </Button>
@@ -241,35 +307,40 @@ export function SearchResults() {
                     onClick={() => handleToggleWatch(result)}
                     title={isWatching ? 'Unsubscribe from notifications' : 'Get notified when done'}
                   >
-                    {isWatching ? (
-                      <Bell className="h-4 w-4" />
-                    ) : (
-                      <BellOff className="h-4 w-4" />
-                    )}
+                    {isWatching ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
                   </Button>
                 </div>
-              ) : (
+              ) : result.inLibrary && !result.hasFile ? (
+                /* ── Movie: in library but missing file ── */
                 <Button
                   className="w-full"
-                  variant={result.inLibrary ? 'secondary' : 'default'}
-                  disabled={result.inLibrary || addingIds.has(result.id)}
+                  variant="default"
+                  disabled={grabbingMovieIds.has(result.id)}
+                  onClick={() => handleGrabMissingMovie(result)}
+                >
+                  {grabbingMovieIds.has(result.id) ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Searching…</>
+                  ) : (
+                    <><Download className="h-4 w-4 mr-2" />Download</>
+                  )}
+                </Button>
+              ) : result.inLibrary ? (
+                /* ── Movie: already downloaded ── */
+                <Button className="w-full" variant="secondary" disabled>
+                  <Check className="h-4 w-4 mr-2" />
+                  Already Added
+                </Button>
+              ) : (
+                /* ── Movie: not in library ── */
+                <Button
+                  className="w-full"
+                  disabled={addingIds.has(result.id)}
                   onClick={() => handleAdd(result)}
                 >
                   {addingIds.has(result.id) ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Adding...
-                    </>
-                  ) : result.inLibrary ? (
-                    <>
-                      <Check className="h-4 w-4 mr-2" />
-                      Already Added
-                    </>
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Adding…</>
                   ) : (
-                    <>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Grab Title
-                    </>
+                    <><Plus className="h-4 w-4 mr-2" />Grab Title</>
                   )}
                 </Button>
               )}
@@ -278,5 +349,6 @@ export function SearchResults() {
         );
       })}
     </div>
+    </>
   );
 }

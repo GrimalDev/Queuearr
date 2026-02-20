@@ -32,7 +32,7 @@ export function useSearch() {
         if (searchType === 'all' || searchType === 'movies') {
           const response = await fetch(`/api/radarr/search?q=${encodeURIComponent(query)}`);
           if (response.ok) {
-            const movies: (RadarrMovie & { inLibrary: boolean; libraryId?: number })[] =
+            const movies: (RadarrMovie & { inLibrary: boolean; libraryId?: number; isDownloading?: boolean; monitoredId?: number; isWatching?: boolean })[] =
               await response.json();
             results.push(
               ...movies.map((m) => ({
@@ -49,6 +49,10 @@ export function useSearch() {
                 libraryId: m.libraryId,
                 popularity: m.popularity ?? m.ratings?.tmdb?.votes ?? 0,
                 popularitySource: m.popularity !== undefined ? 'Radarr' : 'TMDB votes',
+                isDownloading: m.isDownloading,
+                monitoredId: m.monitoredId,
+                isWatching: m.isWatching,
+                hasFile: m.hasFile,
               }))
             );
           } else if (response.status === 504) {
@@ -64,7 +68,7 @@ export function useSearch() {
         if (searchType === 'all' || searchType === 'series') {
           const response = await fetch(`/api/sonarr/search?q=${encodeURIComponent(query)}`);
           if (response.ok) {
-            const series: (SonarrSeries & { inLibrary: boolean; libraryId?: number })[] =
+            const series: (SonarrSeries & { inLibrary: boolean; libraryId?: number; isDownloading?: boolean; monitoredId?: number; isWatching?: boolean })[] =
               await response.json();
             results.push(
               ...series.map((s) => ({
@@ -81,6 +85,10 @@ export function useSearch() {
                 libraryId: s.libraryId,
                 popularity: s.ratings?.votes ?? 0,
                 popularitySource: 'Sonarr votes',
+                isDownloading: s.isDownloading,
+                monitoredId: s.monitoredId,
+                isWatching: s.isWatching,
+                seasons: s.seasons?.filter((sn) => sn.seasonNumber > 0),
               }))
             );
           } else if (response.status === 504) {
@@ -250,6 +258,7 @@ export function useQueue() {
                 : matchedTorrent?.problemReason,
               downloadClient: item.downloadClient,
               indexer: item.indexer,
+              quality: item.quality?.quality?.name,
               estimatedCompletionTime: item.estimatedCompletionTime,
               peersConnected: matchedTorrent?.peersConnected,
               peersSendingToUs: matchedTorrent?.peersSendingToUs,
@@ -348,6 +357,7 @@ export function useQueue() {
                 : matchedTorrent?.problemReason,
               downloadClient: item.downloadClient,
               indexer: item.indexer,
+              quality: item.quality?.quality?.name,
               estimatedCompletionTime: item.estimatedCompletionTime,
               peersConnected: matchedTorrent?.peersConnected,
               peersSendingToUs: matchedTorrent?.peersSendingToUs,
