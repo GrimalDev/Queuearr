@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { getUserById } from '@/lib/db/users';
 import { Providers } from '@/components/providers';
 import { MainNav } from '@/components/features/main-nav';
+import { BottomNav } from '@/components/features/bottom-nav';
 import { InstallPrompt } from '@/components/pwa/install-prompt';
 
 export default async function DashboardLayout({
@@ -27,7 +28,8 @@ export default async function DashboardLayout({
     <Providers>
       <div className="min-h-screen flex flex-col">
         <MainNav />
-        <main className="flex-1 container mx-auto py-6 px-4">{children}</main>
+        <main className="flex-1 container mx-auto py-6 px-4 pb-24 md:pb-6">{children}</main>
+        <BottomNav />
         <InstallPrompt />
       </div>
     </Providers>
