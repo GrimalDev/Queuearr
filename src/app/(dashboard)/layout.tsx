@@ -20,7 +20,7 @@ export default async function DashboardLayout({
 
   // Always validate active status from DB (not JWT cache) so deactivation is immediate
   const dbUser = await getUserById(session.user.id);
-  if (!dbUser || !dbUser.active) {
+  if (!dbUser || (!dbUser.active && dbUser.role !== 'admin')) {
     redirect('/pending');
   }
 
