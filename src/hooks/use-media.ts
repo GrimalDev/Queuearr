@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { useAppStore } from '@/store/app-store';
 import { SearchResult, QueueItem, RadarrMovie, SonarrSeries, RadarrQueueItem, SonarrQueueItem, TransmissionTorrent, TransmissionStatus } from '@/types';
 
@@ -151,6 +152,8 @@ export function useSearch() {
 
 export function useQueue() {
   const { queueItems, isLoadingQueue, setQueueItems, setIsLoadingQueue, addAlert } = useAppStore();
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === 'admin';
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const previousProblematicRef = useRef<Set<string>>(new Set());
 
@@ -370,27 +373,29 @@ export function useQueue() {
         );
       }
 
-      for (const torrent of transmissionHashMap.values()) {
-        items.push({
-          id: `transmission-${torrent.id}`,
-          source: 'transmission' as const,
-          title: torrent.name,
-          status: mapTransmissionStatus(torrent.status, torrent.isFinished),
-          progress: torrent.percentDone * 100,
-          size: torrent.sizeWhenDone,
-          sizeRemaining: torrent.leftUntilDone,
-          downloadSpeed: torrent.rateDownload,
-          uploadSpeed: torrent.rateUpload,
-          eta: torrent.eta > 0 ? formatEta(torrent.eta) : undefined,
-          isStalled: torrent.isStalled && torrent.status === TransmissionStatus.DOWNLOAD,
-          hasError: torrent.isProblematic && torrent.status === TransmissionStatus.DOWNLOAD,
-          errorMessage: torrent.problemReason,
-          peersConnected: torrent.peersConnected,
-          peersSendingToUs: torrent.peersSendingToUs,
-          addedDate: torrent.addedDate,
-          doneDate: torrent.doneDate,
-          activityDate: torrent.activityDate,
-        });
+      if (isAdmin) {
+        for (const torrent of transmissionHashMap.values()) {
+          items.push({
+            id: `transmission-${torrent.id}`,
+            source: 'transmission' as const,
+            title: torrent.name,
+            status: mapTransmissionStatus(torrent.status, torrent.isFinished),
+            progress: torrent.percentDone * 100,
+            size: torrent.sizeWhenDone,
+            sizeRemaining: torrent.leftUntilDone,
+            downloadSpeed: torrent.rateDownload,
+            uploadSpeed: torrent.rateUpload,
+            eta: torrent.eta > 0 ? formatEta(torrent.eta) : undefined,
+            isStalled: torrent.isStalled && torrent.status === TransmissionStatus.DOWNLOAD,
+            hasError: torrent.isProblematic && torrent.status === TransmissionStatus.DOWNLOAD,
+            errorMessage: torrent.problemReason,
+            peersConnected: torrent.peersConnected,
+            peersSendingToUs: torrent.peersSendingToUs,
+            addedDate: torrent.addedDate,
+            doneDate: torrent.doneDate,
+            activityDate: torrent.activityDate,
+          });
+        }
       }
 
       const currentProblematic = new Set(
@@ -420,7 +425,7 @@ export function useQueue() {
     } finally {
       setIsLoadingQueue(false);
     }
-  }, [setIsLoadingQueue, setQueueItems, addAlert]);
+  }, [isAdmin, setIsLoadingQueue, setQueueItems, addAlert]);
 
   useEffect(() => {
     fetchQueue();

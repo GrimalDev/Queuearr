@@ -3,12 +3,12 @@ import { getServerSession } from 'next-auth';
 import { createSonarrClient } from '@/lib/api/sonarr';
 import { authOptions } from '@/lib/auth';
 import { smartGrab } from '@/lib/smart-grab';
-import { getMonitoredDownloadBySourceMedia, markDownloadCompleted } from '@/lib/db/monitored-downloads';
+import { getMonitoredDownloadBySourceMedia, markDownloadCompleted, getWatchedMediaIds } from '@/lib/db/monitored-downloads';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) {
-    return NextResponse.json({ error: 'Sonarr not configured' }, { status: 503 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const sonarr = createSonarrClient();
@@ -18,7 +18,13 @@ export async function GET() {
 
   try {
     const queue = await sonarr.getQueue(true, true);
-    return NextResponse.json(queue.records);
+    const isAdmin = session.user.role === 'admin';
+    if (isAdmin) {
+      return NextResponse.json(queue.records);
+    }
+    const watchedIds = await getWatchedMediaIds(session.user.id, 'sonarr');
+    const filtered = queue.records.filter((item) => item.seriesId != null && watchedIds.has(item.seriesId));
+    return NextResponse.json(filtered);
   } catch (error) {
     console.error('Sonarr queue error:', error);
     return NextResponse.json({ error: 'Failed to get queue' }, { status: 500 });

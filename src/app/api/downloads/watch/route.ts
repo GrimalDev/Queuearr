@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import {
   getMonitoredDownloadBySourceMedia,
   getActiveMonitoredDownloads,
+  getActiveMonitoredDownloadsForUser,
   addUserToDownload,
   removeUserFromDownload,
 } from '@/lib/db/monitored-downloads';
@@ -13,7 +14,10 @@ export async function GET() {
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const downloads = await getActiveMonitoredDownloads();
+  const isAdmin = session.user.role === 'admin';
+  const downloads = isAdmin
+    ? await getActiveMonitoredDownloads()
+    : await getActiveMonitoredDownloadsForUser(session.user.id);
   return NextResponse.json(downloads);
 }
 

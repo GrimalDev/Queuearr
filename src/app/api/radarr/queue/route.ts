@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
 import { smartGrab } from '@/lib/smart-grab';
-import { getMonitoredDownloadBySourceMedia, markDownloadCompleted } from '@/lib/db/monitored-downloads';
+import { getMonitoredDownloadBySourceMedia, markDownloadCompleted, getWatchedMediaIds } from '@/lib/db/monitored-downloads';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -18,7 +18,13 @@ export async function GET() {
 
   try {
     const queue = await radarr.getQueue(true);
-    return NextResponse.json(queue.records);
+    const isAdmin = session.user.role === 'admin';
+    if (isAdmin) {
+      return NextResponse.json(queue.records);
+    }
+    const watchedIds = await getWatchedMediaIds(session.user.id, 'radarr');
+    const filtered = queue.records.filter((item) => item.movieId != null && watchedIds.has(item.movieId));
+    return NextResponse.json(filtered);
   } catch (error) {
     console.error('Radarr queue error:', error);
     return NextResponse.json({ error: 'Failed to get queue' }, { status: 500 });

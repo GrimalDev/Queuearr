@@ -44,6 +44,71 @@ export interface ActiveMonitoredDownload {
   userIds: string[];
 }
 
+export async function getActiveMonitoredDownloadsForUser(userId: string): Promise<ActiveMonitoredDownload[]> {
+  const rows = await db
+    .select({
+      id: monitoredDownloads.id,
+      source: monitoredDownloads.source,
+      mediaId: monitoredDownloads.mediaId,
+      title: monitoredDownloads.title,
+      lastStatus: monitoredDownloads.lastStatus,
+      createdAt: monitoredDownloads.createdAt,
+      lastActivityAt: monitoredDownloads.lastActivityAt,
+      lastBytesAt: monitoredDownloads.lastBytesAt,
+      userId: monitoredDownloadUsers.userId,
+    })
+    .from(monitoredDownloads)
+    .innerJoin(
+      monitoredDownloadUsers,
+      and(
+        eq(monitoredDownloads.id, monitoredDownloadUsers.downloadId),
+        eq(monitoredDownloadUsers.userId, userId)
+      )
+    )
+    .where(isNull(monitoredDownloads.completedAt));
+
+  const map = new Map<number, ActiveMonitoredDownload>();
+  for (const row of rows) {
+    if (!map.has(row.id)) {
+      map.set(row.id, {
+        id: row.id,
+        source: row.source,
+        mediaId: row.mediaId,
+        title: row.title,
+        lastStatus: row.lastStatus,
+        createdAt: row.createdAt,
+        lastActivityAt: row.lastActivityAt,
+        lastBytesAt: row.lastBytesAt,
+        userIds: [],
+      });
+    }
+    if (row.userId) {
+      map.get(row.id)!.userIds.push(row.userId);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+export async function getWatchedMediaIds(userId: string, source: 'radarr' | 'sonarr'): Promise<Set<number>> {
+  const rows = await db
+    .select({ mediaId: monitoredDownloads.mediaId })
+    .from(monitoredDownloads)
+    .innerJoin(
+      monitoredDownloadUsers,
+      eq(monitoredDownloads.id, monitoredDownloadUsers.downloadId)
+    )
+    .where(
+      and(
+        eq(monitoredDownloads.source, source),
+        eq(monitoredDownloadUsers.userId, userId),
+        isNull(monitoredDownloads.completedAt)
+      )
+    );
+
+  return new Set(rows.map((r) => r.mediaId));
+}
+
 export async function getActiveMonitoredDownloads(): Promise<ActiveMonitoredDownload[]> {
   const rows = await db
     .select({
