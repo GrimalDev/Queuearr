@@ -2,13 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { Check, X, Loader2, RefreshCw, Trash2, ShieldCheck, ShieldOff, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check, X, Loader2, RefreshCw, Trash2, ShieldCheck, ShieldOff, Search, ChevronLeft, ChevronRight, Bell, BellOff } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface ServiceStatus {
@@ -174,7 +172,164 @@ function UsersManager() {
   );
 }
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+function PushNotificationsManager() {
+  const [permission, setPermission] = useState<NotificationPermission | 'unsupported' | 'loading'>('loading');
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
+  const [testStatus, setTestStatus] = useState<'idle' | 'sent' | 'error'>('idle');
+  const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+
+  useEffect(() => {
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setPermission('unsupported');
+      return;
+    }
+    setPermission(Notification.permission);
+    navigator.serviceWorker.ready.then((reg) =>
+      reg.pushManager.getSubscription().then((sub) => setIsSubscribed(!!sub))
+    );
+  }, []);
+
+  const subscribe = async () => {
+    if (!vapidKey) return;
+    setIsBusy(true);
+    try {
+      const perm = await Notification.requestPermission();
+      setPermission(perm);
+      if (perm !== 'granted') return;
+
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey).buffer as ArrayBuffer,
+      });
+
+      const res = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON() }),
+      });
+      if (res.ok) setIsSubscribed(true);
+    } catch (err) {
+      console.error('Subscribe failed:', err);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const unsubscribe = async () => {
+    setIsBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch('/api/push/subscribe', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        await sub.unsubscribe();
+        setIsSubscribed(false);
+      }
+    } catch (err) {
+      console.error('Unsubscribe failed:', err);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const sendTest = async () => {
+    setIsBusy(true);
+    setTestStatus('idle');
+    try {
+      const res = await fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Queuearr', body: 'Push notifications are working!', url: '/settings' }),
+      });
+      setTestStatus(res.ok ? 'sent' : 'error');
+    } catch {
+      setTestStatus('error');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  if (permission === 'loading') {
+    return (
+      <div className="flex items-center justify-center py-6">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (permission === 'unsupported') {
+    return <p className="text-sm text-muted-foreground">Push notifications are not supported in this browser.</p>;
+  }
+
+  if (!vapidKey) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        VAPID keys are not configured. Set <code>NEXT_PUBLIC_VAPID_PUBLIC_KEY</code> and{' '}
+        <code>VAPID_PRIVATE_KEY</code> in your environment.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between p-4 rounded-lg border">
+        <div className="flex items-center gap-3">
+          {isSubscribed ? (
+            <Bell className="h-5 w-5 text-green-500" />
+          ) : (
+            <BellOff className="h-5 w-5 text-muted-foreground" />
+          )}
+          <div>
+            <p className="font-medium text-sm">This device</p>
+            <p className="text-xs text-muted-foreground">
+              {permission === 'denied'
+                ? 'Notifications blocked in browser settings'
+                : isSubscribed
+                  ? 'Subscribed to push notifications'
+                  : 'Not subscribed'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {isSubscribed && (
+            <Button variant="outline" size="sm" onClick={sendTest} disabled={isBusy}>
+              {testStatus === 'sent' ? <Check className="h-4 w-4 mr-1 text-green-500" /> : null}
+              {testStatus === 'error' ? <X className="h-4 w-4 mr-1 text-destructive" /> : null}
+              Test
+            </Button>
+          )}
+          <Button
+            variant={isSubscribed ? 'outline' : 'default'}
+            size="sm"
+            onClick={isSubscribed ? unsubscribe : subscribe}
+            disabled={isBusy || permission === 'denied'}
+          >
+            {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : isSubscribed ? 'Disable' : 'Enable'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === 'admin';
   const [services, setServices] = useState<ServiceStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isTesting, setIsTesting] = useState(false);
@@ -242,6 +397,20 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Push Notifications</CardTitle>
+            <CardDescription>
+              Enable push notifications on this device to receive alerts
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PushNotificationsManager />
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -264,173 +433,63 @@ export default function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {services.map((service) => (
-                <div
-                  key={service.name}
-                  className="flex items-center justify-between p-4 rounded-lg border"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`h-3 w-3 rounded-full ${
-                        service.connected
-                          ? 'bg-green-500'
-                          : service.configured
-                            ? 'bg-yellow-500'
-                            : 'bg-gray-400'
-                      }`}
-                    />
-                    <div>
-                      <p className="font-medium">{service.name}</p>
-                      {service.error && (
-                        <p className="text-sm text-muted-foreground">{service.error}</p>
-                      )}
-                    </div>
-                  </div>
-                  <Badge
-                    variant={
-                      service.connected
-                        ? 'default'
-                        : service.configured
-                          ? 'secondary'
-                          : 'outline'
-                    }
+              {services.map((service) => {
+                const uriMap: Record<string, string | undefined> = {
+                  Radarr: process.env.NEXT_PUBLIC_RADARR_URL,
+                  Sonarr: process.env.NEXT_PUBLIC_SONARR_URL,
+                  Transmission: process.env.NEXT_PUBLIC_TRANSMISSION_URL,
+                };
+                const uri = uriMap[service.name];
+                return (
+                  <div
+                    key={service.name}
+                    className="flex items-center justify-between p-4 rounded-lg border"
                   >
-                    {service.connected ? (
-                      <>
-                        <Check className="h-3 w-3 mr-1" />
-                        Connected
-                      </>
-                    ) : service.configured ? (
-                      <>
-                        <X className="h-3 w-3 mr-1" />
-                        Error
-                      </>
-                    ) : (
-                      'Not Configured'
-                    )}
-                  </Badge>
-                </div>
-              ))}
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`h-3 w-3 rounded-full shrink-0 ${
+                          service.connected
+                            ? 'bg-green-500'
+                            : service.configured
+                              ? 'bg-yellow-500'
+                              : 'bg-gray-400'
+                        }`}
+                      />
+                      <div>
+                        <p className="font-medium">{service.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {service.error ?? uri ?? '—'}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge
+                      variant={
+                        service.connected
+                          ? 'default'
+                          : service.configured
+                            ? 'secondary'
+                            : 'outline'
+                      }
+                    >
+                      {service.connected ? (
+                        <>
+                          <Check className="h-3 w-3 mr-1" />
+                          Connected
+                        </>
+                      ) : service.configured ? (
+                        <>
+                          <X className="h-3 w-3 mr-1" />
+                          Error
+                        </>
+                      ) : (
+                        'Not Configured'
+                      )}
+                    </Badge>
+                  </div>
+                );
+              })}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Environment Configuration</CardTitle>
-          <CardDescription>
-            Services are configured via environment variables. Update your .env file and restart the application to apply changes.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <h3 className="font-medium">Radarr</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>RADARR_URL</Label>
-                <Input
-                  placeholder="http://localhost:7878"
-                  disabled
-                  value={process.env.NEXT_PUBLIC_RADARR_URL || ''}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>RADARR_API_KEY</Label>
-                <Input type="password" placeholder="••••••••••••" disabled />
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-4">
-            <h3 className="font-medium">Sonarr</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>SONARR_URL</Label>
-                <Input
-                  placeholder="http://localhost:8989"
-                  disabled
-                  value={process.env.NEXT_PUBLIC_SONARR_URL || ''}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>SONARR_API_KEY</Label>
-                <Input type="password" placeholder="••••••••••••" disabled />
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-4">
-            <h3 className="font-medium">Transmission</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>TRANSMISSION_URL</Label>
-                <Input
-                  placeholder="http://localhost:9091"
-                  disabled
-                  value={process.env.NEXT_PUBLIC_TRANSMISSION_URL || ''}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>TRANSMISSION_USERNAME</Label>
-                <Input placeholder="Optional" disabled />
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-4">
-            <h3 className="font-medium">Plex Authentication</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>PLEX_CLIENT_ID</Label>
-                <Input placeholder="Auto-generated" disabled />
-              </div>
-              <div className="space-y-2">
-                <Label>PLEX_SERVER_MACHINE_IDENTIFIER</Label>
-                <Input placeholder="Optional - Restrict to specific server" disabled />
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Configuration Guide</CardTitle>
-        </CardHeader>
-        <CardContent className="prose prose-sm dark:prose-invert max-w-none">
-          <p>Create a <code>.env</code> file in your project root with the following variables:</p>
-          <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-sm">
-{`# NextAuth Configuration
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-super-secret-key
-
-# Radarr
-RADARR_URL=http://localhost:7878
-RADARR_API_KEY=your-radarr-api-key
-
-# Sonarr
-SONARR_URL=http://localhost:8989
-SONARR_API_KEY=your-sonarr-api-key
-
-# Transmission
-TRANSMISSION_URL=http://localhost:9091
-TRANSMISSION_USERNAME=
-TRANSMISSION_PASSWORD=
-
-# Plex (optional)
-PLEX_CLIENT_ID=
-PLEX_SERVER_MACHINE_IDENTIFIER=`}
-          </pre>
-          <p className="mt-4">
-            <strong>Note:</strong> You can find your API keys in Radarr/Sonarr under Settings → General → Security.
-          </p>
         </CardContent>
       </Card>
     </div>
