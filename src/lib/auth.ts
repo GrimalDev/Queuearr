@@ -34,13 +34,6 @@ declare module 'next-auth/jwt' {
   }
 }
 
-const defaultPort = process.env.PORT || process.env.QUEUEARR_PORT || '80';
-const defaultUrl = process.env.NEXTAUTH_URL || `http://localhost:${defaultPort}`;
-
-if (!process.env.NEXTAUTH_URL) {
-  process.env.NEXTAUTH_URL = defaultUrl;
-}
-
 export const authOptions: AuthOptions = {
   providers: [
     CredentialsProvider({
