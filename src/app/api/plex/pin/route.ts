@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PlexAuthClient } from '@/lib/api/plex';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    const body = await request.json().catch(() => ({}));
+    const forwardUrl: string = body.forwardUrl ?? '';
+
     const plexClient = new PlexAuthClient(process.env.PLEX_CLIENT_ID);
     const pin = await plexClient.createPin();
-    const authUrl = plexClient.getAuthUrl(pin);
+    const authUrl = plexClient.getAuthUrl(pin, forwardUrl);
 
     return NextResponse.json({ pin, authUrl });
   } catch (error) {

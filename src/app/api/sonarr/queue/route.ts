@@ -43,7 +43,7 @@ export async function DELETE(request: NextRequest) {
       mediaId?: number;
       episodeId?: number;
     };
-    await sonarr.deleteQueueItemBulk(ids, { blocklist: retry });
+    await sonarr.deleteQueueItemBulk(ids, { blocklist: retry, skipRedownload: retry });
     if (retry && mediaId) {
       await smartGrab({ source: 'sonarr', mediaId, episodeId });
     } else if (!retry && mediaId) {

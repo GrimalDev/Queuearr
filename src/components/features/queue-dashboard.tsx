@@ -300,8 +300,9 @@ export function QueueDashboard() {
         body: JSON.stringify({ ids: [item.sourceId], retry: true, mediaId: item.mediaId, episodeId: item.episodeId }),
       });
       await refresh();
-    } catch {
-      // On failure, remove from retrying so the error state is visible again
+    } finally {
+      // Always clear the retrying state — on success the new item appears in the
+      // queue with a different id, so we must not keep the stale entry around.
       setRetryingItems((prev) => {
         const next = new Map(prev);
         next.delete(item.id);

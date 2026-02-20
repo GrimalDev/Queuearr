@@ -42,7 +42,7 @@ export async function DELETE(request: NextRequest) {
       retry?: boolean;
       mediaId?: number;
     };
-    await radarr.deleteQueueItemBulk(ids, { blocklist: retry });
+    await radarr.deleteQueueItemBulk(ids, { blocklist: retry, skipRedownload: retry });
     if (retry && mediaId) {
       await smartGrab({ source: 'radarr', mediaId });
     } else if (!retry && mediaId) {

@@ -56,7 +56,7 @@ export class PlexAuthClient {
     return response.data;
   }
 
-  getAuthUrl(pin: PlexPin): string {
+  getAuthUrl(pin: PlexPin, forwardUrl: string): string {
     const params = new URLSearchParams({
       clientID: this.clientId,
       code: pin.code,
@@ -66,7 +66,7 @@ export class PlexAuthClient {
       'context[device][platformVersion]': '1.0.0',
       'context[device][device]': 'Browser',
       'context[device][deviceName]': 'Queuearr Web App',
-      forwardUrl: typeof window !== 'undefined' ? `${window.location.origin}/auth/plex/callback` : '',
+      forwardUrl,
     });
 
     return `https://app.plex.tv/auth#?${params.toString()}`;

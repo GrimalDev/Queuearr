@@ -106,13 +106,13 @@ export class SonarrClient {
 
   async deleteQueueItemBulk(
     ids: number[],
-    options: { blocklist?: boolean } = {}
+    options: { blocklist?: boolean; skipRedownload?: boolean } = {}
   ): Promise<void> {
     await this.client.delete('/api/v3/queue/bulk', {
       params: {
         removeFromClient: true,
         blocklist: options.blocklist ?? false,
-        skipRedownload: false,
+        skipRedownload: options.skipRedownload ?? false,
         changeCategory: false,
       },
       data: { ids },
