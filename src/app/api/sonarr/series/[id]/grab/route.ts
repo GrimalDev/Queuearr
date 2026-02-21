@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { createSonarrClient } from '@/lib/api/sonarr';
 import { authOptions } from '@/lib/auth';
+import { upsertMonitoredDownload, addUserToDownload } from '@/lib/db/monitored-downloads';
 
 export async function POST(
   request: NextRequest,
@@ -34,6 +35,15 @@ export async function POST(
       await sonarr.triggerEpisodeSearch([body.episodeId]);
     } else {
       return NextResponse.json({ error: 'Invalid grab type' }, { status: 400 });
+    }
+
+    // Track the download so the user gets notified on start/complete
+    try {
+      const series = await sonarr.getSeriesById(seriesId);
+      const monitored = await upsertMonitoredDownload('sonarr', seriesId, series.title);
+      await addUserToDownload(monitored.id, session.user.id);
+    } catch (trackErr) {
+      console.error('[sonarr grab] failed to track download or notify:', trackErr);
     }
 
     return NextResponse.json({ success: true });

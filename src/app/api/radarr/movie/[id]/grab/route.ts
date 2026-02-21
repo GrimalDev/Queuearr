@@ -9,6 +9,7 @@ import {
   addUserToDownload,
 } from '@/lib/db/monitored-downloads';
 
+
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -31,12 +32,13 @@ export async function POST(
 
   try {
     // Ensure there's a monitored download record so the user gets progress updates
-    const existing = await getMonitoredDownloadBySourceMedia('radarr', movieId);
-    if (!existing) {
+    let monitored = await getMonitoredDownloadBySourceMedia('radarr', movieId);
+    if (!monitored) {
       const movie = await radarr.getMovie(movieId);
-      const monitored = await upsertMonitoredDownload('radarr', movieId, movie.title);
-      await addUserToDownload(monitored.id, session.user.id);
+      monitored = await upsertMonitoredDownload('radarr', movieId, movie.title);
     }
+    // Always add the user (onConflictDoNothing handles duplicates)
+    await addUserToDownload(monitored.id, session.user.id);
 
     void smartGrab({ source: 'radarr', mediaId: movieId }).catch((err) =>
       console.error('[smart-grab] radarr movie grab failed:', err)
