@@ -40,9 +40,7 @@ export async function POST(
     // Always add the user (onConflictDoNothing handles duplicates)
     await addUserToDownload(monitored.id, session.user.id);
 
-    void smartGrab({ source: 'radarr', mediaId: movieId }).catch((err) =>
-      console.error('[smart-grab] radarr movie grab failed:', err)
-    );
+    await smartGrab({ source: 'radarr', mediaId: movieId });
 
     return NextResponse.json({ success: true });
   } catch (error) {

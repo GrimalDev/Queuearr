@@ -30,20 +30,22 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [results, existingMovies, activeMediaIds] = await Promise.all([
+    const [results, existingMovies, activeMediaIds, radarrQueue] = await Promise.all([
       radarr.searchMovies(query),
       radarr.getMovies(),
       getActiveMediaIds('radarr'),
+      radarr.getQueue(false),
     ]);
 
     const existingTmdbIds = new Set(existingMovies.map((m) => m.tmdbId));
+    const queuedMovieIds = new Set(radarrQueue.records.map((item) => item.movieId).filter(Boolean));
 
     const enrichedResults = await Promise.all(
       results.map(async (movie) => {
         const libraryMovie = existingMovies.find((m) => m.tmdbId === movie.tmdbId);
         const libraryId = libraryMovie?.id;
         const monitoredId = libraryId !== undefined ? activeMediaIds.get(libraryId) : undefined;
-        const isDownloading = monitoredId !== undefined;
+        const isDownloading = monitoredId !== undefined && queuedMovieIds.has(libraryId!);
         const watching = isDownloading
           ? await isUserWatching(monitoredId!, session.user.id)
           : false;

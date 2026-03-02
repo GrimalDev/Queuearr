@@ -29,20 +29,21 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [results, existingSeries, activeMediaIds] = await Promise.all([
+    const [results, existingSeries, activeMediaIds, sonarrQueue] = await Promise.all([
       sonarr.searchSeries(query),
       sonarr.getSeries(),
       getActiveMediaIds('sonarr'),
+      sonarr.getQueue(),
     ]);
 
     const existingTvdbIds = new Set(existingSeries.map((s) => s.tvdbId));
-
+    const queuedSeriesIds = new Set(sonarrQueue.records.map((item) => item.seriesId).filter(Boolean));
     const enrichedResults = await Promise.all(
       results.map(async (series) => {
         const librarySeries = existingSeries.find((s) => s.tvdbId === series.tvdbId);
         const libraryId = librarySeries?.id;
         const monitoredId = libraryId !== undefined ? activeMediaIds.get(libraryId) : undefined;
-        const isDownloading = monitoredId !== undefined;
+        const isDownloading = monitoredId !== undefined && queuedSeriesIds.has(libraryId);
         const watching = isDownloading
           ? await isUserWatching(monitoredId!, session.user.id)
           : false;
