@@ -15,6 +15,7 @@ import {
   Trash2,
   Users,
   Bug,
+  ArrowUpToLine,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -56,16 +57,20 @@ function QueueItemCard({
   item,
   onRetry,
   onDelete,
+  onPassFirst,
   isAdmin,
   isRetrying = false,
   isDeleting = false,
+  isPassing = false,
 }: {
   item: QueueItem;
   onRetry?: () => void;
   onDelete?: () => void;
+  onPassFirst?: () => void;
   isAdmin?: boolean;
   isRetrying?: boolean;
   isDeleting?: boolean;
+  isPassing?: boolean;
 }) {
   const [showDebug, setShowDebug] = useState(false);
   const config = statusConfig[item.status];
@@ -116,6 +121,20 @@ function QueueItemCard({
                 onClick={() => setShowDebug((v) => !v)}
               >
                 {showDebug ? <ChevronUp className="h-3.5 w-3.5" /> : <Bug className="h-3.5 w-3.5" />}
+              </Button>
+            )}
+            {isAdmin && onPassFirst && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                onClick={onPassFirst}
+                disabled={isPassing || isRetrying}
+                title="Download first"
+              >
+                {isPassing
+                  ? <RotateCcw className="h-3.5 w-3.5 animate-spin" />
+                  : <ArrowUpToLine className="h-3.5 w-3.5" />}
               </Button>
             )}
             {onDelete && !isRetrying && (
@@ -286,6 +305,7 @@ export function QueueDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [retryingItems, setRetryingItems] = useState<Map<string, QueueItem>>(new Map());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [passingIds, setPassingIds] = useState<Set<string>>(new Set());
 
   const handleForceDelete = async (item: QueueItem) => {
     if (!item.sourceId || (item.source !== 'radarr' && item.source !== 'sonarr')) return;
@@ -331,6 +351,26 @@ export function QueueDashboard() {
     setIsRefreshing(true);
     await refresh();
     setIsRefreshing(false);
+  };
+
+  const handlePassFirst = async (item: QueueItem) => {
+    const id = item.transmissionId ?? item.transmissionHash;
+    if (!id) return;
+    setPassingIds((prev) => new Set(prev).add(item.id));
+    try {
+      await fetch('/api/transmission/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      await refresh();
+    } finally {
+      setPassingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+    }
   };
 
   const activeDownloads = queueItems.filter(
@@ -516,8 +556,10 @@ export function QueueDashboard() {
               isAdmin={isAdmin}
               isRetrying={retryingItems.has(item.id)}
               isDeleting={deletingIds.has(item.id)}
+              isPassing={passingIds.has(item.id)}
               onRetry={item.hasError && item.sourceId && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
               onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
+              onPassFirst={isAdmin && (item.transmissionId ?? item.transmissionHash) ? () => handlePassFirst(item) : undefined}
             />
           ))}
         </div>
@@ -531,13 +573,15 @@ export function QueueDashboard() {
               <QueueItemCard
                 key={item.id}
                 item={item}
-                isAdmin={isAdmin}
-                isRetrying={retryingItems.has(item.id)}
-                isDeleting={deletingIds.has(item.id)}
-                onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
-                onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
-              />
-            ))}
+              isAdmin={isAdmin}
+              isRetrying={retryingItems.has(item.id)}
+              isDeleting={deletingIds.has(item.id)}
+              isPassing={passingIds.has(item.id)}
+              onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
+              onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
+              onPassFirst={isAdmin && (item.transmissionId ?? item.transmissionHash) ? () => handlePassFirst(item) : undefined}
+            />
+          ))}
           </div>
         </div>
       )}
@@ -550,13 +594,15 @@ export function QueueDashboard() {
               <QueueItemCard
                 key={item.id}
                 item={item}
-                isAdmin={isAdmin}
-                isRetrying={retryingItems.has(item.id)}
-                isDeleting={deletingIds.has(item.id)}
-                onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
-                onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
-              />
-            ))}
+              isAdmin={isAdmin}
+              isRetrying={retryingItems.has(item.id)}
+              isDeleting={deletingIds.has(item.id)}
+              isPassing={passingIds.has(item.id)}
+              onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
+              onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
+              onPassFirst={isAdmin && (item.transmissionId ?? item.transmissionHash) ? () => handlePassFirst(item) : undefined}
+            />
+          ))}
           </div>
         </div>
       )}

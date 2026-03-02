@@ -290,6 +290,10 @@ export class TransmissionClient {
     await this.client.removeTorrent(hashOrId, deleteLocalData);
   }
 
+  async queueTorrentTop(hashOrId: string | number): Promise<void> {
+    await this.rpcRequest('queue-move-top', { ids: [hashOrId] });
+  }
+
   async getSessionStats(): Promise<{
     downloadSpeed: number;
     uploadSpeed: number;

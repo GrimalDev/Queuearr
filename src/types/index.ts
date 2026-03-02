@@ -370,6 +370,8 @@ export interface QueueItem {
   mediaId?: number;
   episodeId?: number;
   source: 'radarr' | 'sonarr' | 'transmission';
+  transmissionId?: number;
+  transmissionHash?: string;
   title: string;
   subtitle?: string;
   status: QueueItemStatus;
