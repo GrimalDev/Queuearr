@@ -8,7 +8,7 @@ import { useSearch } from '@/hooks/use-media';
 import { cn } from '@/lib/utils';
 
 export function SearchBar() {
-  const { searchQuery, isSearching, searchType, setSearchType, search, clearSearch } = useSearch();
+  const { searchQuery, isSearching, searchType, setSearchType, search, immediateSearch, clearSearch } = useSearch();
   const [inputValue, setInputValue] = useState(searchQuery);
 
   useEffect(() => {
@@ -28,6 +28,21 @@ export function SearchBar() {
     clearSearch();
   };
 
+  const handleFocus = () => {
+    // If input already has text, trigger search on focus
+    if (inputValue.trim()) {
+      immediateSearch(inputValue);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Trigger immediate search on Enter
+    if (e.key === 'Enter' && inputValue.trim()) {
+      e.preventDefault();
+      immediateSearch(inputValue);
+    }
+  };
+
   return (
     <div className="w-full space-y-3">
       <div className="relative">
@@ -37,6 +52,8 @@ export function SearchBar() {
           placeholder={`Search for ${searchType === 'movies' ? 'movies' : 'series'}...`}
           value={inputValue}
           onChange={handleInputChange}
+          onFocus={handleFocus}
+          onKeyDown={handleKeyDown}
           className="pl-10 pr-10 h-10 sm:h-12 text-base sm:text-lg"
         />
         {isSearching && (

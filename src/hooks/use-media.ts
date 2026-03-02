@@ -136,6 +136,17 @@ export function useSearch() {
     previousSearchTypeRef.current = searchType;
   }, [searchType, searchQuery, search]);
 
+  const immediateSearch = useCallback(
+    (query: string) => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+      setSearchQuery(query);
+      search(query);
+    },
+    [search, setSearchQuery]
+  );
+
   return {
     searchQuery,
     searchResults,
@@ -143,6 +154,7 @@ export function useSearch() {
     searchType,
     setSearchType,
     search: debouncedSearch,
+    immediateSearch,
     clearSearch: () => {
       setSearchQuery('');
       setSearchResults([]);
