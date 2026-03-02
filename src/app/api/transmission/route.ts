@@ -41,6 +41,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Transmission error:', error);
-    return NextResponse.json({ error: 'Failed to get torrents' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to get torrents';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

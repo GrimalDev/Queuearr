@@ -48,36 +48,47 @@ export class TransmissionClient {
   }
 
   async getTorrents(): Promise<TransmissionTorrent[]> {
-    const response = await this.client.listTorrents(undefined, [
-      'id',
-      'hashString',
-      'name',
-      'status',
-      'percentDone',
-      'rateDownload',
-      'rateUpload',
-      'eta',
-      'sizeWhenDone',
-      'leftUntilDone',
-      'totalSize',
-      'downloadedEver',
-      'uploadedEver',
-      'uploadRatio',
-      'isStalled',
-      'isFinished',
-      'error',
-      'errorString',
-      'peersConnected',
-      'peersSendingToUs',
-      'peersGettingFromUs',
-      'addedDate',
-      'doneDate',
-      'activityDate',
-      'queuePosition',
-      'downloadDir',
-    ]);
+    let response: Awaited<ReturnType<Transmission['listTorrents']>>;
+    try {
+      response = await this.client.listTorrents(undefined, [
+        'id',
+        'hashString',
+        'name',
+        'status',
+        'percentDone',
+        'rateDownload',
+        'rateUpload',
+        'eta',
+        'sizeWhenDone',
+        'leftUntilDone',
+        'totalSize',
+        'downloadedEver',
+        'uploadedEver',
+        'uploadRatio',
+        'isStalled',
+        'isFinished',
+        'error',
+        'errorString',
+        'peersConnected',
+        'peersSendingToUs',
+        'peersGettingFromUs',
+        'addedDate',
+        'doneDate',
+        'activityDate',
+        'queuePosition',
+        'downloadDir',
+      ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Transmission listTorrents failed: ${message}`);
+    }
 
-    return (response.arguments.torrents as TorrentFields[]).map((t) => ({
+    const torrents = response?.arguments?.torrents;
+    if (!Array.isArray(torrents)) {
+      throw new Error('Transmission response missing torrents list');
+    }
+
+    return (torrents as TorrentFields[]).map((t) => ({
       id: t.id,
       hashString: t.hashString,
       name: t.name,
