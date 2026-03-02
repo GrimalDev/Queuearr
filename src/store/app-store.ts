@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { SearchResult, QueueItem, Alert } from '@/types';
 
+export interface QueueServiceError {
+  service: 'radarr' | 'sonarr' | 'transmission';
+  message: string;
+}
+
 interface AppState {
   searchQuery: string;
   searchResults: SearchResult[];
@@ -9,6 +14,7 @@ interface AppState {
 
   queueItems: QueueItem[];
   isLoadingQueue: boolean;
+  queueErrors: QueueServiceError[];
 
   alerts: Alert[];
 
@@ -19,6 +25,7 @@ interface AppState {
 
   setQueueItems: (items: QueueItem[]) => void;
   setIsLoadingQueue: (isLoading: boolean) => void;
+  setQueueErrors: (errors: QueueServiceError[]) => void;
 
   addAlert: (alert: Omit<Alert, 'id' | 'timestamp' | 'dismissed'>) => void;
   dismissAlert: (id: string) => void;
@@ -33,6 +40,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   queueItems: [],
   isLoadingQueue: false,
+  queueErrors: [],
 
   alerts: [],
 
@@ -43,6 +51,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   setQueueItems: (items) => set({ queueItems: items }),
   setIsLoadingQueue: (isLoading) => set({ isLoadingQueue: isLoading }),
+  setQueueErrors: (errors) => set({ queueErrors: errors }),
 
   addAlert: (alert) =>
     set((state) => ({

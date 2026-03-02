@@ -27,6 +27,7 @@ import { useSession } from 'next-auth/react';
 import { useQueue } from '@/hooks/use-media';
 import { QueueItem, QueueItemStatus } from '@/types';
 import { cn } from '@/lib/utils';
+import { QueueServiceError } from '@/store/app-store';
 
 const formatBytes = (bytes: number): string => {
   if (bytes === 0) return '0 B';
@@ -279,7 +280,7 @@ function QueueItemCard({
 }
 
 export function QueueDashboard() {
-  const { queueItems, isLoadingQueue, lastFetch, refresh } = useQueue();
+  const { queueItems, isLoadingQueue, queueErrors, lastFetch, refresh } = useQueue();
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'admin';
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -349,7 +350,10 @@ export function QueueDashboard() {
     ...retryingOnlyItems,
   ];
 
-  if (isLoadingQueue && queueItems.length === 0) {
+  // Show error state when services fail to connect
+  const hasConnectionErrors = queueErrors.length > 0;
+  const allServicesFailed = queueErrors.length === 3; // radarr, sonarr, transmission
+  if (isLoadingQueue && queueItems.length === 0 && !hasConnectionErrors) {
     return (
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -373,6 +377,68 @@ export function QueueDashboard() {
             </Card>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // Connection error state - show meaningful message instead of infinite loading
+  if (hasConnectionErrors && queueItems.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold">Download Queue</h2>
+            {lastFetch && (
+              <p className="text-sm text-muted-foreground">
+                Last updated: {lastFetch.toLocaleTimeString()}
+              </p>
+            )}
+          </div>
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
+            <RefreshCw className={cn('h-4 w-4 mr-2', isRefreshing && 'animate-spin')} />
+            Refresh
+          </Button>
+        </div>
+
+        <Card className="border-red-500/50">
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="rounded-full bg-red-500/10 p-4 mb-4">
+                <AlertTriangle className="h-8 w-8 text-red-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-red-500">
+                {allServicesFailed ? 'Unable to Connect to Services' : 'Some Services Unavailable'}
+              </h3>
+              <p className="text-muted-foreground mt-2 max-w-md">
+                {allServicesFailed
+                  ? 'Could not connect to any download services. Please check your configuration and ensure the services are running.'
+                  : 'Some services are not responding. Downloads from available services will still be shown.'}
+              </p>
+              <div className="mt-6 space-y-2 w-full max-w-md">
+                {queueErrors.map((error) => (
+                  <div
+                    key={error.service}
+                    className="flex items-center justify-between p-3 rounded-md bg-muted/50 border border-red-500/20"
+                  >
+                    <div className="flex items-center gap-2">
+                      {error.service === 'radarr' && <Film className="h-4 w-4 text-muted-foreground" />}
+                      {error.service === 'sonarr' && <Tv className="h-4 w-4 text-muted-foreground" />}
+                      {error.service === 'transmission' && <Download className="h-4 w-4 text-muted-foreground" />}
+                      <span className="font-medium capitalize">{error.service}</span>
+                    </div>
+                    <span className="text-sm text-red-500 truncate max-w-[200px]" title={error.message}>
+                      {error.message.length > 50 ? error.message.substring(0, 50) + '...' : error.message}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <Button variant="outline" className="mt-6" onClick={handleRefresh} disabled={isRefreshing}>
+                <RefreshCw className={cn('h-4 w-4 mr-2', isRefreshing && 'animate-spin')} />
+                Try Again
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }

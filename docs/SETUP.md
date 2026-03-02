@@ -102,6 +102,7 @@ Double‑check the URL and API key. Then restart the app.
 ### “Transmission not configured”
 
 Verify the RPC endpoint is reachable (usually `http://host:9091/transmission/rpc`).
+Set `TRANSMISSION_URL` to the base host (for example `http://host:9091/`). Do **not** include `/transmission/rpc` — the Transmission client adds it automatically.
 
 ### Plex login fails
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { useAppStore } from '@/store/app-store';
+import { useAppStore, QueueServiceError } from '@/store/app-store';
 import { SearchResult, QueueItem, RadarrMovie, SonarrSeries, RadarrQueueItem, SonarrQueueItem, TransmissionTorrent, TransmissionStatus } from '@/types';
 
 export function useSearch() {
@@ -151,7 +151,7 @@ export function useSearch() {
 }
 
 export function useQueue() {
-  const { queueItems, isLoadingQueue, setQueueItems, setIsLoadingQueue, addAlert } = useAppStore();
+  const { queueItems, isLoadingQueue, queueErrors, setQueueItems, setIsLoadingQueue, setQueueErrors, addAlert } = useAppStore();
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'admin';
   const isAdminRef = useRef(isAdmin);
@@ -166,6 +166,7 @@ export function useQueue() {
     }
 
     try {
+      const errors: QueueServiceError[] = [];
       const items: QueueItem[] = [];
       const transmissionHashMap = new Map<string, TransmissionTorrent & {
         statusString: string;
@@ -215,8 +216,12 @@ export function useQueue() {
         for (const torrent of data.torrents) {
           transmissionHashMap.set(torrent.hashString.toLowerCase(), torrent);
         }
+      } else if (transmissionRes.status === 'fulfilled' && !transmissionRes.value.ok) {
+        const errText = await transmissionRes.value.text().catch(() => 'Connection failed');
+        errors.push({ service: 'transmission', message: errText });
+      } else if (transmissionRes.status === 'rejected') {
+        errors.push({ service: 'transmission', message: transmissionRes.reason?.message || 'Connection failed' });
       }
-
       if (radarrRes.status === 'fulfilled' && radarrRes.value.ok) {
         const radarrQueue: RadarrQueueItem[] = await radarrRes.value.json();
         items.push(
@@ -277,8 +282,12 @@ export function useQueue() {
             };
           })
         );
+      } else if (radarrRes.status === 'fulfilled' && !radarrRes.value.ok) {
+        const errText = await radarrRes.value.text().catch(() => 'Connection failed');
+        errors.push({ service: 'radarr', message: errText });
+      } else if (radarrRes.status === 'rejected') {
+        errors.push({ service: 'radarr', message: radarrRes.reason?.message || 'Connection failed' });
       }
-
       if (sonarrRes.status === 'fulfilled' && sonarrRes.value.ok) {
         const sonarrQueue: SonarrQueueItem[] = await sonarrRes.value.json();
 
@@ -376,8 +385,12 @@ export function useQueue() {
             };
           })
         );
+      } else if (sonarrRes.status === 'fulfilled' && !sonarrRes.value.ok) {
+        const errText = await sonarrRes.value.text().catch(() => 'Connection failed');
+        errors.push({ service: 'sonarr', message: errText });
+      } else if (sonarrRes.status === 'rejected') {
+        errors.push({ service: 'sonarr', message: sonarrRes.reason?.message || 'Connection failed' });
       }
-
       if (isAdminRef.current) {
         for (const torrent of transmissionHashMap.values()) {
           items.push({
@@ -424,6 +437,7 @@ export function useQueue() {
 
       previousProblematicRef.current = currentProblematic;
       setQueueItems(items);
+      setQueueErrors(errors);
       setLastFetch(new Date());
       if (!hasFetchedRef.current) {
         hasFetchedRef.current = true;
@@ -436,7 +450,7 @@ export function useQueue() {
         setIsLoadingQueue(false);
       }
     }
-  }, [setIsLoadingQueue, setQueueItems, addAlert]);
+  }, [setIsLoadingQueue, setQueueItems, setQueueErrors, addAlert]);
 
   useEffect(() => {
     fetchQueue();
@@ -447,6 +461,7 @@ export function useQueue() {
   return {
     queueItems,
     isLoadingQueue,
+    queueErrors,
     lastFetch,
     refresh: fetchQueue,
   };

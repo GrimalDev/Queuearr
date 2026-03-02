@@ -27,7 +27,8 @@ export async function GET() {
     return NextResponse.json(filtered);
   } catch (error) {
     console.error('Sonarr queue error:', error);
-    return NextResponse.json({ error: 'Failed to get queue' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to get queue';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
