@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { setUserRole, setUserActive, deleteUser } from '@/lib/db/users';
+import { setUserRole, deleteUser } from '@/lib/db/users';
 
 export async function PATCH(
   request: NextRequest,
@@ -14,7 +14,7 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const body = await request.json() as { role?: string; active?: boolean };
+  const body = await request.json() as { role?: string };
 
   if (body.role !== undefined) {
     if (!['user', 'admin'].includes(body.role)) {
@@ -24,13 +24,6 @@ export async function PATCH(
       return NextResponse.json({ error: 'Cannot demote yourself' }, { status: 400 });
     }
     await setUserRole(id, body.role);
-  }
-
-  if (body.active !== undefined) {
-    if (id === session.user.id && !body.active) {
-      return NextResponse.json({ error: 'Cannot deactivate yourself' }, { status: 400 });
-    }
-    await setUserActive(id, body.active);
   }
 
   return NextResponse.json({ success: true });

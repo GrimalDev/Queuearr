@@ -1,8 +1,7 @@
 import NextAuth, { AuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { PlexAuthClient } from '@/lib/api/plex';
-import { upsertUser, getAdminUserIds } from '@/lib/db/users';
-import { sendToUser } from '@/lib/push';
+import { upsertUser } from '@/lib/db/users';
 
 declare module 'next-auth' {
   interface Session {
@@ -72,23 +71,7 @@ export const authOptions: AuthOptions = {
              plexToken: authToken,
            });
 
-           // Notify all admins when a new non-admin user registers
-           if (isNew && dbUser.role !== 'admin') {
-             getAdminUserIds().then((adminIds) =>
-               Promise.allSettled(
-                 adminIds.map((id) =>
-                   sendToUser(id, {
-                     title: 'New user registered',
-                     body: `${dbUser.username} is waiting for approval`,
-                     url: '/settings',
-                     tag: 'new-user-registration',
-                   })
-                 )
-               )
-             ).catch(() => {});
-           }
-
-           const user = {
+          const user = {
              id: dbUser.id,
              name: dbUser.username,
              email: dbUser.email,

@@ -11,10 +11,8 @@ export async function upsertUser(user: NewUser): Promise<{ user: User; isNew: bo
   });
 
   if (existing) {
-    // Preserve existing role and active status on update — only update profile fields
-    const { role: _role, active: _active, ...profileFields } = user;
+    const { role: _role, ...profileFields } = user;
     void _role;
-    void _active;
     const updateData = {
       ...profileFields,
       updatedAt: now,
@@ -31,28 +29,15 @@ export async function upsertUser(user: NewUser): Promise<{ user: User; isNew: bo
       isNew: false,
     };
   } else {
-    // First user ever becomes admin and is immediately active
     const [{ value: userCount }] = await db
       .select({ value: count() })
       .from(users);
     const isFirstUser = userCount === 0;
     const role = isFirstUser ? 'admin' : 'user';
 
-    // Auto-activate if user is on the invited whitelist (Plex invite = validation)
-    let active = isFirstUser;
-    if (!active && user.email) {
-      const invited = await db.query.invitedUsers.findFirst({
-        where: eq(invitedUsers.email, user.email.toLowerCase()),
-      });
-      if (invited) {
-        active = true;
-      }
-    }
-
     const insertData = {
       ...user,
       role,
-      active,
       createdAt: now,
       updatedAt: now,
     };
@@ -120,10 +105,6 @@ export async function getUsers(opts: {
 
 export async function setUserRole(id: string, role: string): Promise<void> {
   await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, id));
-}
-
-export async function setUserActive(id: string, active: boolean): Promise<void> {
-  await db.update(users).set({ active, updatedAt: new Date() }).where(eq(users.id, id));
 }
 
 export async function getAdminUserIds(): Promise<string[]> {

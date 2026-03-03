@@ -43,6 +43,13 @@
       "when": 1772524420369,
       "tag": "0005_familiar_dexter_bennett",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1777705200000,
+      "tag": "0006_remove_user_activation",
+      "breakpoints": true
     }
   ]
 }

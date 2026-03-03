@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { Check, X, Loader2, RefreshCw, Trash2, ShieldCheck, ShieldOff, Search, ChevronLeft, ChevronRight, Bell, BellOff, UserCheck, UserX, Mail } from 'lucide-react';
+import { Check, X, Loader2, RefreshCw, Trash2, ShieldCheck, ShieldOff, Search, ChevronLeft, ChevronRight, Bell, BellOff, Mail } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,7 +24,6 @@ interface UserRecord {
   email: string | null;
   avatarUrl: string | null;
   role: string;
-  active: boolean;
 }
 
 const PAGE_SIZE = 10;
@@ -72,15 +71,6 @@ function UsersManager() {
     await fetchUsers(page, search);
   };
 
-  const toggleActive = async (user: UserRecord) => {
-    await fetch(`/api/admin/users/${user.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: !user.active }),
-    });
-    await fetchUsers(page, search);
-  };
-
   const removeUser = async (user: UserRecord) => {
     await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
     await fetchUsers(page, search);
@@ -120,23 +110,9 @@ function UsersManager() {
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <Badge variant={user.active ? (user.role === 'admin' ? 'default' : 'secondary') : 'outline'}>
-                  {!user.active ? 'pending' : user.role}
+                <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                  {user.role}
                 </Badge>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  disabled={isSelf}
-                  onClick={() => toggleActive(user)}
-                  title={user.active ? 'Deactivate account' : 'Activate account'}
-                  className={user.active ? '' : 'text-green-600 hover:text-green-600'}
-                >
-                  {user.active ? (
-                    <UserX className="h-4 w-4" />
-                  ) : (
-                    <UserCheck className="h-4 w-4" />
-                  )}
-                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -382,7 +358,10 @@ function InviteUsersManager() {
 
       if (libsRes.ok) {
         const data = await libsRes.json();
-        setLibraries(data.libraries || []);
+        const nextLibraries = data.libraries || [];
+        setLibraries(nextLibraries);
+        const allIds = nextLibraries.map((lib: PlexLibrary) => lib.id);
+        setSelectedLibraries((prev) => (prev.length === 0 ? allIds : prev));
       }
 
       if (invitesRes.ok) {
@@ -424,7 +403,7 @@ function InviteUsersManager() {
       if (res.ok) {
         setMessage({ type: 'success', text: 'Invite sent successfully!' });
         setEmail('');
-        setSelectedLibraries([]);
+        setSelectedLibraries(libraries.map((lib) => lib.id));
         fetchData();
       } else {
         const errorData = await res.json().catch(() => ({}));
