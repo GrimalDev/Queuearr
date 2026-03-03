@@ -450,6 +450,12 @@ export function QueueDashboard() {
     ...problemItems,
     ...retryingOnlyItems,
   ];
+  const isProblemItem = (item: QueueItem) => item.hasError || item.isStalled || retryingItems.has(item.id);
+  const orderedItems = [
+    ...retryingOnlyItems,
+    ...queueItems.filter(isProblemItem),
+    ...queueItems.filter((item) => !isProblemItem(item)),
+  ];
 
   // Show error state when services fail to connect
   const hasConnectionErrors = queueErrors.length > 0;
@@ -658,13 +664,9 @@ export function QueueDashboard() {
       {isFilterSwitching && <QueueItemsSkeleton />}
 
       {/* Show queue items when not switching */}
-      {!isFilterSwitching && allProblemItems.length > 0 && (
+      {!isFilterSwitching && orderedItems.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-lg font-semibold text-red-500 flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5" />
-            Issues Detected
-          </h3>
-          {allProblemItems.map((item) => (
+          {orderedItems.map((item) => (
             <QueueItemCard
               key={item.id}
               item={item}
@@ -672,28 +674,6 @@ export function QueueDashboard() {
               isRetrying={retryingItems.has(item.id)}
               isDeleting={deletingIds.has(item.id)}
               isPassing={passingIds.has(item.id)}
-              onRetry={item.hasError && item.sourceId && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
-              onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
-              onPassFirst={isAdmin && (item.transmissionId ?? item.transmissionHash) && (item.status === 'queued' || item.status === 'pending')
-                ? () => handlePassFirst(item)
-                : undefined}
-            />
-          ))}
-        </div>
-      )}
-
-      {!isFilterSwitching && activeDownloads.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-lg font-semibold">Active Downloads</h3>
-          <div className="space-y-3">
-            {activeDownloads.map((item) => (
-              <QueueItemCard
-                key={item.id}
-                item={item}
-              isAdmin={isAdmin}
-              isRetrying={retryingItems.has(item.id)}
-              isDeleting={deletingIds.has(item.id)}
-              isPassing={passingIds.has(item.id)}
               onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
               onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
               onPassFirst={isAdmin && (item.transmissionId ?? item.transmissionHash) && (item.status === 'queued' || item.status === 'pending')
@@ -701,30 +681,6 @@ export function QueueDashboard() {
                 : undefined}
             />
           ))}
-          </div>
-        </div>
-      )}
-
-      {!isFilterSwitching && queuedItems.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-lg font-semibold text-muted-foreground">Queued</h3>
-          <div className="space-y-3">
-            {queuedItems.map((item) => (
-              <QueueItemCard
-                key={item.id}
-                item={item}
-              isAdmin={isAdmin}
-              isRetrying={retryingItems.has(item.id)}
-              isDeleting={deletingIds.has(item.id)}
-              isPassing={passingIds.has(item.id)}
-              onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
-              onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
-              onPassFirst={isAdmin && (item.transmissionId ?? item.transmissionHash) && (item.status === 'queued' || item.status === 'pending')
-                ? () => handlePassFirst(item)
-                : undefined}
-            />
-          ))}
-          </div>
         </div>
       )}
 
