@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { createTransmissionClient } from '@/lib/api/transmission';
 import { authOptions } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -25,6 +25,8 @@ export async function GET() {
       downloadQueueSize: stats.downloadQueueSize,
     };
 
+    // Note: filtering by user happens at Radarr/Sonarr level, not here.
+    // Transmission data is used to enrich queue items matched by hash.
     const torrentsWithProblems = torrents.map((torrent) => {
       const problemCheck = transmission.isProblematic(torrent, queueSettings);
       return {

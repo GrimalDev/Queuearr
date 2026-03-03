@@ -162,17 +162,33 @@ export function useSearch() {
   };
 }
 
-export function useQueue() {
+export function useQueue(filter: 'mine' | 'all' = 'mine') {
   const { queueItems, isLoadingQueue, queueErrors, setQueueItems, setIsLoadingQueue, setQueueErrors, addAlert } = useAppStore();
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'admin';
   const isAdminRef = useRef(isAdmin);
   useEffect(() => { isAdminRef.current = isAdmin; }, [isAdmin]);
   const hasFetchedRef = useRef(false);
+  const currentFilterRef = useRef(filter);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const previousProblematicRef = useRef<Set<string>>(new Set());
 
+  // Track filter changes to handle stale responses
+  useEffect(() => {
+    if (currentFilterRef.current !== filter) {
+      currentFilterRef.current = filter;
+      hasFetchedRef.current = false;
+      previousProblematicRef.current = new Set();
+      // Clear items immediately to avoid showing stale data during fetch
+      setQueueItems([]);
+      setIsLoadingQueue(true);
+    }
+  }, [filter, setIsLoadingQueue, setQueueItems]);
+
   const fetchQueue = useCallback(async () => {
+    // Capture the filter at the start of this fetch
+    const fetchFilter = filter;
+    
     if (!hasFetchedRef.current) {
       setIsLoadingQueue(true);
     }
@@ -187,11 +203,16 @@ export function useQueue() {
       }>();
 
       const [radarrRes, sonarrRes, transmissionRes, monitoredRes] = await Promise.allSettled([
-        fetch('/api/radarr/queue'),
-        fetch('/api/sonarr/queue'),
-        fetch('/api/transmission'),
-        fetch('/api/downloads/watch'),
+        fetch(`/api/radarr/queue?filter=${fetchFilter}`),
+        fetch(`/api/sonarr/queue?filter=${fetchFilter}`),
+        fetch(`/api/transmission?filter=${fetchFilter}`),
+        fetch(`/api/downloads/watch?filter=${fetchFilter}`),
       ]);
+
+      // Discard results if filter changed while we were fetching
+      if (currentFilterRef.current !== fetchFilter) {
+        return;
+      }
 
       // Build source+mediaId → DB timestamps map
       type MonitoredRow = { source: string; mediaId: number; createdAt: number; lastActivityAt: number | null; lastBytesAt: number | null };
@@ -325,7 +346,6 @@ export function useQueue() {
           ...Array.from(byDownloadId.values()).map((group) => group[0]),
           ...noHash,
         ];
-
         items.push(
           ...representatives.map((item) => {
             const downloadHash = item.downloadId?.toLowerCase();
@@ -407,7 +427,10 @@ export function useQueue() {
       } else if (sonarrRes.status === 'rejected') {
         errors.push({ service: 'sonarr', message: sonarrRes.reason?.message || 'Connection failed' });
       }
-      if (isAdminRef.current) {
+      // Only add unmatched Transmission torrents for admins when viewing all downloads
+      if (isAdminRef.current && fetchFilter === 'all') {
+        const unmatchedCount = transmissionHashMap.size;
+        console.log(`[useQueue] Adding ${unmatchedCount} unmatched transmission torrents (admin, filter=all)`);
         for (const torrent of transmissionHashMap.values()) {
           items.push({
             id: `transmission-${torrent.id}`,
@@ -468,7 +491,7 @@ export function useQueue() {
         setIsLoadingQueue(false);
       }
     }
-  }, [setIsLoadingQueue, setQueueItems, setQueueErrors, addAlert]);
+  }, [setIsLoadingQueue, setQueueItems, setQueueErrors, addAlert, filter]);
 
   useEffect(() => {
     fetchQueue();

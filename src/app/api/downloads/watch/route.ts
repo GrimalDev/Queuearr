@@ -9,13 +9,13 @@ import {
   removeUserFromDownload,
 } from '@/lib/db/monitored-downloads';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const isAdmin = session.user.role === 'admin';
-  const downloads = isAdmin
+  const filter = request.nextUrl.searchParams.get('filter') ?? 'mine';
+  const downloads = filter === 'all'
     ? await getActiveMonitoredDownloads()
     : await getActiveMonitoredDownloadsForUser(session.user.id);
   return NextResponse.json(downloads);

@@ -104,7 +104,11 @@ async function checkDownloads(): Promise<void> {
   try {
     let monitored = await getActiveMonitoredDownloads();
 
-    console.log(`[watcher] checking ${monitored.length} downloads`);
+    const missingTitles = monitored.filter((download) => !download.title).length;
+    console.log(
+      `[watcher] checking ${monitored.length} downloads` +
+        (missingTitles > 0 ? ` (${missingTitles} without titles)` : '')
+    );
 
     const radarr = createRadarrClient();
     const sonarr = createSonarrClient();
@@ -112,15 +116,17 @@ async function checkDownloads(): Promise<void> {
 
     const [radarrQueue, sonarrQueue, transmissionTorrents] = await Promise.all([
       radarr
-        ? radarr.getQueue(false).then((q) => q.records).catch(() => [] as RadarrQueueItem[])
+        ? radarr.getQueue(false).then((q) => q.records).catch((e) => { console.error('[watcher] radarr queue error:', e.message); return [] as RadarrQueueItem[]; })
         : Promise.resolve([] as RadarrQueueItem[]),
       sonarr
-        ? sonarr.getQueue().then((q) => q.records).catch(() => [] as SonarrQueueItem[])
+        ? sonarr.getQueue().then((q) => q.records).catch((e) => { console.error('[watcher] sonarr queue error:', e.message); return [] as SonarrQueueItem[]; })
         : Promise.resolve([] as SonarrQueueItem[]),
       transmission
-        ? transmission.getTorrents().catch(() => [] as TransmissionTorrent[])
+        ? transmission.getTorrents().catch((e) => { console.error('[watcher] transmission error:', e.message); return [] as TransmissionTorrent[]; })
         : Promise.resolve([] as TransmissionTorrent[]),
     ]);
+
+    console.log(`[watcher] found: ${radarrQueue.length} radarr queue items, ${sonarrQueue.length} sonarr queue items, ${transmissionTorrents.length} transmission torrents`);
 
     // Build hash → torrent map for O(1) lookup (hashes are lowercase in Transmission)
     const torrentsByHash = new Map<string, TransmissionTorrent>(
@@ -151,6 +157,7 @@ async function checkDownloads(): Promise<void> {
       }
     }
     if (discovered) {
+      console.log('[watcher] discovered new items, refreshing monitored list');
       monitored = await getActiveMonitoredDownloads();
     }
 
@@ -242,6 +249,8 @@ async function checkDownloads(): Promise<void> {
 
 export function startWatcher(): void {
   if (intervalId !== null) return;
+  // Run immediately on startup to sync existing downloads
+  checkDownloads();
   intervalId = setInterval(checkDownloads, 30_000);
-  console.log('[watcher] started');
+  console.log('[watcher] started (initial sync triggered)');
 }

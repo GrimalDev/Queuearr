@@ -16,13 +16,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const { id } = (await request.json()) as { id?: number | string };
+    console.log('[queue-move-top] Received id:', id, 'type:', typeof id);
     if (id === undefined || id === null || id === '') {
       return NextResponse.json({ error: 'Missing id' }, { status: 400 });
     }
     await transmission.queueTorrentTop(id);
+    console.log('[queue-move-top] Result: success');
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Transmission queue move error:', error);
+    console.error('[queue-move-top] Error:', error);
     const message = error instanceof Error ? error.message : 'Failed to move torrent';
     return NextResponse.json({ error: message }, { status: 500 });
   }

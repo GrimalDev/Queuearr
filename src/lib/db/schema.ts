@@ -70,3 +70,15 @@ export type PushSubscription = InferSelectModel<typeof pushSubscriptions>;
 export type NewPushSubscription = InferInsertModel<typeof pushSubscriptions>;
 export type MonitoredDownload = InferSelectModel<typeof monitoredDownloads>;
 export type MonitoredDownloadUser = InferSelectModel<typeof monitoredDownloadUsers>;
+
+export const invitedUsers = sqliteTable('invited_users', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  email: text('email').notNull().unique(),
+  librarySectionIds: text('library_section_ids'), // JSON array of library IDs to share
+  invitedAt: integer('invited_at', { mode: 'timestamp' }),
+  invitedBy: text('invited_by').references(() => users.id),
+  plexInviteSent: integer('plex_invite_sent', { mode: 'boolean' }).default(false),
+});
+
+export type InvitedUser = InferSelectModel<typeof invitedUsers>;
+export type NewInvitedUser = InferInsertModel<typeof invitedUsers>;

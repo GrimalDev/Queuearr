@@ -134,3 +134,204 @@ export class PlexAuthClient {
 export function createPlexAuthClient(clientId?: string): PlexAuthClient {
   return new PlexAuthClient(clientId || process.env.PLEX_CLIENT_ID);
 }
+
+// ============================================================
+// Plex Admin Client (server-side only - uses PLEX_ADMIN_TOKEN)
+// ============================================================
+
+const PLEX_TV_API = 'https://plex.tv/api';
+
+export interface PlexLibrarySection {
+  id: number;
+  key: string;
+  title: string;
+  type: string; // 'movie' | 'show' | 'artist' | 'photo'
+}
+
+export interface PlexShareResult {
+  success: boolean;
+  message?: string;
+  alreadyShared?: boolean;
+}
+
+export class PlexAdminClient {
+  private adminToken: string;
+  private machineIdentifier: string;
+  private clientId: string;
+
+  constructor() {
+    const adminToken = process.env.PLEX_ADMIN_TOKEN;
+    const machineIdentifier = process.env.PLEX_SERVER_MACHINE_IDENTIFIER;
+    const clientId = process.env.PLEX_CLIENT_ID;
+
+    if (!adminToken) {
+      throw new Error('PLEX_ADMIN_TOKEN is not configured');
+    }
+    if (!machineIdentifier) {
+      throw new Error('PLEX_SERVER_MACHINE_IDENTIFIER is not configured');
+    }
+    if (!clientId) {
+      throw new Error('PLEX_CLIENT_ID is not configured');
+    }
+
+    this.adminToken = adminToken;
+    this.machineIdentifier = machineIdentifier;
+    this.clientId = clientId;
+  }
+
+  private get headers(): Record<string, string> {
+    return {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-Plex-Token': this.adminToken,
+      'X-Plex-Client-Identifier': this.clientId,
+      'X-Plex-Product': 'Queuearr',
+      'X-Plex-Version': '1.0.0',
+      'X-Plex-Platform': 'Web',
+      'X-Plex-Device': 'Server',
+      'X-Plex-Device-Name': 'Queuearr Server',
+    };
+  }
+
+  /**
+   * Fetch library sections from the Plex server
+   */
+  async getLibrarySections(): Promise<PlexLibrarySection[]> {
+    const url = `${PLEX_TV_API}/servers/${this.machineIdentifier}`;
+    const response = await axios.get(url, {
+      headers: this.headers,
+      params: { 'X-Plex-Token': this.adminToken },
+    });
+
+    const data = response.data;
+    
+    // If JSON response (when Accept: application/json works)
+    if (typeof data === 'object' && data.MediaContainer) {
+      const server = data.MediaContainer.Server?.[0];
+      if (!server?.Section) return [];
+      return server.Section.map((s: { id: number; key: string; title: string; type: string }) => ({
+        id: s.id,
+        key: s.key,
+        title: s.title,
+        type: s.type,
+      }));
+    }
+
+    // Parse XML response (plex.tv API returns XML by default)
+    if (typeof data === 'string' && data.includes('<MediaContainer')) {
+      const sections: PlexLibrarySection[] = [];
+      // Match all Section elements: <Section id="123" key="1" type="movie" title="Movies"/>
+      const sectionRegex = /<Section\s+id="(\d+)"\s+key="(\d+)"\s+type="(\w+)"\s+title="([^"]+)"\s*\/>/g;
+      let match;
+      while ((match = sectionRegex.exec(data)) !== null) {
+        sections.push({
+          id: parseInt(match[1], 10),
+          key: match[2],
+          title: match[4],
+          type: match[3],
+        });
+      }
+      return sections;
+    }
+
+    return [];
+  }
+
+  /**
+   * Share library with a user by email
+   * This sends an invite if user doesn't have Plex account
+   */
+  async shareLibrary(
+    email: string,
+    librarySectionIds: number[] = [], // empty = all libraries
+    options: {
+      allowSync?: boolean;
+      allowCameraUpload?: boolean;
+      allowChannels?: boolean;
+    } = {}
+  ): Promise<PlexShareResult> {
+    const url = `${PLEX_TV_API}/servers/${this.machineIdentifier}/shared_servers`;
+
+    const payload = {
+      server_id: this.machineIdentifier,
+      shared_server: {
+        library_section_ids: librarySectionIds,
+        invited_email: email,
+      },
+      sharing_settings: {
+        allowSync: options.allowSync ? '1' : '0',
+        allowCameraUpload: options.allowCameraUpload ? '1' : '0',
+        allowChannels: options.allowChannels ? '1' : '0',
+      },
+    };
+
+    try {
+      await axios.post(url, payload, { headers: this.headers });
+      return { success: true };
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        const data = error.response?.data;
+
+        if (status === 422) {
+          // Already shared with this user
+          return { success: true, alreadyShared: true, message: 'Already shared with this user' };
+        }
+        if (status === 401) {
+          return { success: false, message: 'Invalid admin token' };
+        }
+        return { 
+          success: false, 
+          message: typeof data === 'string' ? data : 'Failed to share library' 
+        };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get list of current shared users
+   */
+  async getSharedUsers(): Promise<Array<{ id: number; email: string; username: string }>> {
+    const url = `${PLEX_TV_API}/servers/${this.machineIdentifier}/shared_servers`;
+
+    try {
+      const response = await axios.get(url, { headers: this.headers });
+      const data = response.data;
+      
+      if (data.MediaContainer?.SharedServer) {
+        return data.MediaContainer.SharedServer.map((s: { id: number; email: string; username: string }) => ({
+          id: s.id,
+          email: s.email,
+          username: s.username,
+        }));
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Remove library share from a user
+   */
+  async removeShare(sharedServerId: number): Promise<boolean> {
+    const url = `${PLEX_TV_API}/servers/${this.machineIdentifier}/shared_servers/${sharedServerId}`;
+
+    try {
+      await axios.delete(url, { headers: this.headers });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+let plexAdminClientInstance: PlexAdminClient | null = null;
+
+export function getPlexAdminClient(): PlexAdminClient {
+  if (!plexAdminClientInstance) {
+    plexAdminClientInstance = new PlexAdminClient();
+  }
+  return plexAdminClientInstance;
+}

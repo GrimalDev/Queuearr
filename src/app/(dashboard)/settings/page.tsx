@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { Check, X, Loader2, RefreshCw, Trash2, ShieldCheck, ShieldOff, Search, ChevronLeft, ChevronRight, Bell, BellOff, UserCheck, UserX } from 'lucide-react';
+import { Check, X, Loader2, RefreshCw, Trash2, ShieldCheck, ShieldOff, Search, ChevronLeft, ChevronRight, Bell, BellOff, UserCheck, UserX, Mail } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface ServiceStatus {
   name: string;
@@ -351,6 +352,214 @@ function PushNotificationsManager() {
     </div>
   );
 }
+interface PlexLibrary {
+  id: number;
+  title: string;
+  type: 'movie' | 'show';
+}
+
+interface InvitedUser {
+  id: string;
+  email: string;
+  invitedAt: string;
+}
+
+function InviteUsersManager() {
+  const [email, setEmail] = useState('');
+  const [libraries, setLibraries] = useState<PlexLibrary[]>([]);
+  const [selectedLibraries, setSelectedLibraries] = useState<number[]>([]);
+  const [invitedUsers, setInvitedUsers] = useState<InvitedUser[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [libsRes, invitesRes] = await Promise.all([
+        fetch('/api/admin/plex/libraries'),
+        fetch('/api/admin/invite')
+      ]);
+
+      if (libsRes.ok) {
+        const data = await libsRes.json();
+        setLibraries(data.libraries || []);
+      }
+
+      if (invitesRes.ok) {
+        const data = await invitesRes.json();
+        setInvitedUsers(data.invitedUsers || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch invite data', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleInvite = async () => {
+    if (!email || !email.includes('@')) {
+      setMessage({ type: 'error', text: 'Please enter a valid email address.' });
+      return;
+    }
+
+    if (selectedLibraries.length === 0) {
+      setMessage({ type: 'error', text: 'Please select at least one library.' });
+      return;
+    }
+
+    setIsSending(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch('/api/admin/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, librarySectionIds: selectedLibraries }),
+      });
+
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Invite sent successfully!' });
+        setEmail('');
+        setSelectedLibraries([]);
+        fetchData();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        setMessage({ type: 'error', text: errorData.message || 'Failed to send invite.' });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'An error occurred. Please try again.' });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleRevoke = async (userEmail: string) => {
+    if (!confirm(`Are you sure you want to revoke the invite for ${userEmail}?`)) return;
+
+    try {
+      const res = await fetch(`/api/admin/invite?email=${encodeURIComponent(userEmail)}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        fetchData();
+      } else {
+        console.error('Failed to revoke invite');
+      }
+    } catch (error) {
+      console.error('Error revoking invite', error);
+    }
+  };
+
+  const toggleLibrary = (id: number) => {
+    setSelectedLibraries((prev) =>
+      prev.includes(id) ? prev.filter((libId) => libId !== id) : [...prev, id]
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-6">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+            Email Address
+          </label>
+          <div className="flex gap-2">
+            <Input
+              placeholder="user@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="flex-1"
+            />
+            <Button onClick={handleInvite} disabled={isSending}>
+              {isSending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Mail className="h-4 w-4 mr-2" />
+              )}
+              Send Invite
+            </Button>
+          </div>
+          {message && (
+            <p className={`text-sm ${message.type === 'success' ? 'text-green-600' : 'text-destructive'}`}>
+              {message.text}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium leading-none">Libraries to Share</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border rounded-lg p-3">
+            {libraries.length === 0 ? (
+              <p className="text-sm text-muted-foreground col-span-2 text-center py-2">
+                No libraries found.
+              </p>
+            ) : (
+              libraries.map((lib) => (
+                <label
+                  key={lib.id}
+                  htmlFor={`lib-${lib.id}`}
+                  className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
+                >
+                  <Checkbox
+                    id={`lib-${lib.id}`}
+                    checked={selectedLibraries.includes(lib.id)}
+                    onCheckedChange={() => toggleLibrary(lib.id)}
+                  />
+                  <span className="text-sm flex-1 truncate">{lib.title}</span>
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 shrink-0">
+                    {lib.type}
+                  </Badge>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {invitedUsers.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium">Pending Invites</h4>
+          <div className="border rounded-lg divide-y">
+            {invitedUsers.map((user) => (
+              <div
+                key={user.id || user.email}
+                className="flex items-center justify-between p-3 text-sm"
+              >
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <span>{user.email}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive hover:text-destructive"
+                  onClick={() => handleRevoke(user.email)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -416,6 +625,21 @@ export default function SettingsPage() {
           Configure your Queuearr instance
         </p>
       </div>
+
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Invite Users</CardTitle>
+            <CardDescription>
+              Invite new users via email and share specific Plex libraries
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <InviteUsersManager />
+          </CardContent>
+        </Card>
+      )}
+
 
       <Card>
         <CardHeader>

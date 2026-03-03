@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { smartGrab } from '@/lib/smart-grab';
 import { getMonitoredDownloadBySourceMedia, markDownloadCompleted, getWatchedMediaIds } from '@/lib/db/monitored-downloads';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -18,8 +18,8 @@ export async function GET() {
 
   try {
     const queue = await radarr.getQueue(true);
-    const isAdmin = session.user.role === 'admin';
-    if (isAdmin) {
+    const filter = request.nextUrl.searchParams.get('filter') ?? 'mine';
+    if (filter === 'all') {
       return NextResponse.json(queue.records);
     }
     const watchedIds = await getWatchedMediaIds(session.user.id, 'radarr');

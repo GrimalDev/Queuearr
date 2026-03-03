@@ -1,7 +1,7 @@
 import { eq, count, asc, or, like } from 'drizzle-orm';
 import { db } from './index';
-import { users } from './schema';
-import type { User, NewUser } from './schema';
+import { users, invitedUsers } from './schema';
+import type { User, NewUser, InvitedUser, NewInvitedUser } from './schema';
 
 export async function upsertUser(user: NewUser): Promise<{ user: User; isNew: boolean }> {
   const now = new Date();
@@ -37,7 +37,17 @@ export async function upsertUser(user: NewUser): Promise<{ user: User; isNew: bo
       .from(users);
     const isFirstUser = userCount === 0;
     const role = isFirstUser ? 'admin' : 'user';
-    const active = isFirstUser;
+
+    // Auto-activate if user is on the invited whitelist (Plex invite = validation)
+    let active = isFirstUser;
+    if (!active && user.email) {
+      const invited = await db.query.invitedUsers.findFirst({
+        where: eq(invitedUsers.email, user.email.toLowerCase()),
+      });
+      if (invited) {
+        active = true;
+      }
+    }
 
     const insertData = {
       ...user,
@@ -123,4 +133,71 @@ export async function getAdminUserIds(): Promise<string[]> {
 
 export async function deleteUser(id: string): Promise<void> {
   await db.delete(users).where(eq(users.id, id));
+}
+
+// ============================================================
+// Invited Users (Whitelist) Functions
+// ============================================================
+
+export async function getInvitedUserByEmail(email: string): Promise<InvitedUser | undefined> {
+  return db.query.invitedUsers.findFirst({
+    where: eq(invitedUsers.email, email.toLowerCase()),
+  });
+}
+
+export async function addInvitedUser(
+  data: Omit<NewInvitedUser, 'id' | 'invitedAt'>
+): Promise<InvitedUser> {
+  const now = new Date();
+  const insertData = {
+    ...data,
+    email: data.email.toLowerCase(),
+    invitedAt: now,
+  };
+  await db.insert(invitedUsers).values(insertData);
+  return db.query.invitedUsers.findFirst({
+    where: eq(invitedUsers.email, insertData.email),
+  }) as Promise<InvitedUser>;
+}
+
+export async function updateInvitedUser(
+  email: string,
+  data: Partial<NewInvitedUser>
+): Promise<void> {
+  await db
+    .update(invitedUsers)
+    .set(data)
+    .where(eq(invitedUsers.email, email.toLowerCase()));
+}
+
+export async function deleteInvitedUser(email: string): Promise<void> {
+  await db.delete(invitedUsers).where(eq(invitedUsers.email, email.toLowerCase()));
+}
+
+export async function getInvitedUsers(opts: {
+  page: number;
+  limit: number;
+}): Promise<{ invitedUsers: InvitedUser[]; total: number }> {
+  const { page, limit } = opts;
+  const offset = page * limit;
+
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(invitedUsers);
+
+  const rows = await db
+    .select()
+    .from(invitedUsers)
+    .orderBy(asc(invitedUsers.invitedAt))
+    .limit(limit)
+    .offset(offset);
+
+  return { invitedUsers: rows, total };
+}
+
+export async function isEmailInvited(email: string): Promise<boolean> {
+  const invited = await db.query.invitedUsers.findFirst({
+    where: eq(invitedUsers.email, email.toLowerCase()),
+  });
+  return !!invited;
 }

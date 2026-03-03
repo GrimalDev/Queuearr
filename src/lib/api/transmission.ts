@@ -125,7 +125,12 @@ export class TransmissionClient {
       throw new Error(`Transmission RPC failed (${response.status}): ${text || response.statusText}`);
     }
 
-    return (await response.json()) as T;
+    const json = await response.json() as { result?: string; arguments?: T };
+    if (json.result && json.result !== 'success') {
+      throw new Error(`Transmission RPC error: ${json.result}`);
+    }
+
+    return json as T;
   }
 
   private async listTorrentsFallback(fields: string[]): Promise<TorrentFields[]> {

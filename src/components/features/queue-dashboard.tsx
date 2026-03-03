@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Download,
   AlertTriangle,
@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSession } from 'next-auth/react';
 import { useQueue } from '@/hooks/use-media';
+import { useAppStore } from '@/store/app-store';
 import { QueueItem, QueueItemStatus } from '@/types';
 import { cn } from '@/lib/utils';
 import { QueueServiceError } from '@/store/app-store';
@@ -299,7 +300,9 @@ function QueueItemCard({
 }
 
 export function QueueDashboard() {
-  const { queueItems, isLoadingQueue, queueErrors, lastFetch, refresh } = useQueue();
+  const [queueFilter, setQueueFilter] = useState<'mine' | 'all'>('mine');
+  const { queueItems, isLoadingQueue, queueErrors, lastFetch, refresh } = useQueue(queueFilter);
+  const setQueueItems = useAppStore((state) => state.setQueueItems);
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'admin';
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -353,16 +356,73 @@ export function QueueDashboard() {
     setIsRefreshing(false);
   };
 
+  const getRemainingEstimate = (item: QueueItem) => {
+    if (item.status !== 'downloading') {
+      return Number.NEGATIVE_INFINITY;
+    }
+    if (item.eta) {
+      const [hours, minutes, seconds] = item.eta.split(':').map((value) => Number.parseInt(value, 10));
+      if (!Number.isNaN(hours) && !Number.isNaN(minutes) && !Number.isNaN(seconds)) {
+        return hours * 3600 + minutes * 60 + seconds;
+      }
+    }
+    if (item.downloadSpeed && item.downloadSpeed > 0) {
+      return item.sizeRemaining / item.downloadSpeed;
+    }
+    return item.sizeRemaining;
+  };
+
+  const applyOptimisticPrioritize = (items: QueueItem[], item: QueueItem): QueueItem[] => {
+    const target = items.find((entry) => entry.id === item.id);
+    if (!target) return items;
+
+    const pauseCandidate = items
+      .filter(
+        (entry) =>
+          entry.id !== item.id &&
+          entry.status === 'downloading' &&
+          entry.downloadSpeed !== undefined &&
+          entry.downloadSpeed > 0 &&
+          entry.sizeRemaining > 0
+      )
+      .reduce<QueueItem | null>((current, entry) => {
+        if (!current) return entry;
+        return getRemainingEstimate(entry) > getRemainingEstimate(current) ? entry : current;
+      }, null);
+
+    const updatedTarget: QueueItem = {
+      ...target,
+      status: 'downloading',
+    };
+
+    const updatedPause: QueueItem | null = pauseCandidate
+      ? {
+          ...pauseCandidate,
+          status: 'paused',
+        }
+      : null;
+
+    const remaining = items.filter(
+      (entry) => entry.id !== updatedTarget.id && entry.id !== updatedPause?.id
+    );
+
+    return [updatedTarget, ...(updatedPause ? [updatedPause] : []), ...remaining];
+  };
+
   const handlePassFirst = async (item: QueueItem) => {
     const id = item.transmissionId ?? item.transmissionHash;
     if (!id) return;
     setPassingIds((prev) => new Set(prev).add(item.id));
+    setQueueItems(applyOptimisticPrioritize(queueItems, item));
     try {
       await fetch('/api/transmission/queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
+      await refresh();
+    } catch (error) {
+      console.error('Failed to prioritize download:', error);
       await refresh();
     } finally {
       setPassingIds((prev) => {
@@ -373,12 +433,13 @@ export function QueueDashboard() {
     }
   };
 
-  const activeDownloads = queueItems.filter(
+  const problemItems = queueItems.filter((item) => item.hasError || item.isStalled);
+  const nonProblemItems = queueItems.filter((item) => !item.hasError && !item.isStalled);
+  const activeDownloads = nonProblemItems.filter(
     (item) => item.status === 'downloading' || item.status === 'seeding'
   );
-  const problemItems = queueItems.filter((item) => item.hasError || item.isStalled);
-  const queuedItems = queueItems.filter(
-    (item) => item.status === 'queued' || item.status === 'pending'
+  const queuedItems = nonProblemItems.filter(
+    (item) => item.status === 'queued' || item.status === 'pending' || item.status === 'paused'
   );
 
   // Items that were retried and left the queue — show them as "retrying" until next refresh brings a new result
@@ -393,33 +454,21 @@ export function QueueDashboard() {
   // Show error state when services fail to connect
   const hasConnectionErrors = queueErrors.length > 0;
   const allServicesFailed = queueErrors.length === 3; // radarr, sonarr, transmission
-  if (isLoadingQueue && queueItems.length === 0 && !hasConnectionErrors) {
-    return (
-      <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="pb-2">
-                <Skeleton className="h-4 w-24" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-16" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        <div className="space-y-3">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <Skeleton className="h-20 w-full" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // Track if we're in a "filter switching" state (loading with no items)
+  const isFilterSwitching = isLoadingQueue && queueItems.length === 0 && !hasConnectionErrors;
+
+  // Skeleton component for queue items area only
+  const QueueItemsSkeleton = () => (
+    <div className="space-y-3">
+      {[...Array(3)].map((_, i) => (
+        <Card key={i}>
+          <CardContent className="p-4">
+            <Skeleton className="h-20 w-full" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
 
   // Connection error state - show meaningful message instead of infinite loading
   if (hasConnectionErrors && queueItems.length === 0) {
@@ -434,10 +483,38 @@ export function QueueDashboard() {
               </p>
             )}
           </div>
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
-            <RefreshCw className={cn('h-4 w-4 mr-2', isRefreshing && 'animate-spin')} />
-            Refresh
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 rounded-md border border-input bg-background p-1 text-sm">
+              <Button
+                type="button"
+                variant={queueFilter === 'mine' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => {
+                  setQueueFilter('mine');
+                  refresh();
+                }}
+              >
+                My downloads
+              </Button>
+              <Button
+                type="button"
+                variant={queueFilter === 'all' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => {
+                  setQueueFilter('all');
+                  refresh();
+                }}
+              >
+                All downloads
+              </Button>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
+              <RefreshCw className={cn('h-4 w-4 mr-2', isRefreshing && 'animate-spin')} />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         <Card className="border-red-500/50">
@@ -494,10 +571,32 @@ export function QueueDashboard() {
             </p>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
-          <RefreshCw className={cn('h-4 w-4 mr-2', isRefreshing && 'animate-spin')} />
-          Refresh
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 rounded-md border border-input bg-background p-1 text-sm">
+            <Button
+              type="button"
+              variant={queueFilter === 'mine' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setQueueFilter('mine')}
+            >
+              My downloads
+            </Button>
+            <Button
+              type="button"
+              variant={queueFilter === 'all' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setQueueFilter('all')}
+            >
+              All downloads
+            </Button>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
+            <RefreshCw className={cn('h-4 w-4 mr-2', isRefreshing && 'animate-spin')} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -508,7 +607,11 @@ export function QueueDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{activeDownloads.length}</div>
+            {isFilterSwitching ? (
+              <Skeleton className="h-8 w-12" />
+            ) : (
+              <div className="text-2xl font-bold">{activeDownloads.length}</div>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -518,32 +621,44 @@ export function QueueDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{queuedItems.length}</div>
+            {isFilterSwitching ? (
+              <Skeleton className="h-8 w-12" />
+            ) : (
+              <div className="text-2xl font-bold">{queuedItems.length}</div>
+            )}
           </CardContent>
         </Card>
-        <Card className={cn(allProblemItems.length > 0 && 'border-red-500/50')}>
+        <Card className={cn(!isFilterSwitching && allProblemItems.length > 0 && 'border-red-500/50')}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Problems</CardTitle>
           </CardHeader>
           <CardContent>
-            <div
-              className={cn(
-                'text-2xl font-bold flex items-center gap-2',
-                allProblemItems.length > 0 ? 'text-red-500' : 'text-green-500'
-              )}
-            >
-              {allProblemItems.length > 0 ? (
-                <AlertTriangle className="h-5 w-5" />
-              ) : (
-                <CheckCircle2 className="h-5 w-5" />
-              )}
-              {allProblemItems.length}
-            </div>
+            {isFilterSwitching ? (
+              <Skeleton className="h-8 w-12" />
+            ) : (
+              <div
+                className={cn(
+                  'text-2xl font-bold flex items-center gap-2',
+                  allProblemItems.length > 0 ? 'text-red-500' : 'text-green-500'
+                )}
+              >
+                {allProblemItems.length > 0 ? (
+                  <AlertTriangle className="h-5 w-5" />
+                ) : (
+                  <CheckCircle2 className="h-5 w-5" />
+                )}
+                {allProblemItems.length}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {allProblemItems.length > 0 && (
+      {/* Show skeletons when filter is switching */}
+      {isFilterSwitching && <QueueItemsSkeleton />}
+
+      {/* Show queue items when not switching */}
+      {!isFilterSwitching && allProblemItems.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-lg font-semibold text-red-500 flex items-center gap-2">
             <AlertTriangle className="h-5 w-5" />
@@ -559,13 +674,15 @@ export function QueueDashboard() {
               isPassing={passingIds.has(item.id)}
               onRetry={item.hasError && item.sourceId && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
               onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
-              onPassFirst={isAdmin && (item.transmissionId ?? item.transmissionHash) ? () => handlePassFirst(item) : undefined}
+              onPassFirst={isAdmin && (item.transmissionId ?? item.transmissionHash) && (item.status === 'queued' || item.status === 'pending')
+                ? () => handlePassFirst(item)
+                : undefined}
             />
           ))}
         </div>
       )}
 
-      {activeDownloads.length > 0 && (
+      {!isFilterSwitching && activeDownloads.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-lg font-semibold">Active Downloads</h3>
           <div className="space-y-3">
@@ -579,14 +696,16 @@ export function QueueDashboard() {
               isPassing={passingIds.has(item.id)}
               onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
               onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
-              onPassFirst={isAdmin && (item.transmissionId ?? item.transmissionHash) ? () => handlePassFirst(item) : undefined}
+              onPassFirst={isAdmin && (item.transmissionId ?? item.transmissionHash) && (item.status === 'queued' || item.status === 'pending')
+                ? () => handlePassFirst(item)
+                : undefined}
             />
           ))}
           </div>
         </div>
       )}
 
-      {queuedItems.length > 0 && (
+      {!isFilterSwitching && queuedItems.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-lg font-semibold text-muted-foreground">Queued</h3>
           <div className="space-y-3">
@@ -600,14 +719,16 @@ export function QueueDashboard() {
               isPassing={passingIds.has(item.id)}
               onRetry={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) ? () => handleRetry(item) : undefined}
               onDelete={item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
-              onPassFirst={isAdmin && (item.transmissionId ?? item.transmissionHash) ? () => handlePassFirst(item) : undefined}
+              onPassFirst={isAdmin && (item.transmissionId ?? item.transmissionHash) && (item.status === 'queued' || item.status === 'pending')
+                ? () => handlePassFirst(item)
+                : undefined}
             />
           ))}
           </div>
         </div>
       )}
 
-      {queueItems.length === 0 && (
+      {!isFilterSwitching && queueItems.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="rounded-full bg-muted p-4 mb-4">
             <Download className="h-8 w-8 text-muted-foreground" />
