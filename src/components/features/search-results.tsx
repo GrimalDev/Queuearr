@@ -60,7 +60,9 @@ export function SearchResults() {
         message: `Could not add ${result.title}. Please try again.`,
         source: result.type === 'movie' ? 'radarr' : 'sonarr',
       });
-    } finally {
+      // Only clear the loading state on failure so the user can retry.
+      // On success we navigate away, so we intentionally leave the id in
+      // the set to keep the button disabled until the page unmounts.
       setAddingIds((prev) => {
         const next = new Set(prev);
         next.delete(result.id);
@@ -124,7 +126,7 @@ export function SearchResults() {
       router.push('/queue');
     } catch {
       addAlert({ type: 'error', title: 'Download failed', message: `Could not start download for ${result.title}.`, source: 'radarr' });
-    } finally {
+      // Only unblock on failure so the user can retry.
       setGrabbingMovieIds((prev) => { const n = new Set(prev); n.delete(result.id); return n; });
     }
   };

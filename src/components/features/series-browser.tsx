@@ -158,7 +158,8 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
       });
     } catch {
       addAlert({ type: 'error', title: 'Grab failed', message: `Could not grab Season ${seasonNumber}.`, source: 'sonarr' });
-    } finally {
+      // Only unblock on failure so the user can retry. On success the button
+      // stays disabled until the sheet closes or the page refreshes.
       setGrabbingSeasons((prev) => { const n = new Set(prev); n.delete(seasonNumber); return n; });
     }
   };
@@ -186,7 +187,7 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
       });
     } catch {
       addAlert({ type: 'error', title: 'Grab failed', message: 'Could not grab episode.', source: 'sonarr' });
-    } finally {
+      // Only unblock on failure so the user can retry.
       setGrabbingEpisodes((prev) => { const n = new Set(prev); n.delete(ep.id); return n; });
     }
   };
