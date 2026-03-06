@@ -1,4 +1,4 @@
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, desc } from 'drizzle-orm';
 import { db } from './index';
 import { monitoredDownloads, monitoredDownloadUsers } from './schema';
 import type { MonitoredDownload } from './schema';
@@ -199,6 +199,19 @@ export async function getMonitoredDownloadBySourceMedia(
   });
 }
 
+export async function getLatestMonitoredDownloadBySourceMedia(
+  source: 'radarr' | 'sonarr',
+  mediaId: number
+): Promise<MonitoredDownload | undefined> {
+  return db.query.monitoredDownloads.findFirst({
+    where: and(
+      eq(monitoredDownloads.source, source),
+      eq(monitoredDownloads.mediaId, mediaId)
+    ),
+    orderBy: desc(monitoredDownloads.createdAt),
+  });
+}
+
 export async function updateDownloadStatus(id: number, status: string): Promise<void> {
   await db
     .update(monitoredDownloads)
@@ -224,5 +237,12 @@ export async function updateDownloadActivity(
       lastActivityAt: now,
       ...(hasBytesActivity ? { lastBytesAt: now } : {}),
     })
+    .where(eq(monitoredDownloads.id, id));
+}
+
+export async function resetMonitoredDownload(id: number): Promise<void> {
+  await db
+    .update(monitoredDownloads)
+    .set({ lastStatus: null, completedAt: null, lastActivityAt: Date.now(), lastBytesAt: Date.now() })
     .where(eq(monitoredDownloads.id, id));
 }

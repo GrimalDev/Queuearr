@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
 import { smartGrab } from '@/lib/smart-grab';
-import { getMonitoredDownloadBySourceMedia, markDownloadCompleted, getWatchedMediaIds } from '@/lib/db/monitored-downloads';
+import { getMonitoredDownloadBySourceMedia, getLatestMonitoredDownloadBySourceMedia, markDownloadCompleted, getWatchedMediaIds, resetMonitoredDownload } from '@/lib/db/monitored-downloads';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -51,6 +51,8 @@ export async function DELETE(request: NextRequest) {
     };
     await radarr.deleteQueueItemBulk(ids, { blocklist: retry, skipRedownload: retry });
     if (retry && mediaId) {
+      const monitored = await getLatestMonitoredDownloadBySourceMedia('radarr', mediaId);
+      if (monitored) await resetMonitoredDownload(monitored.id);
       await smartGrab({ source: 'radarr', mediaId });
     } else if (!retry && mediaId) {
       const monitored = await getMonitoredDownloadBySourceMedia('radarr', mediaId);
