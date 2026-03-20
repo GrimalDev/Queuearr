@@ -10,5 +10,3 @@ CREATE TABLE `notifications` (
 	`deleted_at` integer,
 	FOREIGN KEY (`sent_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
 );
---> statement-breakpoint
-ALTER TABLE `users` DROP COLUMN `active`;
