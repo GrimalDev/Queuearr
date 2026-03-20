@@ -73,11 +73,27 @@ export type MonitoredDownloadUser = InferSelectModel<typeof monitoredDownloadUse
 export const invitedUsers = sqliteTable('invited_users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   email: text('email').notNull().unique(),
-  librarySectionIds: text('library_section_ids'), // JSON array of library IDs to share
+  librarySectionIds: text('library_section_ids'),
   invitedAt: integer('invited_at', { mode: 'timestamp' }),
   invitedBy: text('invited_by').references(() => users.id),
   plexInviteSent: integer('plex_invite_sent', { mode: 'boolean' }).default(false),
 });
 
+export const notifications = sqliteTable('notifications', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  url: text('url'),
+  icon: text('icon'),
+  tag: text('tag'),
+  sentBy: text('sent_by')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  sentAt: integer('sent_at', { mode: 'timestamp' }).notNull(),
+  deletedAt: integer('deleted_at', { mode: 'timestamp' }),
+});
+
 export type InvitedUser = InferSelectModel<typeof invitedUsers>;
 export type NewInvitedUser = InferInsertModel<typeof invitedUsers>;
+export type Notification = InferSelectModel<typeof notifications>;
+export type NewNotification = InferInsertModel<typeof notifications>;

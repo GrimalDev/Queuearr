@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { Check, X, Loader2, RefreshCw, Trash2, ShieldCheck, ShieldOff, Search, ChevronLeft, ChevronRight, Bell, BellOff, Mail } from 'lucide-react';
+import { Check, X, Loader2, RefreshCw, Trash2, ShieldCheck, ShieldOff, Search, ChevronLeft, ChevronRight, Bell, BellOff, Mail, Send } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 interface ServiceStatus {
   name: string;
@@ -538,7 +539,239 @@ function InviteUsersManager() {
   );
 }
 
+function BroadcastNotificationManager() {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [url, setUrl] = useState('/notifications');
+  const [isSending, setIsSending] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string; sent?: number; failed?: number } | null>(null);
 
+  const handleSend = async () => {
+    if (!title.trim()) {
+      setMessage({ type: 'error', text: 'Title is required.' });
+      return;
+    }
+    if (!body.trim()) {
+      setMessage({ type: 'error', text: 'Message body is required.' });
+      return;
+    }
+    if (url && !url.startsWith('/')) {
+      setMessage({ type: 'error', text: 'URL must be a relative path (starting with /).' });
+      return;
+    }
+
+    setIsSending(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch('/api/admin/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          title: title.trim(), 
+          body: body.trim(), 
+          url: url.trim() || undefined 
+        }),
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        setMessage({ 
+          type: 'success', 
+          text: 'Notification broadcast successfully!',
+          sent: result.sent,
+          failed: result.failed
+        });
+        setTitle('');
+        setBody('');
+        setUrl('/notifications');
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        setMessage({ type: 'error', text: errorData.error || 'Failed to send notification.' });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'An error occurred. Please try again.' });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="notification-title">Title</Label>
+        <Input
+          id="notification-title"
+          placeholder="System Update"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={200}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="notification-body">Message</Label>
+        <Input
+          id="notification-body"
+          placeholder="Your notification message..."
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          maxLength={1000}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="notification-url">URL (optional)</Label>
+        <Input
+          id="notification-url"
+          placeholder="/queue"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Must be a relative path starting with /
+        </p>
+      </div>
+
+      <Button onClick={handleSend} disabled={isSending} className="w-full">
+        {isSending ? (
+          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+        ) : (
+          <Send className="h-4 w-4 mr-2" />
+        )}
+        Send to All Users
+      </Button>
+
+      {message && (
+        <div className={`text-sm p-3 rounded-lg border ${
+          message.type === 'success' 
+            ? 'bg-green-50 text-green-900 border-green-200' 
+            : 'bg-red-50 text-red-900 border-red-200'
+        }`}>
+          <p className="font-medium">{message.text}</p>
+          {message.type === 'success' && typeof message.sent === 'number' && (
+            <p className="text-xs mt-1">
+              Sent: {message.sent} {message.failed ? `• Failed: ${message.failed}` : ''}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NotificationHistoryManager() {
+  const [notifications, setNotifications] = useState<Array<{
+    id: number;
+    title: string;
+    body: string;
+    url: string | null;
+    sentAt: string;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const PAGE_SIZE = 10;
+
+  const fetchNotifications = useCallback(async (p: number) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(p), limit: String(PAGE_SIZE) });
+      const res = await fetch(`/api/admin/notifications?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(data.notifications);
+        setTotal(data.total);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications(page);
+  }, [fetchNotifications, page]);
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this notification?')) return;
+
+    try {
+      const res = await fetch(`/api/admin/notifications/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchNotifications(page);
+      }
+    } catch (error) {
+      console.error('Failed to delete notification:', error);
+    }
+  };
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString();
+  };
+
+  return (
+    <div className="space-y-3">
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : notifications.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-6">No notifications sent yet.</p>
+      ) : (
+        <>
+          {notifications.map((notification) => (
+            <div key={notification.id} className="flex items-start justify-between gap-3 p-3 rounded-lg border">
+              <div className="flex-1 min-w-0 space-y-1">
+                <p className="font-medium text-sm truncate">{notification.title}</p>
+                <p className="text-xs text-muted-foreground line-clamp-2">{notification.body}</p>
+                <p className="text-xs text-muted-foreground">{formatDate(notification.sentAt)}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleDelete(notification.id)}
+                title="Delete notification"
+                className="text-destructive hover:text-destructive shrink-0"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-1">
+              <p className="text-xs text-muted-foreground">
+                {total} notification{total !== 1 ? 's' : ''} &mdash; page {page + 1} of {totalPages}
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-7 w-7"
+                  disabled={page === 0}
+                  onClick={() => setPage(page - 1)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-7 w-7"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage(page + 1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -619,6 +852,33 @@ export default function SettingsPage() {
         </Card>
       )}
 
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Broadcast Notification</CardTitle>
+            <CardDescription>
+              Send a push notification to all users
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BroadcastNotificationManager />
+          </CardContent>
+        </Card>
+      )}
+
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Notification History</CardTitle>
+            <CardDescription>
+              View and manage previously sent notifications
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <NotificationHistoryManager />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
