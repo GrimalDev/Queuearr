@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { signOut, useSession } from 'next-auth/react';
+import type { Session } from 'next-auth';
+import { signOut } from 'next-auth/react';
 import {
   Search,
   Download,
@@ -32,9 +33,9 @@ const allNavItems = [
   { href: '/settings', label: 'Settings', icon: Settings, adminOnly: true },
 ];
 
-export function MainNav() {
+export function MainNav({ initialSession }: { initialSession: Session }) {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const session = initialSession;
   const isAdmin = session?.user?.role === 'admin';
   const { isSupported, isSubscribed, permissionState, isLoading, subscribe, unsubscribe } = usePushNotifications();
   const navItems = allNavItems.filter((item) => !item.adminOnly || isAdmin);

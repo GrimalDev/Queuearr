@@ -104,12 +104,6 @@ async function checkDownloads(): Promise<void> {
   try {
     let monitored = await getActiveMonitoredDownloads();
 
-    const missingTitles = monitored.filter((download) => !download.title).length;
-    console.log(
-      `[watcher] checking ${monitored.length} downloads` +
-        (missingTitles > 0 ? ` (${missingTitles} without titles)` : '')
-    );
-
     const radarr = createRadarrClient();
     const sonarr = createSonarrClient();
     const transmission = createTransmissionClient();
@@ -125,8 +119,6 @@ async function checkDownloads(): Promise<void> {
         ? transmission.getTorrents().catch((e) => { console.error('[watcher] transmission error:', e.message); return [] as TransmissionTorrent[]; })
         : Promise.resolve([] as TransmissionTorrent[]),
     ]);
-
-    console.log(`[watcher] found: ${radarrQueue.length} radarr queue items, ${sonarrQueue.length} sonarr queue items, ${transmissionTorrents.length} transmission torrents`);
 
     // Build hash → torrent map for O(1) lookup (hashes are lowercase in Transmission)
     const torrentsByHash = new Map<string, TransmissionTorrent>(
@@ -157,7 +149,6 @@ async function checkDownloads(): Promise<void> {
       }
     }
     if (discovered) {
-      console.log('[watcher] discovered new items, refreshing monitored list');
       monitored = await getActiveMonitoredDownloads();
     }
 

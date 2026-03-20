@@ -1,7 +1,6 @@
 import NextAuth, { AuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { PlexAuthClient } from '@/lib/api/plex';
-import { upsertUser } from '@/lib/db/users';
 
 declare module 'next-auth' {
   interface Session {
@@ -47,6 +46,7 @@ export const authOptions: AuthOptions = {
         }
 
         try {
+          const { upsertUser } = await import('@/lib/db/users');
           const authToken = credentials.authToken as string;
           const plexClient = new PlexAuthClient(process.env.PLEX_CLIENT_ID);
           const plexUser = await plexClient.getUser(authToken);

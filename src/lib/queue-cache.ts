@@ -46,6 +46,38 @@ async function getOrLoad<K extends QueueCacheKey>(
     return current.value;
   }
 
+  if (!options.forceRefresh && current?.value) {
+    if (!current.inFlight) {
+      const inFlight = loader()
+        .then((value) => {
+          queueCache.set(key, {
+            value,
+            expiresAt: Date.now() + getCacheTtlMs(),
+          } as CacheEntry<QueueCacheKey>);
+          return value;
+        })
+        .catch((error: unknown) => {
+          queueCache.set(key, {
+            value: current.value,
+            expiresAt: current.expiresAt,
+          } as CacheEntry<QueueCacheKey>);
+          throw error;
+        });
+
+      queueCache.set(key, {
+        value: current.value,
+        expiresAt: current.expiresAt,
+        inFlight,
+      } as CacheEntry<QueueCacheKey>);
+
+      void inFlight.catch((error: unknown) => {
+        console.error(`[queue-cache] Background refresh failed for ${key}:`, error);
+      });
+    }
+
+    return current.value;
+  }
+
   if (!options.forceRefresh && current?.inFlight) {
     return current.inFlight;
   }

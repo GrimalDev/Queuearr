@@ -9,6 +9,7 @@ const DATA_DIR = process.env.QUEUEARR_DATA_DIR || join(process.cwd(), 'data');
 const DB_PATH = join(DATA_DIR, 'queuearr.db');
 const MIGRATION_LOCK = join(DATA_DIR, '.migration.lock');
 const DB_SINGLETON_KEY = '__queuearrDbSingleton';
+const DB_MIGRATION_CHECKED_KEY = '__queuearrDbMigrationChecked';
 
 function acquireMigrationLock(): boolean {
   try {
@@ -69,6 +70,12 @@ function initializeDatabase() {
 
   const database = drizzle(sqlite, { schema });
 
+  if (globalDatabaseState[DB_MIGRATION_CHECKED_KEY]) {
+    console.log('[DB] Migrations already checked in this process, skipping');
+    console.log('[DB] Database initialized successfully');
+    return database;
+  }
+
   const hasLock = acquireMigrationLock();
   
   if (hasLock) {
@@ -97,22 +104,26 @@ function initializeDatabase() {
       console.log('[DB] No new migrations to apply');
     }
 
-    console.log('[DB] Running migrations from ./drizzle...');
-    try {
-      migrate(database, { migrationsFolder: './drizzle' });
-      
-      const updatedMigrations = getAppliedMigrations();
-      const newlyApplied = updatedMigrations.length - appliedMigrations.length;
-      
-      if (newlyApplied > 0) {
-        console.log('[DB] Successfully applied', newlyApplied, 'new migration(s)');
-      } else {
-        console.log('[DB] Database is up to date');
+    if (pendingCount > 0) {
+      console.log('[DB] Running migrations from ./drizzle...');
+      try {
+        migrate(database, { migrationsFolder: './drizzle' });
+        
+        const updatedMigrations = getAppliedMigrations();
+        const newlyApplied = updatedMigrations.length - appliedMigrations.length;
+        
+        if (newlyApplied > 0) {
+          console.log('[DB] Successfully applied', newlyApplied, 'new migration(s)');
+        } else {
+          console.log('[DB] Database is up to date');
+        }
+      } catch (error) {
+        console.error('[DB] Migration failed:', error);
+        releaseMigrationLock();
+        throw error;
       }
-    } catch (error) {
-      console.error('[DB] Migration failed:', error);
-      releaseMigrationLock();
-      throw error;
+    } else {
+      console.log('[DB] Skipping migration run (already up to date)');
     }
     
     releaseMigrationLock();
@@ -142,6 +153,7 @@ type QueuearrDatabase = ReturnType<typeof initializeDatabase>;
 
 type GlobalDatabaseState = {
   [DB_SINGLETON_KEY]?: QueuearrDatabase;
+  [DB_MIGRATION_CHECKED_KEY]?: boolean;
 };
 
 const globalDatabaseState = globalThis as typeof globalThis & GlobalDatabaseState;
@@ -153,6 +165,7 @@ function getDatabaseSingleton(): QueuearrDatabase {
   }
 
   const database = initializeDatabase();
+  globalDatabaseState[DB_MIGRATION_CHECKED_KEY] = true;
   globalDatabaseState[DB_SINGLETON_KEY] = database;
   return database;
 }
