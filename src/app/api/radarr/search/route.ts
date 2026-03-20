@@ -4,6 +4,7 @@ import { isAxiosError } from 'axios';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
 import { smartGrab } from '@/lib/smart-grab';
+import { invalidateQueueCache } from '@/lib/queue-cache';
 import {
   getActiveMediaIds,
   upsertMonitoredDownload,
@@ -125,6 +126,7 @@ export async function POST(request: NextRequest) {
         console.error('[smart-grab] radarr initial grab failed:', err)
       );
     }
+    invalidateQueueCache(['radarr-queue', 'transmission-state']);
 
     return NextResponse.json(movie, { status: 201 });
   } catch (error) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { createTransmissionClient } from '@/lib/api/transmission';
+import { invalidateQueueCache } from '@/lib/queue-cache';
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -22,6 +23,7 @@ export async function POST(request: NextRequest) {
     }
     await transmission.queueTorrentTop(id);
     console.log('[queue-move-top] Result: success');
+    invalidateQueueCache(['transmission-state']);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[queue-move-top] Error:', error);

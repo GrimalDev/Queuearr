@@ -4,6 +4,7 @@ import { createSonarrClient } from '@/lib/api/sonarr';
 import { authOptions } from '@/lib/auth';
 import { smartGrab } from '@/lib/smart-grab';
 import { getMonitoredDownloadBySourceMedia, getLatestMonitoredDownloadBySourceMedia, markDownloadCompleted, getWatchedMediaIds, resetMonitoredDownload } from '@/lib/db/monitored-downloads';
+import { getCachedSonarrQueue, invalidateQueueCache } from '@/lib/queue-cache';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const queue = await sonarr.getQueue(true, true);
+    const queue = await getCachedSonarrQueue(sonarr);
     const filter = request.nextUrl.searchParams.get('filter') ?? 'mine';
     if (filter === 'all') {
       // Debug: Check if series data is included
@@ -64,6 +65,7 @@ export async function DELETE(request: NextRequest) {
       const monitored = await getMonitoredDownloadBySourceMedia('sonarr', mediaId);
       if (monitored) await markDownloadCompleted(monitored.id);
     }
+    invalidateQueueCache(['sonarr-queue', 'transmission-state']);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Sonarr queue delete error:', error);

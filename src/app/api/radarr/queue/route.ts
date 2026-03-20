@@ -4,6 +4,7 @@ import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
 import { smartGrab } from '@/lib/smart-grab';
 import { getMonitoredDownloadBySourceMedia, getLatestMonitoredDownloadBySourceMedia, markDownloadCompleted, getWatchedMediaIds, resetMonitoredDownload } from '@/lib/db/monitored-downloads';
+import { getCachedRadarrQueue, invalidateQueueCache } from '@/lib/queue-cache';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const queue = await radarr.getQueue(true);
+    const queue = await getCachedRadarrQueue(radarr);
     const filter = request.nextUrl.searchParams.get('filter') ?? 'mine';
     if (filter === 'all') {
       return NextResponse.json(queue.records);
@@ -58,6 +59,7 @@ export async function DELETE(request: NextRequest) {
       const monitored = await getMonitoredDownloadBySourceMedia('radarr', mediaId);
       if (monitored) await markDownloadCompleted(monitored.id);
     }
+    invalidateQueueCache(['radarr-queue', 'transmission-state']);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Radarr queue delete error:', error);

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { createSonarrClient } from '@/lib/api/sonarr';
 import { authOptions } from '@/lib/auth';
 import { upsertMonitoredDownload, addUserToDownload } from '@/lib/db/monitored-downloads';
+import { invalidateQueueCache } from '@/lib/queue-cache';
 
 export async function POST(
   request: NextRequest,
@@ -45,6 +46,8 @@ export async function POST(
     } catch (trackErr) {
       console.error('[sonarr grab] failed to track download or notify:', trackErr);
     }
+
+    invalidateQueueCache(['sonarr-queue', 'transmission-state']);
 
     return NextResponse.json({ success: true });
   } catch (error) {

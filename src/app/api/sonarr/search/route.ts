@@ -9,6 +9,7 @@ import {
   addUserToDownload,
   isUserWatching,
 } from '@/lib/db/monitored-downloads';
+import { invalidateQueueCache } from '@/lib/queue-cache';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -129,6 +130,7 @@ export async function POST(request: NextRequest) {
       const monitored = await upsertMonitoredDownload('sonarr', series.id, series.title);
       await addUserToDownload(monitored.id, session.user.id);
     }
+    invalidateQueueCache(['sonarr-queue', 'transmission-state']);
 
     return NextResponse.json(series, { status: 201 });
   } catch (error) {

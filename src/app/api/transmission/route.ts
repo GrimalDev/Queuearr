@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { createTransmissionClient } from '@/lib/api/transmission';
 import { authOptions } from '@/lib/auth';
+import { getCachedTransmissionState } from '@/lib/queue-cache';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -15,10 +16,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [torrents, stats] = await Promise.all([
-      transmission.getTorrents(),
-      transmission.getSessionStats(),
-    ]);
+    const { torrents, stats } = await getCachedTransmissionState(transmission);
 
     const queueSettings = {
       downloadQueueEnabled: stats.downloadQueueEnabled,

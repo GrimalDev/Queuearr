@@ -8,6 +8,7 @@ import {
   upsertMonitoredDownload,
   addUserToDownload,
 } from '@/lib/db/monitored-downloads';
+import { invalidateQueueCache } from '@/lib/queue-cache';
 
 
 export async function POST(
@@ -41,6 +42,7 @@ export async function POST(
     await addUserToDownload(monitored.id, session.user.id);
 
     await smartGrab({ source: 'radarr', mediaId: movieId });
+    invalidateQueueCache(['radarr-queue', 'transmission-state']);
 
     return NextResponse.json({ success: true });
   } catch (error) {
