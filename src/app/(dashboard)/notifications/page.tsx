@@ -5,6 +5,7 @@ import { Bell, Loader2, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { emitNotificationsSync } from '@/lib/notifications-sync';
 
 interface Notification {
   id: number;
@@ -21,10 +22,20 @@ export default function NotificationsPage() {
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const res = await fetch('/api/notifications');
-        if (res.ok) {
-          const data = await res.json();
+        const [notificationsRes, markSeenRes] = await Promise.all([
+          fetch('/api/notifications', { cache: 'no-store' }),
+          fetch('/api/notifications/mark-seen', { method: 'POST' }),
+        ]);
+
+        if (notificationsRes.ok) {
+          const data = await notificationsRes.json();
           setNotifications(data.notifications);
+        }
+
+        if (!markSeenRes.ok) {
+          console.error('Failed to mark notifications as seen');
+        } else {
+          emitNotificationsSync({ type: 'notifications-seen' });
         }
       } catch (error) {
         console.error('Failed to fetch notifications:', error);

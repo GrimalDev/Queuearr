@@ -93,7 +93,29 @@ export const notifications = sqliteTable('notifications', {
   deletedAt: integer('deleted_at', { mode: 'timestamp' }),
 });
 
+export const notificationReads = sqliteTable(
+  'notification_reads',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    notificationId: integer('notification_id')
+      .notNull()
+      .references(() => notifications.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    seenAt: integer('seen_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => ({
+    notificationUserUnique: uniqueIndex('notification_reads_notification_user_unique').on(
+      t.notificationId,
+      t.userId
+    ),
+  })
+);
+
 export type InvitedUser = InferSelectModel<typeof invitedUsers>;
 export type NewInvitedUser = InferInsertModel<typeof invitedUsers>;
 export type Notification = InferSelectModel<typeof notifications>;
 export type NewNotification = InferInsertModel<typeof notifications>;
+export type NotificationRead = InferSelectModel<typeof notificationReads>;
+export type NewNotificationRead = InferInsertModel<typeof notificationReads>;

@@ -6,6 +6,7 @@ import { signOut, useSession } from 'next-auth/react';
 import {
   Search,
   Download,
+  Bell,
   Settings,
   LogOut,
   Film,
@@ -25,6 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
+import { useUnreadNotifications } from '@/hooks/use-unread-notifications';
 
 const allNavItems = [
   { href: '/', label: 'Search', icon: Search, adminOnly: false },
@@ -37,6 +39,7 @@ export function MainNav() {
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'admin';
   const { isSupported, isSubscribed, permissionState, isLoading, subscribe, unsubscribe } = usePushNotifications();
+  const { unreadCount } = useUnreadNotifications(Boolean(session?.user));
   const navItems = allNavItems.filter((item) => !item.adminOnly || isAdmin);
 
   return (
@@ -70,6 +73,16 @@ export function MainNav() {
         </div>
 
         <div className="flex items-center gap-4">
+          <Link href="/notifications" className="relative">
+            <Button variant="ghost" size="icon" className="relative">
+              <Bell className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </Button>
+          </Link>
           {session?.user && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

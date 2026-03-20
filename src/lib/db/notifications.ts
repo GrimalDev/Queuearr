@@ -1,6 +1,6 @@
-import { eq, desc, isNull, count } from 'drizzle-orm';
+import { and, eq, desc, isNull, count, sql } from 'drizzle-orm';
 import { db } from './index';
-import { notifications } from './schema';
+import { notifications, notificationReads } from './schema';
 import type { Notification, NewNotification } from './schema';
 
 export async function addNotification(
@@ -56,4 +56,52 @@ export async function deleteNotification(id: number): Promise<void> {
     .update(notifications)
     .set({ deletedAt: now })
     .where(eq(notifications.id, id));
+}
+
+export async function getUnreadNotificationsCount(userId: string): Promise<number> {
+  const [result] = await db
+    .select({ total: count() })
+    .from(notifications)
+    .leftJoin(
+      notificationReads,
+      and(
+        eq(notificationReads.notificationId, notifications.id),
+        eq(notificationReads.userId, userId)
+      )
+    )
+    .where(and(isNull(notifications.deletedAt), sql`${notificationReads.id} is null`));
+
+  return result?.total ?? 0;
+}
+
+export async function markAllNotificationsAsSeen(userId: string): Promise<void> {
+  const unseen = await db
+    .select({ id: notifications.id })
+    .from(notifications)
+    .leftJoin(
+      notificationReads,
+      and(
+        eq(notificationReads.notificationId, notifications.id),
+        eq(notificationReads.userId, userId)
+      )
+    )
+    .where(and(isNull(notifications.deletedAt), sql`${notificationReads.id} is null`));
+
+  if (unseen.length === 0) {
+    return;
+  }
+
+  const now = new Date();
+  await db
+    .insert(notificationReads)
+    .values(
+      unseen.map((n) => ({
+        notificationId: n.id,
+        userId,
+        seenAt: now,
+      }))
+    )
+    .onConflictDoNothing({
+      target: [notificationReads.notificationId, notificationReads.userId],
+    });
 }

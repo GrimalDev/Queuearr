@@ -57,6 +57,14 @@
       "when": 1777705200001,
       "tag": "0007_closed_proemial_gods",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1777755200001,
+      "tag": "0008_sour_quasar",
+      "breakpoints": true
     }
   ]
 }
+
