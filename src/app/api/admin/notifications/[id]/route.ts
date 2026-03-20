@@ -7,15 +7,17 @@ export const dynamic = 'force-dynamic';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
   if (!session || session.user.role !== 'admin') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
+  const { id: idStr } = await params;
+
   try {
-    const id = parseInt(params.id, 10);
+    const id = parseInt(idStr, 10);
     if (isNaN(id)) {
       return NextResponse.json({ error: 'Invalid notification ID' }, { status: 400 });
     }
