@@ -11,6 +11,7 @@ import {
   LogOut,
   Film,
   User,
+  Bell,
   BellOff,
   BellRing,
   Loader2,
@@ -26,6 +27,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
+import { useUnreadNotifications } from '@/hooks/use-unread-notifications';
 
 const allNavItems = [
   { href: '/', label: 'Search', icon: Search, adminOnly: false },
@@ -38,6 +40,7 @@ export function MainNav({ initialSession }: { initialSession: Session }) {
   const session = initialSession;
   const isAdmin = session?.user?.role === 'admin';
   const { isSupported, isSubscribed, permissionState, isLoading, subscribe, unsubscribe } = usePushNotifications();
+  const { unreadCount } = useUnreadNotifications(Boolean(session?.user));
   const navItems = allNavItems.filter((item) => !item.adminOnly || isAdmin);
 
   return (
@@ -72,66 +75,78 @@ export function MainNav({ initialSession }: { initialSession: Session }) {
 
         <div className="flex items-center gap-4">
           {session?.user && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                  <Avatar className="h-9 w-9">
-                    <AvatarImage src={session.user.image || undefined} alt={session.user.name || ''} />
-                    <AvatarFallback>
-                      <User className="h-4 w-4" />
-                    </AvatarFallback>
-                  </Avatar>
+            <div className="flex items-center gap-2">
+              <Link href="/notifications">
+                <Button variant="ghost" size="icon" className="relative h-9 w-9" aria-label="Notifications">
+                  <Bell className="h-4 w-4" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <div className="flex items-center justify-start gap-2 p-2">
-                  <div className="flex flex-col space-y-1 leading-none">
-                    {session.user.name && (
-                      <p className="font-medium">{session.user.name}</p>
-                    )}
-                    {session.user.email && (
-                      <p className="max-w-[200px] truncate text-sm text-muted-foreground">
-                        {session.user.email}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                {isAdmin && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href="/settings">
-                        <Settings className="mr-2 h-4 w-4" />
-                        Settings
-                      </Link>
-                    </DropdownMenuItem>
-                  </>
-                )}
-                {isSupported && permissionState !== 'denied' && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={isSubscribed ? unsubscribe : subscribe}
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : isSubscribed ? (
-                        <BellOff className="mr-2 h-4 w-4" />
-                      ) : (
-                        <BellRing className="mr-2 h-4 w-4" />
+              </Link>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={session.user.image || undefined} alt={session.user.name || ''} />
+                      <AvatarFallback>
+                        <User className="h-4 w-4" />
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <div className="flex items-center justify-start gap-2 p-2">
+                    <div className="flex flex-col space-y-1 leading-none">
+                      {session.user.name && (
+                        <p className="font-medium">{session.user.name}</p>
                       )}
-                      {isSubscribed ? 'Disable Notifications' : 'Enable Notifications'}
-                    </DropdownMenuItem>
-                  </>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                      {session.user.email && (
+                        <p className="max-w-[200px] truncate text-sm text-muted-foreground">
+                          {session.user.email}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {isAdmin && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild>
+                        <Link href="/settings">
+                          <Settings className="mr-2 h-4 w-4" />
+                          Settings
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {isSupported && permissionState !== 'denied' && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={isSubscribed ? unsubscribe : subscribe}
+                        disabled={isLoading}
+                      >
+                        {isLoading ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : isSubscribed ? (
+                          <BellOff className="mr-2 h-4 w-4" />
+                        ) : (
+                          <BellRing className="mr-2 h-4 w-4" />
+                        )}
+                        {isSubscribed ? 'Disable Notifications' : 'Enable Notifications'}
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
 
         </div>
