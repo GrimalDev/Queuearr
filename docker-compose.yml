@@ -7,7 +7,7 @@ services:
     container_name: queuearr
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3000:80"
     volumes:
       - ${DATA_PATH}:/app/data
     environment:
