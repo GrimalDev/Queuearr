@@ -63,7 +63,7 @@ export const authOptions: AuthOptions = {
              return null;
            }
 
-           const { user: dbUser, isNew } = await upsertUser({
+           const { user: dbUser } = await upsertUser({
              id: plexUser.id.toString(),
              username: plexUser.username || plexUser.title || plexUser.id.toString(),
              email: plexUser.email,

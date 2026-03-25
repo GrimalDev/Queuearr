@@ -224,12 +224,6 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
         }
       }
 
-      let transmissionStats: {
-        downloadQueueEnabled?: boolean;
-        downloadQueueSize?: number;
-        activeTorrentCount?: number;
-      } | null = null;
-
       if (transmissionRes.status === 'fulfilled' && transmissionRes.value.ok) {
         const data: {
           torrents: (TransmissionTorrent & {
@@ -243,9 +237,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
             activeTorrentCount: number;
           };
         } = await transmissionRes.value.json();
-        
-        transmissionStats = data.stats;
-        
+
         for (const torrent of data.torrents) {
           transmissionHashMap.set(torrent.hashString.toLowerCase(), torrent);
         }
@@ -494,9 +486,14 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
   }, [setIsLoadingQueue, setQueueItems, setQueueErrors, addAlert, filter]);
 
   useEffect(() => {
-    fetchQueue();
+    const kickoff = setTimeout(() => {
+      void fetchQueue();
+    }, 0);
     const id = setInterval(fetchQueue, 5_000);
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(kickoff);
+      clearInterval(id);
+    };
   }, [fetchQueue]);
 
   return {

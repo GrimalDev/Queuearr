@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Download,
   AlertTriangle,
@@ -16,7 +16,6 @@ import {
   Users,
   Bug,
   ArrowUpToLine,
-  ChevronDown,
   ChevronUp,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,7 +28,6 @@ import { useQueue } from '@/hooks/use-media';
 import { useAppStore } from '@/store/app-store';
 import { QueueItem, QueueItemStatus } from '@/types';
 import { cn } from '@/lib/utils';
-import { QueueServiceError } from '@/store/app-store';
 
 const formatBytes = (bytes: number): string => {
   if (bytes === 0) return '0 B';

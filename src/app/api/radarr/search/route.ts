@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { title, tmdbId, year, qualityProfileId, rootFolderPath, searchForMovie } = body;
+    const { title, tmdbId, year, qualityProfileId, rootFolderPath } = body;
 
     if (!title || !tmdbId || !year) {
       return NextResponse.json(

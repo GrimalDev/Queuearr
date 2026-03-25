@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Bell, Loader2, ExternalLink } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { emitNotificationsSync } from '@/lib/notifications-sync';
@@ -84,7 +84,7 @@ export default function NotificationsPage() {
               <div>
                 <p className="font-medium">No notifications</p>
                 <p className="text-sm text-muted-foreground">
-                  You're all caught up! Check back later for updates.
+                  You&apos;re all caught up! Check back later for updates.
                 </p>
               </div>
             </div>

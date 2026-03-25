@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { torrents, stats } = await getCachedTransmissionState(transmission);
+    const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1';
+    const { torrents, stats } = await getCachedTransmissionState(transmission, { forceRefresh });
 
     const queueSettings = {
       downloadQueueEnabled: stats.downloadQueueEnabled,

@@ -54,7 +54,7 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
     setAddingToLibrary(false);
     setGrabbingSeasons(new Set());
     setGrabbingEpisodes(new Set());
-  }, [result?.id]);
+  }, [result]);
 
   const fetchEpisodes = useCallback(async (sid: number) => {
     setLoadingEpisodes(true);
@@ -99,7 +99,7 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
     if (libraryId && !(result?.inLibrary && result?.libraryId)) {
       fetchEpisodes(libraryId);
     }
-  }, [libraryId]);
+  }, [fetchEpisodes, libraryId, result?.inLibrary, result?.libraryId]);
 
   const toggleSeason = (seasonNumber: number) => {
     setSeasonData((prev) => {

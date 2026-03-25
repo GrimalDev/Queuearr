@@ -410,7 +410,7 @@ function InviteUsersManager() {
         const errorData = await res.json().catch(() => ({}));
         setMessage({ type: 'error', text: errorData.message || 'Failed to send invite.' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'An error occurred. Please try again.' });
     } finally {
       setIsSending(false);
@@ -589,7 +589,7 @@ function BroadcastNotificationManager() {
         const errorData = await res.json().catch(() => ({}));
         setMessage({ type: 'error', text: errorData.error || 'Failed to send notification.' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'An error occurred. Please try again.' });
     } finally {
       setIsSending(false);
@@ -784,9 +784,9 @@ export default function SettingsPage() {
     setIsTesting(true);
     try {
       const [radarrRes, sonarrRes, transmissionRes, urlsRes] = await Promise.all([
-        fetch('/api/radarr/queue').catch(() => null),
-        fetch('/api/sonarr/queue').catch(() => null),
-        fetch('/api/transmission').catch(() => null),
+        fetch('/api/radarr/queue?refresh=1').catch(() => null),
+        fetch('/api/sonarr/queue?refresh=1').catch(() => null),
+        fetch('/api/transmission?refresh=1').catch(() => null),
         fetch('/api/admin/services').catch(() => null),
       ]);
 

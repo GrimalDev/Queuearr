@@ -26,12 +26,11 @@ export function useUnreadNotifications(enabled: boolean) {
   }, [enabled]);
 
   useEffect(() => {
-    if (!enabled) {
-      setUnreadCount(0);
-      return;
-    }
+    if (!enabled) return;
 
-    fetchUnreadCount();
+    const kickoff = setTimeout(() => {
+      void fetchUnreadCount();
+    }, 0);
 
     const intervalId = setInterval(fetchUnreadCount, 30000);
     const syncChannel = createNotificationsSyncChannel();
@@ -43,12 +42,19 @@ export function useUnreadNotifications(enabled: boolean) {
     }
 
     return () => {
+      clearTimeout(kickoff);
       clearInterval(intervalId);
       if (syncChannel) {
         syncChannel.close();
       }
     };
   }, [enabled, fetchUnreadCount]);
+
+  useEffect(() => {
+    if (enabled) return;
+    const timer = setTimeout(() => setUnreadCount(0), 0);
+    return () => clearTimeout(timer);
+  }, [enabled]);
 
   return { unreadCount, refreshUnreadCount: fetchUnreadCount };
 }

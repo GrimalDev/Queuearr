@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const queue = await getCachedSonarrQueue(sonarr);
+    const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1';
+    const queue = await getCachedSonarrQueue(sonarr, { forceRefresh });
     const filter = request.nextUrl.searchParams.get('filter') ?? 'mine';
     if (filter === 'all') {
       // Debug: Check if series data is included

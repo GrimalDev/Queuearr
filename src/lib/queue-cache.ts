@@ -122,22 +122,31 @@ export function invalidateQueueCache(keys?: QueueCacheKey[]): void {
   }
 }
 
-export function getCachedRadarrQueue(radarr: RadarrClient): Promise<{ records: RadarrQueueItem[] }> {
-  return getOrLoad('radarr-queue', () => radarr.getQueue(true));
+export function getCachedRadarrQueue(
+  radarr: RadarrClient,
+  options?: { forceRefresh?: boolean }
+): Promise<{ records: RadarrQueueItem[] }> {
+  return getOrLoad('radarr-queue', () => radarr.getQueue(true), options);
 }
 
-export function getCachedSonarrQueue(sonarr: SonarrClient): Promise<{ records: SonarrQueueItem[] }> {
-  return getOrLoad('sonarr-queue', () => sonarr.getQueue(true, true));
+export function getCachedSonarrQueue(
+  sonarr: SonarrClient,
+  options?: { forceRefresh?: boolean }
+): Promise<{ records: SonarrQueueItem[] }> {
+  return getOrLoad('sonarr-queue', () => sonarr.getQueue(true, true), options);
 }
 
-export function getCachedTransmissionState(transmission: TransmissionClient): Promise<TransmissionState> {
+export function getCachedTransmissionState(
+  transmission: TransmissionClient,
+  options?: { forceRefresh?: boolean }
+): Promise<TransmissionState> {
   return getOrLoad('transmission-state', async () => {
     const [torrents, stats] = await Promise.all([
       transmission.getTorrents(),
       transmission.getSessionStats(),
     ]);
     return { torrents, stats };
-  });
+  }, options);
 }
 
 export async function preloadQueueCaches(): Promise<void> {

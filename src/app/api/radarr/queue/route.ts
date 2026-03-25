@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const queue = await getCachedRadarrQueue(radarr);
+    const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1';
+    const queue = await getCachedRadarrQueue(radarr, { forceRefresh });
     const filter = request.nextUrl.searchParams.get('filter') ?? 'mine';
     if (filter === 'all') {
       return NextResponse.json(queue.records);

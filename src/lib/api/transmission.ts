@@ -175,7 +175,7 @@ export class TransmissionClient {
         'queuePosition',
         'downloadDir',
       ]);
-    } catch (error) {
+    } catch {
       try {
         const torrents = await this.listTorrentsFallback([
           'id',
@@ -320,7 +320,7 @@ export class TransmissionClient {
       ]);
       torrents = allData.torrents || [];
       sessionArgs = session.arguments as unknown as Record<string, unknown>;
-    } catch (error) {
+    } catch {
       const rawTorrents = await this.listTorrentsFallback([
         'downloadSpeed',
         'uploadSpeed',
@@ -389,8 +389,7 @@ export class TransmissionClient {
   }
 
   isProblematic(
-    torrent: TransmissionTorrent,
-    queueSettings?: { downloadQueueEnabled: boolean; downloadQueueSize: number }
+    torrent: TransmissionTorrent
   ): {
     isProblematic: boolean;
     reason?: string;
