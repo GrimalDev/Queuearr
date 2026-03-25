@@ -1,5 +1,7 @@
+import axios, { AxiosInstance } from 'axios';
 import { Transmission } from '@ctrl/transmission';
 import { TransmissionTorrent, TransmissionStatus, TransmissionErrorType } from '@/types';
+import { createHttpsAgentForService } from '@/lib/api/tls';
 
 interface TransmissionConfig {
   baseUrl: string;
@@ -60,8 +62,51 @@ interface TorrentFields {
   uploadSpeed?: number;
 }
 
+function isTorrentFields(value: unknown): value is TorrentFields {
+  if (!value || typeof value !== 'object') return false;
+  const torrent = value as Partial<TorrentFields>;
+  return (
+    typeof torrent.id === 'number' &&
+    typeof torrent.hashString === 'string' &&
+    typeof torrent.name === 'string' &&
+    typeof torrent.status === 'number'
+  );
+}
+
+function toTransmissionTorrent(t: TorrentFields): TransmissionTorrent {
+  return {
+    id: t.id,
+    hashString: t.hashString,
+    name: t.name,
+    status: t.status as TransmissionStatus,
+    percentDone: t.percentDone,
+    rateDownload: t.rateDownload,
+    rateUpload: t.rateUpload,
+    eta: t.eta,
+    sizeWhenDone: t.sizeWhenDone,
+    leftUntilDone: t.leftUntilDone,
+    totalSize: t.totalSize,
+    downloadedEver: t.downloadedEver,
+    uploadedEver: t.uploadedEver,
+    uploadRatio: t.uploadRatio,
+    isStalled: t.isStalled,
+    isFinished: t.isFinished,
+    error: t.error as TransmissionErrorType,
+    errorString: t.errorString,
+    peersConnected: t.peersConnected,
+    peersSendingToUs: t.peersSendingToUs,
+    peersGettingFromUs: t.peersGettingFromUs,
+    addedDate: t.addedDate,
+    doneDate: t.doneDate,
+    activityDate: t.activityDate,
+    queuePosition: t.queuePosition,
+    downloadDir: t.downloadDir,
+  };
+}
+
 export class TransmissionClient {
   private client: Transmission;
+  private rpcClient: AxiosInstance;
   private baseUrl: string;
   private username?: string;
   private password?: string;
@@ -70,10 +115,17 @@ export class TransmissionClient {
     this.baseUrl = normalizeTransmissionUrl(config.baseUrl);
     this.username = config.username;
     this.password = config.password;
+    const httpsAgent = createHttpsAgentForService('transmission');
     this.client = new Transmission({
       baseUrl: this.baseUrl,
       username: this.username,
       password: this.password,
+    });
+    this.rpcClient = axios.create({
+      baseURL: this.buildRpcUrl(),
+      timeout: 10000,
+      ...(httpsAgent ? { httpsAgent } : {}),
+      validateStatus: () => true,
     });
   }
 
@@ -103,29 +155,35 @@ export class TransmissionClient {
     const authHeader = this.buildAuthHeader();
     if (authHeader) headers.Authorization = authHeader;
 
-    const response = await fetch(this.buildRpcUrl(), {
-      method: 'POST',
+    const response = await this.rpcClient.post<{
+      result?: string;
+      arguments?: T;
+    }>('', {
+      method,
+      arguments: args,
+    }, {
       headers,
-      body: JSON.stringify({
-        method,
-        arguments: args,
-      }),
     });
 
     if (response.status === 409) {
-      const nextSessionId = response.headers.get('x-transmission-session-id');
+      const nextSessionIdHeader = response.headers['x-transmission-session-id'];
+      const nextSessionId = Array.isArray(nextSessionIdHeader)
+        ? nextSessionIdHeader[0]
+        : nextSessionIdHeader;
       if (!nextSessionId) {
         throw new Error('Transmission session id missing from 409 response');
       }
       return this.rpcRequest<T>(method, args, nextSessionId);
     }
 
-    if (!response.ok) {
-      const text = await response.text();
+    if (response.status < 200 || response.status >= 300) {
+      const text = typeof response.data === 'string'
+        ? response.data
+        : JSON.stringify(response.data);
       throw new Error(`Transmission RPC failed (${response.status}): ${text || response.statusText}`);
     }
 
-    const json = await response.json() as { result?: string; arguments?: T };
+    const json = response.data;
     if (json.result && json.result !== 'success') {
       throw new Error(`Transmission RPC error: ${json.result}`);
     }
@@ -175,7 +233,7 @@ export class TransmissionClient {
         'queuePosition',
         'downloadDir',
       ]);
-    } catch {
+    } catch (error) {
       try {
         const torrents = await this.listTorrentsFallback([
           'id',
@@ -205,34 +263,7 @@ export class TransmissionClient {
           'queuePosition',
           'downloadDir',
         ]);
-        return torrents.map((t) => ({
-          id: t.id,
-          hashString: t.hashString,
-          name: t.name,
-          status: t.status as TransmissionStatus,
-          percentDone: t.percentDone,
-          rateDownload: t.rateDownload,
-          rateUpload: t.rateUpload,
-          eta: t.eta,
-          sizeWhenDone: t.sizeWhenDone,
-          leftUntilDone: t.leftUntilDone,
-          totalSize: t.totalSize,
-          downloadedEver: t.downloadedEver,
-          uploadedEver: t.uploadedEver,
-          uploadRatio: t.uploadRatio,
-          isStalled: t.isStalled,
-          isFinished: t.isFinished,
-          error: t.error as TransmissionErrorType,
-          errorString: t.errorString,
-          peersConnected: t.peersConnected,
-          peersSendingToUs: t.peersSendingToUs,
-          peersGettingFromUs: t.peersGettingFromUs,
-          addedDate: t.addedDate,
-          doneDate: t.doneDate,
-          activityDate: t.activityDate,
-          queuePosition: t.queuePosition,
-          downloadDir: t.downloadDir,
-        }));
+        return torrents.filter(isTorrentFields).map(toTransmissionTorrent);
       } catch (fallbackError) {
         const message = error instanceof Error ? error.message : String(error);
         const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
@@ -245,34 +276,7 @@ export class TransmissionClient {
       throw new Error('Transmission response missing torrents list');
     }
 
-    return (torrents as TorrentFields[]).map((t) => ({
-      id: t.id,
-      hashString: t.hashString,
-      name: t.name,
-      status: t.status as TransmissionStatus,
-      percentDone: t.percentDone,
-      rateDownload: t.rateDownload,
-      rateUpload: t.rateUpload,
-      eta: t.eta,
-      sizeWhenDone: t.sizeWhenDone,
-      leftUntilDone: t.leftUntilDone,
-      totalSize: t.totalSize,
-      downloadedEver: t.downloadedEver,
-      uploadedEver: t.uploadedEver,
-      uploadRatio: t.uploadRatio,
-      isStalled: t.isStalled,
-      isFinished: t.isFinished,
-      error: t.error as TransmissionErrorType,
-      errorString: t.errorString,
-      peersConnected: t.peersConnected,
-      peersSendingToUs: t.peersSendingToUs,
-      peersGettingFromUs: t.peersGettingFromUs,
-      addedDate: t.addedDate,
-      doneDate: t.doneDate,
-      activityDate: t.activityDate,
-      queuePosition: t.queuePosition,
-      downloadDir: t.downloadDir,
-    }));
+    return (torrents as unknown[]).filter(isTorrentFields).map(toTransmissionTorrent);
   }
 
   async getTorrent(hashOrId: string | number): Promise<TransmissionTorrent | undefined> {

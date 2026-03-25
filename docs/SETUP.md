@@ -104,6 +104,18 @@ Double‑check the URL and API key. Then restart the app.
 Verify the RPC endpoint is reachable (usually `http://host:9091/transmission/rpc`).
 Set `TRANSMISSION_URL` to the base host (for example `http://host:9091/`). Do **not** include `/transmission/rpc` — the Transmission client adds it automatically.
 
+### HTTPS certificate verification errors (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`)
+
+If Radarr/Sonarr/Transmission use HTTPS with a private or self-signed certificate chain, configure a trusted CA for Queuearr:
+
+- Global (applies to all services): `SERVICE_CA_CERT_PATH`
+- Per service override:
+  - `RADARR_CA_CERT_PATH`
+  - `SONARR_CA_CERT_PATH`
+  - `TRANSMISSION_CA_CERT_PATH`
+
+Use a path to a PEM CA file. Restart Queuearr after setting these values.
+
 ### Plex login fails
 
 Ensure `PLEX_CLIENT_ID` is set. If you set `PLEX_SERVER_MACHINE_IDENTIFIER`, make sure your user has access to that server.

@@ -19,15 +19,10 @@ export async function GET(request: NextRequest) {
     const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1';
     const { torrents, stats } = await getCachedTransmissionState(transmission, { forceRefresh });
 
-    const queueSettings = {
-      downloadQueueEnabled: stats.downloadQueueEnabled,
-      downloadQueueSize: stats.downloadQueueSize,
-    };
-
     // Note: filtering by user happens at Radarr/Sonarr level, not here.
     // Transmission data is used to enrich queue items matched by hash.
     const torrentsWithProblems = torrents.map((torrent) => {
-      const problemCheck = transmission.isProblematic(torrent, queueSettings);
+      const problemCheck = transmission.isProblematic(torrent);
       return {
         ...torrent,
         statusString: transmission.getStatusString(torrent.status),

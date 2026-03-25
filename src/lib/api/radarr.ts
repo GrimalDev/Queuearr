@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { createHttpsAgentForService } from '@/lib/api/tls';
 import {
   RadarrMovie,
   RadarrQueueItem,
@@ -16,6 +17,7 @@ export class RadarrClient {
   private client: AxiosInstance;
 
   constructor(config: RadarrConfig) {
+    const httpsAgent = createHttpsAgentForService('radarr');
     this.client = axios.create({
       baseURL: config.baseUrl,
       headers: {
@@ -23,6 +25,7 @@ export class RadarrClient {
         'Content-Type': 'application/json',
       },
       timeout: 10000,
+      ...(httpsAgent ? { httpsAgent } : {}),
     });
   }
 

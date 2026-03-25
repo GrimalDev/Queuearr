@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { createHttpsAgentForService } from '@/lib/api/tls';
 import {
   SonarrSeries,
   SonarrEpisode,
@@ -18,6 +19,7 @@ export class SonarrClient {
   private client: AxiosInstance;
 
   constructor(config: SonarrConfig) {
+    const httpsAgent = createHttpsAgentForService('sonarr');
     this.client = axios.create({
       baseURL: config.baseUrl,
       headers: {
@@ -25,6 +27,7 @@ export class SonarrClient {
         'Content-Type': 'application/json',
       },
       timeout: 10000,
+      ...(httpsAgent ? { httpsAgent } : {}),
     });
   }
 
