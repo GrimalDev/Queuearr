@@ -157,7 +157,7 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
         source: 'sonarr',
       });
     } catch {
-      addAlert({ type: 'error', title: 'Grab failed', message: `Could not grab Season ${seasonNumber}.`, source: 'sonarr' });
+      addAlert({ type: 'error', title: 'Download failed', message: `Could not download Season ${seasonNumber}.`, source: 'sonarr' });
       // Only unblock on failure so the user can retry. On success the button
       // stays disabled until the sheet closes or the page refreshes.
       setGrabbingSeasons((prev) => { const n = new Set(prev); n.delete(seasonNumber); return n; });
@@ -186,7 +186,7 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
         source: 'sonarr',
       });
     } catch {
-      addAlert({ type: 'error', title: 'Grab failed', message: 'Could not grab episode.', source: 'sonarr' });
+      addAlert({ type: 'error', title: 'Download failed', message: 'Could not download episode.', source: 'sonarr' });
       // Only unblock on failure so the user can retry.
       setGrabbingEpisodes((prev) => { const n = new Set(prev); n.delete(ep.id); return n; });
     }
@@ -256,6 +256,9 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
         {/* Body */}
         <ScrollArea className="flex-1">
           <div className="p-4 space-y-2">
+            <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Choose only the season(s) you need. Completed seasons are marked and do not show a download action.
+            </div>
             {(loadingEpisodes || addingToLibrary) ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin" />
@@ -285,6 +288,10 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
                 }
 
                 const allDownloaded = total > 0 && downloaded === total;
+                const missingEpisodes = Math.max(total - downloaded, 0);
+                const seasonActionLabel = isInLibrary && total > 0
+                  ? `Download ${missingEpisodes} Missing`
+                  : 'Download Season';
 
                 return (
                   <div key={seasonNumber} className="rounded-lg border overflow-hidden">
@@ -312,6 +319,11 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
                               : `${total} episode${total !== 1 ? 's' : ''}`}
                           </span>
                         )}
+                        {isInLibrary && total > 0 && !allDownloaded && (
+                          <Badge variant="outline" className="text-xs py-0">
+                            {missingEpisodes} missing
+                          </Badge>
+                        )}
                         {allDownloaded && (
                           <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30 text-xs py-0">
                             <Check className="h-3 w-3 mr-1" />
@@ -331,7 +343,7 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
                           {isGrabbingSeason ? (
                             <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Searching…</>
                           ) : (
-                            <><Download className="h-3 w-3 mr-1" />Grab Season</>
+                            <><Download className="h-3 w-3 mr-1" />{seasonActionLabel}</>
                           )}
                         </Button>
                       )}

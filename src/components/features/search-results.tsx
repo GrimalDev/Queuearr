@@ -253,8 +253,8 @@ export function SearchResults() {
               </div>
 
               {result.type === 'series' ? (
-                /* ── Series: main grab button + secondary browse link ── */
-                <div className="space-y-1.5">
+                /* ── Series: season-first flow ── */
+                <div className="space-y-2">
                   {result.isDownloading ? (
                     <div className="flex gap-2">
                       <Button className="flex-1" variant="secondary" disabled>
@@ -274,27 +274,18 @@ export function SearchResults() {
                     <Button
                       className="w-full"
                       variant={result.inLibrary ? 'secondary' : 'default'}
-                      disabled={result.inLibrary || addingIds.has(result.id)}
-                      onClick={() => handleAdd(result)}
+                      onClick={() => setBrowsingSeries(result)}
                     >
-                      {addingIds.has(result.id) ? (
-                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Adding…</>
-                      ) : result.inLibrary ? (
-                        <><Check className="h-4 w-4 mr-2" />Already Added</>
+                      {result.inLibrary ? (
+                        <><List className="h-4 w-4 mr-2" />Choose Season(s)</>
                       ) : (
-                        <><Plus className="h-4 w-4 mr-2" />Grab Title</>
+                        <><List className="h-4 w-4 mr-2" />Pick Season(s) to Download</>
                       )}
                     </Button>
                   )}
-                  <Button
-                    className="w-full"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setBrowsingSeries(result)}
-                  >
-                    <List className="h-3.5 w-3.5 mr-1.5" />
-                    Browse Episodes
-                  </Button>
+                  <p className="px-1 text-xs text-muted-foreground">
+                    Download only the needed season(s) instead of grabbing the whole series.
+                  </p>
                 </div>
               ) : result.isDownloading ? (
                 /* ── Movie: currently downloading ── */
