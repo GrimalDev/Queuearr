@@ -348,6 +348,8 @@ function InviteUsersManager() {
   const [invitedUsers, setInvitedUsers] = useState<InvitedUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState<string | null>(null);
+  const [revokingEmail, setRevokingEmail] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -381,7 +383,8 @@ function InviteUsersManager() {
   }, [fetchData]);
 
   const handleInvite = async () => {
-    if (!email || !email.includes('@')) {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
       setMessage({ type: 'error', text: 'Please enter a valid email address.' });
       return;
     }
@@ -398,17 +401,27 @@ function InviteUsersManager() {
       const res = await fetch('/api/admin/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, librarySectionIds: selectedLibraries }),
+        body: JSON.stringify({ email: normalizedEmail, librarySectionIds: selectedLibraries }),
       });
 
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Invite sent successfully!' });
+        const result = await res.json();
+        setMessage({
+          type: 'success',
+          text: result.resent ? 'Invite re-sent successfully!' : 'Invite sent successfully!',
+        });
         setEmail('');
         setSelectedLibraries(libraries.map((lib) => lib.id));
-        fetchData();
+        await fetchData();
       } else {
         const errorData = await res.json().catch(() => ({}));
-        setMessage({ type: 'error', text: errorData.message || 'Failed to send invite.' });
+        setMessage({
+          type: 'error',
+          text: errorData.error || errorData.message || 'Failed to send invite.',
+        });
+        if (errorData.queuearrEmailSent) {
+          await fetchData();
+        }
       }
     } catch {
       setMessage({ type: 'error', text: 'An error occurred. Please try again.' });
@@ -420,18 +433,64 @@ function InviteUsersManager() {
   const handleRevoke = async (userEmail: string) => {
     if (!confirm(`Are you sure you want to revoke the invite for ${userEmail}?`)) return;
 
+    setRevokingEmail(userEmail);
+    setMessage(null);
+
     try {
       const res = await fetch(`/api/admin/invite?email=${encodeURIComponent(userEmail)}`, {
         method: 'DELETE',
       });
 
       if (res.ok) {
-        fetchData();
+        setMessage({ type: 'success', text: `Invite removed for ${userEmail}.` });
+        await fetchData();
       } else {
-        console.error('Failed to revoke invite');
+        const errorData = await res.json().catch(() => ({}));
+        setMessage({
+          type: 'error',
+          text: errorData.error || errorData.message || `Failed to revoke invite for ${userEmail}.`,
+        });
       }
     } catch (error) {
       console.error('Error revoking invite', error);
+      setMessage({ type: 'error', text: `Failed to revoke invite for ${userEmail}.` });
+    } finally {
+      setRevokingEmail(null);
+    }
+  };
+
+  const handleResend = async (userEmail: string) => {
+    setResendingEmail(userEmail);
+    setMessage(null);
+
+    try {
+      const res = await fetch('/api/admin/invite', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userEmail, resendInvite: true }),
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        setMessage({
+          type: 'success',
+          text: result.plexAlreadyShared
+            ? `Queuearr email sent and Plex already had access for ${userEmail}.`
+            : `Invite re-sent successfully to ${userEmail}.`,
+        });
+        await fetchData();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        setMessage({
+          type: 'error',
+          text: errorData.error || errorData.message || `Failed to resend invite to ${userEmail}.`,
+        });
+      }
+    } catch (error) {
+      console.error('Error resending invite', error);
+      setMessage({ type: 'error', text: `Failed to resend invite to ${userEmail}.` });
+    } finally {
+      setResendingEmail(null);
     }
   };
 
@@ -522,14 +581,36 @@ function InviteUsersManager() {
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <span>{user.email}</span>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-destructive hover:text-destructive"
-                  onClick={() => handleRevoke(user.email)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => handleResend(user.email)}
+                    disabled={resendingEmail === user.email || revokingEmail === user.email}
+                    title="Resend invite"
+                  >
+                    {resendingEmail === user.email ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:text-destructive"
+                    onClick={() => handleRevoke(user.email)}
+                    disabled={resendingEmail === user.email || revokingEmail === user.email}
+                    title="Delete invite"
+                  >
+                    {revokingEmail === user.email ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
             ))}
           </div>

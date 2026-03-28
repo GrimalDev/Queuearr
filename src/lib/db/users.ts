@@ -120,9 +120,14 @@ export async function deleteUser(id: string): Promise<void> {
 // Invited Users (Whitelist) Functions
 // ============================================================
 
+function normalizeInviteEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 export async function getInvitedUserByEmail(email: string): Promise<InvitedUser | undefined> {
+  const normalizedEmail = normalizeInviteEmail(email);
   return db.query.invitedUsers.findFirst({
-    where: eq(invitedUsers.email, email.toLowerCase()),
+    where: eq(invitedUsers.email, normalizedEmail),
   });
 }
 
@@ -130,9 +135,10 @@ export async function addInvitedUser(
   data: Omit<NewInvitedUser, 'id' | 'invitedAt'>
 ): Promise<InvitedUser> {
   const now = new Date();
+  const normalizedEmail = normalizeInviteEmail(data.email);
   const insertData = {
     ...data,
-    email: data.email.toLowerCase(),
+    email: normalizedEmail,
     invitedAt: now,
   };
   await db.insert(invitedUsers).values(insertData);
@@ -141,18 +147,56 @@ export async function addInvitedUser(
   }) as Promise<InvitedUser>;
 }
 
+export async function upsertInvitedUser(
+  data: Omit<NewInvitedUser, 'id' | 'invitedAt'>
+): Promise<InvitedUser> {
+  const now = new Date();
+  const normalizedEmail = normalizeInviteEmail(data.email);
+  const serializedLibraryIds = data.librarySectionIds ?? null;
+
+  await db
+    .insert(invitedUsers)
+    .values({
+      ...data,
+      email: normalizedEmail,
+      librarySectionIds: serializedLibraryIds,
+      invitedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: invitedUsers.email,
+      set: {
+        librarySectionIds: serializedLibraryIds,
+        invitedBy: data.invitedBy,
+        plexInviteSent: data.plexInviteSent ?? false,
+        invitedAt: now,
+      },
+    });
+
+  const invitedUser = await db.query.invitedUsers.findFirst({
+    where: eq(invitedUsers.email, normalizedEmail),
+  });
+
+  if (!invitedUser) {
+    throw new Error('Failed to upsert invited user');
+  }
+
+  return invitedUser;
+}
+
 export async function updateInvitedUser(
   email: string,
   data: Partial<NewInvitedUser>
 ): Promise<void> {
+  const normalizedEmail = normalizeInviteEmail(email);
   await db
     .update(invitedUsers)
     .set(data)
-    .where(eq(invitedUsers.email, email.toLowerCase()));
+    .where(eq(invitedUsers.email, normalizedEmail));
 }
 
 export async function deleteInvitedUser(email: string): Promise<void> {
-  await db.delete(invitedUsers).where(eq(invitedUsers.email, email.toLowerCase()));
+  const normalizedEmail = normalizeInviteEmail(email);
+  await db.delete(invitedUsers).where(eq(invitedUsers.email, normalizedEmail));
 }
 
 export async function getInvitedUsers(opts: {
@@ -177,8 +221,9 @@ export async function getInvitedUsers(opts: {
 }
 
 export async function isEmailInvited(email: string): Promise<boolean> {
+  const normalizedEmail = normalizeInviteEmail(email);
   const invited = await db.query.invitedUsers.findFirst({
-    where: eq(invitedUsers.email, email.toLowerCase()),
+    where: eq(invitedUsers.email, normalizedEmail),
   });
   return !!invited;
 }

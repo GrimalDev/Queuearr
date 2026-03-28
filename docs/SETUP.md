@@ -95,6 +95,25 @@ If any service shows “Not configured” or “Error”, verify the URL and API
 
 ## 7. Common issues
 
+### Invite email fails with SMTP errors
+
+Queuearr now sends its own invitation email before sending the Plex share invite.
+Configure these environment variables in `.env` (or docker env):
+
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_SECURE` (`true` for implicit TLS, usually port `465`; otherwise `false`)
+- `SMTP_USER`
+- `SMTP_PASS`
+- `SMTP_FROM` (for example `Queuearr <no-reply@your-domain.com>`)
+- `NEXTAUTH_URL` (must be set to your public Queuearr URL; required for invite email links)
+
+If these are missing/invalid, admin invite endpoints return an explicit configuration error.
+
+If Queuearr email delivery succeeds but Plex invite delivery fails, Queuearr keeps the invite entry and reports a retry message. Use the **Resend** button in Settings → Invite Users to retry Plex delivery.
+
+Legacy invites created before this change may not have explicit library IDs stored. In that case, resend keeps legacy behavior (all libraries) and returns a compatibility flag to the client.
+
 ### “Radarr/Sonarr not configured”
 
 Double‑check the URL and API key. Then restart the app.

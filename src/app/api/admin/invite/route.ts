@@ -3,14 +3,115 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getPlexAdminClient } from '@/lib/api/plex';
 import {
-  addInvitedUser,
+  upsertInvitedUser,
   getInvitedUserByEmail,
   updateInvitedUser,
   getInvitedUsers,
   deleteInvitedUser,
 } from '@/lib/db/users';
+import {
+  InviteEmailConfigurationError,
+  sendQueuearrInviteEmail,
+} from '@/lib/email/invite';
 
 const DEFAULT_LIMIT = 10;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeInviteEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function resolveQueuearrUrl(): string {
+  const configuredUrl = process.env.NEXTAUTH_URL?.trim();
+  if (!configuredUrl) {
+    throw new InviteEmailConfigurationError('NEXTAUTH_URL is required for invite emails');
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(configuredUrl);
+  } catch {
+    throw new InviteEmailConfigurationError('NEXTAUTH_URL must be a valid absolute URL');
+  }
+
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new InviteEmailConfigurationError('NEXTAUTH_URL must use http or https');
+  }
+
+  const normalizedUrl = parsedUrl.toString();
+  return normalizedUrl.endsWith('/') ? normalizedUrl.slice(0, -1) : normalizedUrl;
+}
+
+function parseLibrarySectionIds(
+  librarySectionIds: unknown
+): { valid: true; values?: number[] } | { valid: false; error: string } {
+  if (librarySectionIds === undefined) {
+    return { valid: true };
+  }
+
+  if (!Array.isArray(librarySectionIds)) {
+    return { valid: false, error: 'librarySectionIds must be an array of integers' };
+  }
+
+  if (librarySectionIds.length === 0) {
+    return { valid: false, error: 'Please select at least one library' };
+  }
+
+  const normalizedIds = librarySectionIds.map((id) => Number(id));
+  const hasInvalidId = normalizedIds.some((id) => !Number.isInteger(id) || id <= 0);
+  if (hasInvalidId) {
+    return { valid: false, error: 'librarySectionIds must contain only positive integers' };
+  }
+
+  return { valid: true, values: [...new Set(normalizedIds)] };
+}
+
+function parseStoredLibrarySectionIds(
+  serializedIds: string | null,
+  options?: { allowLegacyAllLibraries?: boolean }
+): { valid: true; values: number[]; usedLegacyAllLibraries?: boolean } | { valid: false; error: string } {
+  const allowLegacyAllLibraries = options?.allowLegacyAllLibraries ?? false;
+
+  if (!serializedIds) {
+    if (allowLegacyAllLibraries) {
+      return { valid: true, values: [], usedLegacyAllLibraries: true };
+    }
+    return {
+      valid: false,
+      error: 'No libraries configured for this invite. Please select libraries before resending.',
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(serializedIds) as unknown;
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      if (allowLegacyAllLibraries) {
+        return { valid: true, values: [], usedLegacyAllLibraries: true };
+      }
+      return {
+        valid: false,
+        error: 'No libraries configured for this invite. Please select libraries before resending.',
+      };
+    }
+
+    const normalizedIds = parsed.map((id) => Number(id));
+    const hasInvalidId = normalizedIds.some((id) => !Number.isInteger(id) || id <= 0);
+    if (hasInvalidId) {
+      return {
+        valid: false,
+        error: 'Stored invite libraries are invalid. Please set libraries and resend.',
+      };
+    }
+
+    return { valid: true, values: [...new Set(normalizedIds)], usedLegacyAllLibraries: false };
+  } catch (error) {
+    console.error('Failed to parse stored library section ids:', error);
+    return {
+      valid: false,
+      error: 'Stored invite libraries are invalid. Please set libraries and resend.',
+    };
+  }
+}
 
 // GET /api/admin/invite - List invited users
 export async function GET(request: NextRequest) {
@@ -40,43 +141,89 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { email, librarySectionIds } = body as {
       email: string;
-      librarySectionIds?: number[];
+      librarySectionIds?: unknown;
     };
 
     if (!email || typeof email !== 'string') {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
+    const normalizedEmail = normalizeInviteEmail(email);
+
     // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
       return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
-    // Check if already invited
-    const existing = await getInvitedUserByEmail(email);
-    if (existing) {
+    const parsedLibrarySectionIds = parseLibrarySectionIds(librarySectionIds);
+    if (!parsedLibrarySectionIds.valid) {
+      return NextResponse.json({ error: parsedLibrarySectionIds.error }, { status: 400 });
+    }
+
+    const existing = await getInvitedUserByEmail(normalizedEmail);
+    let effectiveLibrarySectionIds = parsedLibrarySectionIds.values;
+    if (!effectiveLibrarySectionIds) {
+      if (!existing) {
+        return NextResponse.json(
+          { error: 'Please select at least one library' },
+          { status: 400 }
+        );
+      }
+
+      const parsedStoredLibraryIds = parseStoredLibrarySectionIds(existing.librarySectionIds ?? null);
+      if (!parsedStoredLibraryIds.valid) {
+        return NextResponse.json({ error: parsedStoredLibraryIds.error }, { status: 400 });
+      }
+      effectiveLibrarySectionIds = parsedStoredLibraryIds.values;
+    }
+
+    try {
+      const queuearrUrl = resolveQueuearrUrl();
+      await sendQueuearrInviteEmail({
+        to: normalizedEmail,
+        queuearrUrl,
+      });
+    } catch (error) {
+      console.error('Failed to send Queuearr invite email:', error);
+      if (error instanceof InviteEmailConfigurationError) {
+        return NextResponse.json(
+          { error: 'Invite email is not configured. Check SMTP and NEXTAUTH_URL settings.' },
+          { status: 500 }
+        );
+      }
       return NextResponse.json(
-        { error: 'User already invited', existing },
-        { status: 409 }
+        { error: 'Failed to send Queuearr invite email' },
+        { status: 502 }
       );
     }
 
-    // Send Plex invite
+    // Send Plex invite after Queuearr email
     const plexClient = getPlexAdminClient();
-    const shareResult = await plexClient.shareLibrary(email, librarySectionIds || []);
+    const shareResult = await plexClient.shareLibrary(normalizedEmail, effectiveLibrarySectionIds);
 
     if (!shareResult.success) {
+      await upsertInvitedUser({
+        email: normalizedEmail,
+        librarySectionIds:
+          JSON.stringify(effectiveLibrarySectionIds),
+        invitedBy: session.user.id,
+        plexInviteSent: false,
+      });
+
       return NextResponse.json(
-        { error: shareResult.message || 'Failed to send Plex invite' },
-        { status: 500 }
+        {
+          error: 'Queuearr email was sent, but Plex invite failed. Use Resend to retry Plex delivery.',
+          queuearrEmailSent: true,
+          plexInviteSent: false,
+        },
+        { status: 502 }
       );
     }
 
-    // Add to whitelist
-    const invitedUser = await addInvitedUser({
-      email,
-      librarySectionIds: librarySectionIds ? JSON.stringify(librarySectionIds) : null,
+    // Upsert whitelist entry to support reliable re-invite/resend
+    const invitedUser = await upsertInvitedUser({
+      email: normalizedEmail,
+      librarySectionIds: JSON.stringify(effectiveLibrarySectionIds),
       invitedBy: session.user.id,
       plexInviteSent: true,
     });
@@ -84,6 +231,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       invitedUser,
+      resent: !!existing,
       plexAlreadyShared: shareResult.alreadyShared,
     });
   } catch (error) {
@@ -106,16 +254,17 @@ export async function DELETE(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const email = searchParams.get('email');
 
-  if (!email) {
+  if (!email || typeof email !== 'string') {
     return NextResponse.json({ error: 'Email is required' }, { status: 400 });
   }
 
-  const existing = await getInvitedUserByEmail(email);
+  const normalizedEmail = normalizeInviteEmail(email);
+  const existing = await getInvitedUserByEmail(normalizedEmail);
   if (!existing) {
     return NextResponse.json({ error: 'Invited user not found' }, { status: 404 });
   }
 
-  await deleteInvitedUser(email);
+  await deleteInvitedUser(normalizedEmail);
 
   return NextResponse.json({ success: true });
 }
@@ -132,43 +281,111 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { email, librarySectionIds, resendInvite } = body as {
       email: string;
-      librarySectionIds?: number[];
+      librarySectionIds?: unknown;
       resendInvite?: boolean;
     };
 
-    if (!email) {
+    if (!email || typeof email !== 'string') {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
-    const existing = await getInvitedUserByEmail(email);
+    const normalizedEmail = normalizeInviteEmail(email);
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
+    }
+
+    const parsedLibrarySectionIds = parseLibrarySectionIds(librarySectionIds);
+    if (!parsedLibrarySectionIds.valid) {
+      return NextResponse.json({ error: parsedLibrarySectionIds.error }, { status: 400 });
+    }
+
+    const existing = await getInvitedUserByEmail(normalizedEmail);
     if (!existing) {
       return NextResponse.json({ error: 'Invited user not found' }, { status: 404 });
     }
 
+    let effectiveLibrarySectionIds = parsedLibrarySectionIds.values;
+    let legacyAllLibrariesFallback = false;
+    if (resendInvite && !effectiveLibrarySectionIds) {
+      const parsedStoredLibraryIds = parseStoredLibrarySectionIds(existing.librarySectionIds ?? null, {
+        allowLegacyAllLibraries: true,
+      });
+      if (!parsedStoredLibraryIds.valid) {
+        return NextResponse.json({ error: parsedStoredLibraryIds.error }, { status: 400 });
+      }
+      effectiveLibrarySectionIds = parsedStoredLibraryIds.values;
+      legacyAllLibrariesFallback = !!parsedStoredLibraryIds.usedLegacyAllLibraries;
+    }
+
+    let plexAlreadyShared = false;
+
     // Resend Plex invite if requested
     if (resendInvite) {
-      const plexClient = getPlexAdminClient();
-      const shareResult = await plexClient.shareLibrary(
-        email,
-        librarySectionIds || (existing.librarySectionIds ? JSON.parse(existing.librarySectionIds) : [])
-      );
-
-      if (!shareResult.success && !shareResult.alreadyShared) {
+      try {
+        const queuearrUrl = resolveQueuearrUrl();
+        await sendQueuearrInviteEmail({
+          to: normalizedEmail,
+          queuearrUrl,
+        });
+      } catch (error) {
+        console.error('Failed to send Queuearr invite email:', error);
+        if (error instanceof InviteEmailConfigurationError) {
+          return NextResponse.json(
+            { error: 'Invite email is not configured. Check SMTP and NEXTAUTH_URL settings.' },
+            { status: 500 }
+          );
+        }
         return NextResponse.json(
-          { error: shareResult.message || 'Failed to resend Plex invite' },
-          { status: 500 }
+          { error: 'Failed to send Queuearr invite email' },
+          { status: 502 }
         );
       }
+
+      const plexClient = getPlexAdminClient();
+      const shareResult = await plexClient.shareLibrary(
+        normalizedEmail,
+        effectiveLibrarySectionIds ?? []
+      );
+
+      if (!shareResult.success) {
+        await updateInvitedUser(normalizedEmail, {
+          librarySectionIds:
+            JSON.stringify(effectiveLibrarySectionIds ?? []),
+          invitedAt: new Date(),
+          invitedBy: session.user.id,
+          plexInviteSent: false,
+        });
+
+        return NextResponse.json(
+          {
+            error: 'Queuearr email was sent, but Plex invite failed. Use Resend to retry Plex delivery.',
+            queuearrEmailSent: true,
+            plexInviteSent: false,
+            legacyAllLibrariesFallback,
+          },
+          { status: 502 }
+        );
+      }
+
+      plexAlreadyShared = !!shareResult.alreadyShared;
     }
 
     // Update whitelist entry
-    if (librarySectionIds !== undefined) {
-      await updateInvitedUser(email, {
-        librarySectionIds: JSON.stringify(librarySectionIds),
+    if (parsedLibrarySectionIds.values !== undefined || resendInvite) {
+      await updateInvitedUser(normalizedEmail, {
+        librarySectionIds:
+          JSON.stringify(effectiveLibrarySectionIds ?? []),
+        invitedAt: resendInvite ? new Date() : existing.invitedAt,
+        invitedBy: session.user.id,
+        plexInviteSent: resendInvite ? true : existing.plexInviteSent,
       });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      plexAlreadyShared,
+      legacyAllLibrariesFallback,
+    });
   } catch (error) {
     console.error('Failed to update invited user:', error);
     return NextResponse.json(
