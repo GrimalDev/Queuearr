@@ -21,6 +21,29 @@ function normalizeInviteEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+function isAlreadySharedOrInvitedFailure(result: { message?: string }): boolean {
+  const message = result.message?.toLowerCase() ?? '';
+  if (!message) return false;
+  const hints = [
+    'already shared',
+    'already invited',
+    'already has access',
+    'has already been shared',
+    'has already been invited',
+  ];
+  return hints.some((hint) => message.includes(hint));
+}
+
+function matchesSharedEmail(
+  sharedUser: { email: string | null | undefined },
+  normalizedEmail: string
+): boolean {
+  if (!sharedUser.email || typeof sharedUser.email !== 'string') {
+    return false;
+  }
+  return normalizeInviteEmail(sharedUser.email) === normalizedEmail;
+}
+
 function resolveQueuearrUrl(): string {
   const configuredUrl = process.env.NEXTAUTH_URL?.trim();
   if (!configuredUrl) {
@@ -199,7 +222,25 @@ export async function POST(request: NextRequest) {
 
     // Send Plex invite after Queuearr email
     const plexClient = getPlexAdminClient();
-    const shareResult = await plexClient.shareLibrary(normalizedEmail, effectiveLibrarySectionIds);
+    let shareResult = await plexClient.shareLibrary(normalizedEmail, effectiveLibrarySectionIds);
+
+    if (!shareResult.success && isAlreadySharedOrInvitedFailure(shareResult)) {
+      try {
+        const sharedUsers = await plexClient.getSharedUsers();
+        const alreadyShared = sharedUsers.some(
+          (sharedUser) => matchesSharedEmail(sharedUser, normalizedEmail)
+        );
+        if (alreadyShared) {
+          shareResult = {
+            success: true,
+            alreadyShared: true,
+            message: 'Already shared with this user',
+          };
+        }
+      } catch (error) {
+        console.error('Failed to verify existing Plex share after invite failure:', error);
+      }
+    }
 
     if (!shareResult.success) {
       await upsertInvitedUser({
@@ -232,6 +273,8 @@ export async function POST(request: NextRequest) {
       success: true,
       invitedUser,
       resent: !!existing,
+      queuearrEmailSent: true,
+      plexInviteSent: true,
       plexAlreadyShared: shareResult.alreadyShared,
     });
   } catch (error) {
@@ -262,6 +305,30 @@ export async function DELETE(request: NextRequest) {
   const existing = await getInvitedUserByEmail(normalizedEmail);
   if (!existing) {
     return NextResponse.json({ error: 'Invited user not found' }, { status: 404 });
+  }
+
+    try {
+      const plexClient = getPlexAdminClient();
+      const sharedUsers = await plexClient.getSharedUsers();
+      const sharedUser = sharedUsers.find(
+      (user) => matchesSharedEmail(user, normalizedEmail)
+      );
+
+    if (sharedUser) {
+      const removed = await plexClient.removeShare(sharedUser.id);
+      if (!removed) {
+        return NextResponse.json(
+          { error: 'Failed to revoke Plex library access for this invite. Please retry.' },
+          { status: 502 }
+        );
+      }
+    }
+  } catch (error) {
+    console.error('Failed while revoking Plex share during invite deletion:', error);
+    return NextResponse.json(
+      { error: 'Failed to validate/revoke Plex share for this invite. Please retry.' },
+      { status: 502 }
+    );
   }
 
   await deleteInvitedUser(normalizedEmail);
@@ -342,10 +409,28 @@ export async function PATCH(request: NextRequest) {
       }
 
       const plexClient = getPlexAdminClient();
-      const shareResult = await plexClient.shareLibrary(
+      let shareResult = await plexClient.shareLibrary(
         normalizedEmail,
         effectiveLibrarySectionIds ?? []
       );
+
+      if (!shareResult.success && isAlreadySharedOrInvitedFailure(shareResult)) {
+        try {
+          const sharedUsers = await plexClient.getSharedUsers();
+          const alreadyShared = sharedUsers.some(
+            (sharedUser) => matchesSharedEmail(sharedUser, normalizedEmail)
+          );
+          if (alreadyShared) {
+            shareResult = {
+              success: true,
+              alreadyShared: true,
+              message: 'Already shared with this user',
+            };
+          }
+        } catch (error) {
+          console.error('Failed to verify existing Plex share after resend failure:', error);
+        }
+      }
 
       if (!shareResult.success) {
         await updateInvitedUser(normalizedEmail, {
@@ -383,6 +468,8 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      queuearrEmailSent: resendInvite ? true : undefined,
+      plexInviteSent: resendInvite ? true : undefined,
       plexAlreadyShared,
       legacyAllLibrariesFallback,
     });

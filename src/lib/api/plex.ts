@@ -272,10 +272,33 @@ export class PlexAdminClient {
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;
         const data = error.response?.data;
+        const rawMessage =
+          typeof data === 'string'
+            ? data
+            : data
+              ? JSON.stringify(data)
+              : '';
+        const normalizedMessage = rawMessage.toLowerCase();
+        const alreadySharedMessageHints = [
+          'already shared',
+          'already invited',
+          'already has access',
+          'has already been shared',
+          'has already been invited',
+        ];
+        const hasAlreadySharedHint = alreadySharedMessageHints.some((hint) =>
+          normalizedMessage.includes(hint)
+        );
 
         if (status === 422) {
           // Already shared with this user
           return { success: true, alreadyShared: true, message: 'Already shared with this user' };
+        }
+        if ((status === 400 || status === 409) && hasAlreadySharedHint) {
+          return {
+            success: false,
+            message: rawMessage || 'Possible already shared or invited',
+          };
         }
         if (status === 401) {
           return { success: false, message: 'Invalid admin token' };
@@ -300,15 +323,61 @@ export class PlexAdminClient {
       const data = response.data;
       
       if (data.MediaContainer?.SharedServer) {
-        return data.MediaContainer.SharedServer.map((s: { id: number; email: string; username: string }) => ({
-          id: s.id,
-          email: s.email,
-          username: s.username,
-        }));
+        return data.MediaContainer.SharedServer
+          .map((s: { id: number; email?: string; username?: string }) => ({
+            id: Number.parseInt(String(s.id), 10),
+            email: typeof s.email === 'string' ? s.email : '',
+            username: typeof s.username === 'string' ? s.username : '',
+          }))
+          .filter((s: { id: number; email: string; username: string }) => Number.isInteger(s.id) && s.id > 0);
       }
+
+      // Fallback for XML responses from plex.tv API
+      if (typeof data === 'string' && data.includes('<MediaContainer')) {
+        const sharedUsers: Array<{ id: number; email: string; username: string }> = [];
+        const sharedServerRegex = /<SharedServer\b([^>]*)\/?>/g;
+        const attrRegex = /(\w+)="([^"]*)"/g;
+        let sharedMatch: RegExpExecArray | null;
+
+        while ((sharedMatch = sharedServerRegex.exec(data)) !== null) {
+          const attrs = sharedMatch[1];
+          let id = 0;
+          let email = '';
+          let username = '';
+          let attrMatch: RegExpExecArray | null;
+
+          while ((attrMatch = attrRegex.exec(attrs)) !== null) {
+            const key = attrMatch[1];
+            const value = attrMatch[2];
+            if (key === 'id') id = Number.parseInt(value, 10);
+            if (key === 'email') email = value;
+            if (key === 'username') username = value;
+          }
+
+          if (Number.isInteger(id) && id > 0 && email) {
+            sharedUsers.push({ id, email, username });
+          }
+        }
+
+        return sharedUsers;
+      }
+
       return [];
-    } catch {
-      return [];
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        const data = error.response?.data;
+        const message =
+          typeof data === 'string'
+            ? data
+            : data
+              ? JSON.stringify(data)
+              : error.message;
+        throw new Error(
+          `Failed to fetch Plex shared users${status ? ` (${status})` : ''}: ${message}`
+        );
+      }
+      throw error;
     }
   }
 

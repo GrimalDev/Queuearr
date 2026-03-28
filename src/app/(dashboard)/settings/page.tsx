@@ -406,9 +406,13 @@ function InviteUsersManager() {
 
       if (res.ok) {
         const result = await res.json();
+        const baseText = result.resent ? 'Invite re-sent successfully!' : 'Invite sent successfully!';
+        const detailText = result.plexAlreadyShared
+          ? ' Plex already had access for this email.'
+          : '';
         setMessage({
           type: 'success',
-          text: result.resent ? 'Invite re-sent successfully!' : 'Invite sent successfully!',
+          text: `${baseText}${detailText}`,
         });
         setEmail('');
         setSelectedLibraries(libraries.map((lib) => lib.id));

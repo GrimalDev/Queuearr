@@ -111,6 +111,7 @@ Configure these environment variables in `.env` (or docker env):
 If these are missing/invalid, admin invite endpoints return an explicit configuration error.
 
 If Queuearr email delivery succeeds but Plex invite delivery fails, Queuearr keeps the invite entry and reports a retry message. Use the **Resend** button in Settings → Invite Users to retry Plex delivery.
+Deleting an invite now also attempts to revoke existing Plex share access for that email before removing the Queuearr invite record.
 
 Legacy invites created before this change may not have explicit library IDs stored. In that case, resend keeps legacy behavior (all libraries) and returns a compatibility flag to the client.
 
