@@ -409,7 +409,9 @@ function InviteUsersManager() {
         const baseText = result.resent ? 'Invite re-sent successfully!' : 'Invite sent successfully!';
         const detailText = result.plexAlreadyShared
           ? ' Plex already had access for this email.'
-          : '';
+          : result.plexAlreadyInvited
+            ? ' Plex invite is already pending for this email.'
+            : '';
         setMessage({
           type: 'success',
           text: `${baseText}${detailText}`,
@@ -480,7 +482,9 @@ function InviteUsersManager() {
           type: 'success',
           text: result.plexAlreadyShared
             ? `Queuearr email sent and Plex already had access for ${userEmail}.`
-            : `Invite re-sent successfully to ${userEmail}.`,
+            : result.plexAlreadyInvited
+              ? `Queuearr email sent and Plex invite is already pending for ${userEmail}.`
+              : `Invite re-sent successfully to ${userEmail}.`,
         });
         await fetchData();
       } else {

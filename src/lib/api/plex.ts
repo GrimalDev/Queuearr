@@ -152,6 +152,7 @@ export interface PlexShareResult {
   success: boolean;
   message?: string;
   alreadyShared?: boolean;
+  alreadyInvited?: boolean;
 }
 
 export class PlexAdminClient {
@@ -281,18 +282,32 @@ export class PlexAdminClient {
         const normalizedMessage = rawMessage.toLowerCase();
         const alreadySharedMessageHints = [
           'already shared',
-          'already invited',
           'already has access',
           'has already been shared',
+        ];
+        const alreadyInvitedMessageHints = [
+          'already invited',
           'has already been invited',
+          'invitation already sent',
+          'pending invitation',
         ];
         const hasAlreadySharedHint = alreadySharedMessageHints.some((hint) =>
+          normalizedMessage.includes(hint)
+        );
+        const hasAlreadyInvitedHint = alreadyInvitedMessageHints.some((hint) =>
           normalizedMessage.includes(hint)
         );
 
         if (status === 422) {
           // Already shared with this user
           return { success: true, alreadyShared: true, message: 'Already shared with this user' };
+        }
+        if ((status === 400 || status === 409) && hasAlreadyInvitedHint) {
+          return {
+            success: true,
+            alreadyInvited: true,
+            message: rawMessage || 'Plex invitation already pending for this user',
+          };
         }
         if ((status === 400 || status === 409) && hasAlreadySharedHint) {
           return {
