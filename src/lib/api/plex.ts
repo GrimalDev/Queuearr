@@ -298,7 +298,7 @@ export class PlexAdminClient {
           normalizedMessage.includes(hint)
         );
 
-        if (status === 422) {
+        if (status === 422 || ((status === 400 || status === 409) && hasAlreadySharedHint)) {
           // Already shared with this user
           return { success: true, alreadyShared: true, message: 'Already shared with this user' };
         }
@@ -307,12 +307,6 @@ export class PlexAdminClient {
             success: true,
             alreadyInvited: true,
             message: rawMessage || 'Plex invitation already pending for this user',
-          };
-        }
-        if ((status === 400 || status === 409) && hasAlreadySharedHint) {
-          return {
-            success: false,
-            message: rawMessage || 'Possible already shared or invited',
           };
         }
         if (status === 401) {
@@ -404,6 +398,95 @@ export class PlexAdminClient {
 
     try {
       await axios.delete(url, { headers: this.headers });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get list of pending (not-yet-accepted) invitations sent by the admin.
+   * These live at a different endpoint than accepted shares.
+   */
+  async getPendingInvites(): Promise<Array<{ id: number; email: string; username: string }>> {
+    const url = `${PLEX_TV_API}/invites/requested`;
+
+    try {
+      const response = await axios.get(url, { headers: this.headers });
+      const data = response.data;
+
+      // JSON response
+      if (typeof data === 'object' && data !== null && data.MediaContainer?.Invite) {
+        return (data.MediaContainer.Invite as Array<{ id: number; email?: string; username?: string }>)
+          .map((invite) => ({
+            id: Number(invite.id),
+            email: typeof invite.email === 'string' ? invite.email : '',
+            username: typeof invite.username === 'string' ? invite.username : '',
+          }))
+          .filter((invite) => Number.isInteger(invite.id) && invite.id > 0);
+      }
+
+      // XML response fallback
+      if (typeof data === 'string' && data.includes('<MediaContainer')) {
+        const pendingInvites: Array<{ id: number; email: string; username: string }> = [];
+        const inviteRegex = /<Invite\b([^>]*)\/?>/g;
+        const attrRegex = /(\w+)="([^"]*)"/g;
+        let inviteMatch: RegExpExecArray | null;
+
+        while ((inviteMatch = inviteRegex.exec(data)) !== null) {
+          const attrs = inviteMatch[1];
+          let id = 0;
+          let email = '';
+          let username = '';
+          let attrMatch: RegExpExecArray | null;
+          attrRegex.lastIndex = 0;
+
+          while ((attrMatch = attrRegex.exec(attrs)) !== null) {
+            const key = attrMatch[1];
+            const value = attrMatch[2];
+            if (key === 'id') id = Number.parseInt(value, 10);
+            if (key === 'email') email = value;
+            if (key === 'username') username = value;
+          }
+
+          if (Number.isInteger(id) && id > 0) {
+            pendingInvites.push({ id, email, username });
+          }
+        }
+
+        return pendingInvites;
+      }
+
+      return [];
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        const data = error.response?.data;
+        const message =
+          typeof data === 'string'
+            ? data
+            : data
+              ? JSON.stringify(data)
+              : error.message;
+        throw new Error(
+          `Failed to fetch pending Plex invites${status ? ` (${status})` : ''}: ${message}`
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Cancel a pending (not-yet-accepted) Plex invitation by its invite ID.
+   */
+  async cancelPendingInvite(inviteId: number): Promise<boolean> {
+    const url = `${PLEX_TV_API}/invites/requested/${inviteId}`;
+
+    try {
+      await axios.delete(url, {
+        headers: this.headers,
+        params: { friend: 1, home: 0, server: 1 },
+      });
       return true;
     } catch {
       return false;

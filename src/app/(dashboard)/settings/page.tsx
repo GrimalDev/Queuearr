@@ -528,6 +528,14 @@ function InviteUsersManager() {
               placeholder="user@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  if (!isSending) {
+                    void handleInvite();
+                  }
+                }
+              }}
               className="flex-1"
             />
             <Button onClick={handleInvite} disabled={isSending}>

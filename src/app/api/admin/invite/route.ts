@@ -331,27 +331,36 @@ export async function DELETE(request: NextRequest) {
 
     try {
       const plexClient = getPlexAdminClient();
-      const sharedUsers = await plexClient.getSharedUsers();
-      const sharedUser = sharedUsers.find(
-      (user) => matchesSharedEmail(user, normalizedEmail)
-      );
 
-    if (sharedUser) {
-      const removed = await plexClient.removeShare(sharedUser.id);
-      if (!removed) {
-        return NextResponse.json(
-          { error: 'Failed to revoke Plex library access for this invite. Please retry.' },
-          { status: 502 }
-        );
+      const [sharedUsers, pendingInvites] = await Promise.all([
+        plexClient.getSharedUsers(),
+        plexClient.getPendingInvites(),
+      ]);
+
+      const sharedUser = sharedUsers.find((user) => matchesSharedEmail(user, normalizedEmail));
+      if (sharedUser) {
+        const removed = await plexClient.removeShare(sharedUser.id);
+        if (!removed) {
+          return NextResponse.json(
+            { error: 'Failed to revoke Plex library access for this invite. Please retry.' },
+            { status: 502 }
+          );
+        }
       }
+
+      const pendingInvite = pendingInvites.find((invite) =>
+        matchesSharedEmail(invite, normalizedEmail)
+      );
+      if (pendingInvite) {
+        await plexClient.cancelPendingInvite(pendingInvite.id);
+      }
+    } catch (error) {
+      console.error('Failed while revoking Plex share during invite deletion:', error);
+      return NextResponse.json(
+        { error: 'Failed to validate/revoke Plex share for this invite. Please retry.' },
+        { status: 502 }
+      );
     }
-  } catch (error) {
-    console.error('Failed while revoking Plex share during invite deletion:', error);
-    return NextResponse.json(
-      { error: 'Failed to validate/revoke Plex share for this invite. Please retry.' },
-      { status: 502 }
-    );
-  }
 
   await deleteInvitedUser(normalizedEmail);
 
