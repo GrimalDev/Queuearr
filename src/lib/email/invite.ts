@@ -69,6 +69,21 @@ function buildInviteText(queuearrUrl: string): string {
     `3) Open Queuearr and sign in with Plex: ${queuearrUrl}`,
     '',
     'If you do step 3 before accepting the Plex invite, your access may not be ready yet.',
+    '',
+    '---',
+    'TIP: Add Queuearr to your home screen for a native app experience.',
+    '',
+    'On iPhone / iPad (Safari):',
+    `  1. Open ${queuearrUrl} in Safari`,
+    '  2. Tap the Share button (rectangle with arrow at the bottom)',
+    '  3. Scroll down and tap "Add to Home Screen"',
+    '  4. Tap "Add" — Queuearr will appear on your home screen',
+    '',
+    'On Android (Chrome):',
+    `  1. Open ${queuearrUrl} in Chrome`,
+    '  2. Tap the three-dot menu (⋮) in the top-right corner',
+    '  3. Tap "Add to Home screen"',
+    '  4. Tap "Add" — Queuearr will appear on your home screen',
   ].join('\n');
 }
 
@@ -82,6 +97,33 @@ function buildInviteHtml(queuearrUrl: string): string {
       <li>Open Queuearr and sign in with Plex: <a href="${queuearrUrl}">${queuearrUrl}</a></li>
     </ol>
     <p>If you do step 3 before accepting the Plex invite, your access may not be ready yet.</p>
+
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0" />
+
+    <p><strong>💡 Tip: Add Queuearr to your home screen</strong> for a native app-like experience.</p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+      <tr>
+        <td width="50%" valign="top" style="padding-right:12px">
+          <p style="margin:0 0 6px"><strong>🍎 iPhone / iPad (Safari)</strong></p>
+          <ol style="margin:0;padding-left:20px;line-height:1.7">
+            <li>Open <a href="${queuearrUrl}">${queuearrUrl}</a> in <strong>Safari</strong></li>
+            <li>Tap the <strong>Share</strong> button (rectangle with arrow at the bottom of the screen)</li>
+            <li>Scroll down and tap <strong>"Add to Home Screen"</strong></li>
+            <li>Tap <strong>"Add"</strong> — Queuearr will appear on your home screen</li>
+          </ol>
+        </td>
+        <td width="50%" valign="top" style="padding-left:12px">
+          <p style="margin:0 0 6px"><strong>🤖 Android (Chrome)</strong></p>
+          <ol style="margin:0;padding-left:20px;line-height:1.7">
+            <li>Open <a href="${queuearrUrl}">${queuearrUrl}</a> in <strong>Chrome</strong></li>
+            <li>Tap the <strong>three-dot menu (⋮)</strong> in the top-right corner</li>
+            <li>Tap <strong>"Add to Home screen"</strong></li>
+            <li>Tap <strong>"Add"</strong> — Queuearr will appear on your home screen</li>
+          </ol>
+        </td>
+      </tr>
+    </table>
   `;
 }
 

@@ -275,6 +275,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: 'Queuearr email was sent, but Plex invite failed. Use Resend to retry Plex delivery.',
+          plexError: shareResult.message ?? null,
           queuearrEmailSent: true,
           plexInviteSent: false,
         },
@@ -484,6 +485,7 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json(
           {
             error: 'Queuearr email was sent, but Plex invite failed. Use Resend to retry Plex delivery.',
+            plexError: shareResult.message ?? null,
             queuearrEmailSent: true,
             plexInviteSent: false,
             legacyAllLibrariesFallback,
