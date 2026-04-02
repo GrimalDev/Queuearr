@@ -284,6 +284,8 @@ export class PlexAdminClient {
           'already shared',
           'already has access',
           'has already been shared',
+          'sharing this server',
+          'please edit your existing share',
         ];
         const alreadyInvitedMessageHints = [
           'already invited',
