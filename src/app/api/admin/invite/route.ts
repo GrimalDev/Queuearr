@@ -223,12 +223,23 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send Queuearr invite email:', error);
       if (error instanceof InviteEmailConfigurationError) {
         return NextResponse.json(
-          { error: 'Invite email is not configured. Check SMTP and NEXTAUTH_URL settings.' },
+          {
+            error: 'Invite email is not configured. Check SMTP and NEXTAUTH_URL settings.',
+            emailError: error.message,
+            queuearrEmailSent: false,
+            plexInviteSent: false,
+          },
           { status: 500 }
         );
       }
+      const emailError = error instanceof Error ? error.message : 'Unknown SMTP error';
       return NextResponse.json(
-        { error: 'Failed to send Queuearr invite email' },
+        {
+          error: 'Failed to send Queuearr invite email. Plex invite was not sent.',
+          emailError,
+          queuearrEmailSent: false,
+          plexInviteSent: false,
+        },
         { status: 502 }
       );
     }
@@ -431,12 +442,23 @@ export async function PATCH(request: NextRequest) {
         console.error('Failed to send Queuearr invite email:', error);
         if (error instanceof InviteEmailConfigurationError) {
           return NextResponse.json(
-            { error: 'Invite email is not configured. Check SMTP and NEXTAUTH_URL settings.' },
+            {
+              error: 'Invite email is not configured. Check SMTP and NEXTAUTH_URL settings.',
+              emailError: error.message,
+              queuearrEmailSent: false,
+              plexInviteSent: false,
+            },
             { status: 500 }
           );
         }
+        const emailError = error instanceof Error ? error.message : 'Unknown SMTP error';
         return NextResponse.json(
-          { error: 'Failed to send Queuearr invite email' },
+          {
+            error: 'Failed to send Queuearr invite email. Plex invite was not sent.',
+            emailError,
+            queuearrEmailSent: false,
+            plexInviteSent: false,
+          },
           { status: 502 }
         );
       }
