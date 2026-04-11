@@ -54,6 +54,7 @@ export function useSearch() {
                 monitoredId: m.monitoredId,
                 isWatching: m.isWatching,
                 hasFile: m.hasFile,
+                releaseDate: m.inCinemas ?? m.physicalRelease ?? m.digitalRelease ?? m.added,
               }))
             );
           } else if (response.status === 504) {
@@ -90,6 +91,7 @@ export function useSearch() {
                 monitoredId: s.monitoredId,
                 isWatching: s.isWatching,
                 seasons: s.seasons?.filter((sn) => sn.seasonNumber > 0),
+                releaseDate: s.firstAired ?? s.added,
               }))
             );
           } else if (response.status === 504) {
@@ -102,7 +104,16 @@ export function useSearch() {
           }
         }
 
-        results.sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0));
+        results.sort((a, b) => {
+          const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
+          const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
+          const aValid = !isNaN(aTime);
+          const bValid = !isNaN(bTime);
+          if (aValid || bValid) {
+            return (bValid ? bTime : 0) - (aValid ? aTime : 0);
+          }
+          return (b.popularity ?? 0) - (a.popularity ?? 0);
+        });
 
         setSearchResults(results);
       } catch (error) {

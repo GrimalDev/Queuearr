@@ -362,6 +362,7 @@ export interface SearchResult {
   hasFile?: boolean;
   /** Series: season list with statistics (from Sonarr lookup or library) */
   seasons?: SonarrSeason[];
+  releaseDate?: string;
 }
 
 export interface QueueItem {
