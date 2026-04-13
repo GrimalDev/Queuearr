@@ -116,6 +116,21 @@ export async function deleteUser(id: string): Promise<void> {
   await db.delete(users).where(eq(users.id, id));
 }
 
+export async function getUserByApiToken(token: string): Promise<User | undefined> {
+  return db.query.users.findFirst({
+    where: eq(users.apiToken, token),
+  });
+}
+
+export async function regenerateUserApiToken(userId: string): Promise<string> {
+  const token = crypto.randomUUID();
+  await db
+    .update(users)
+    .set({ apiToken: token, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+  return token;
+}
+
 // ============================================================
 // Invited Users (Whitelist) Functions
 // ============================================================

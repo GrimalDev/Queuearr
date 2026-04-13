@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Search, Download, Settings } from 'lucide-react';
+import { Search, Download, Settings, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const allNavItems = [
   { href: '/', label: 'Search', icon: Search, adminOnly: false },
   { href: '/queue', label: 'Queue', icon: Download, adminOnly: false },
-  { href: '/settings', label: 'Settings', icon: Settings, adminOnly: true },
+  { href: '/settings', label: 'Settings', icon: Settings, adminOnly: false },
+  { href: '/admin/settings', label: 'Admin', icon: ShieldCheck, adminOnly: true },
 ];
 
 export function BottomNav() {

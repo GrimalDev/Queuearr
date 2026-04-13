@@ -8,6 +8,7 @@ import {
   Search,
   Download,
   Settings,
+  ShieldCheck,
   LogOut,
   Film,
   User,
@@ -32,7 +33,8 @@ import { useUnreadNotifications } from '@/hooks/use-unread-notifications';
 const allNavItems = [
   { href: '/', label: 'Search', icon: Search, adminOnly: false },
   { href: '/queue', label: 'Queue', icon: Download, adminOnly: false },
-  { href: '/settings', label: 'Settings', icon: Settings, adminOnly: true },
+  { href: '/settings', label: 'Settings', icon: Settings, adminOnly: false },
+  { href: '/admin/settings', label: 'Admin', icon: ShieldCheck, adminOnly: true },
 ];
 
 export function MainNav({ initialSession }: { initialSession: Session }) {
@@ -111,6 +113,23 @@ export function MainNav({ initialSession }: { initialSession: Session }) {
                     </div>
                   </div>
                   {isAdmin && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild>
+                        <Link href="/settings">
+                          <Settings className="mr-2 h-4 w-4" />
+                          Settings
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/admin/settings">
+                          <ShieldCheck className="mr-2 h-4 w-4" />
+                          Admin Settings
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {!isAdmin && (
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem asChild>
