@@ -76,9 +76,16 @@ async function handleMovieStatus(tmdbIdParam: string): Promise<NextResponse> {
     const movie = movies.find((m) => m.tmdbId === tmdbId);
 
     if (!movie || movie.id === undefined) {
+      let lookupTitle = '';
+      try {
+        const lookedUp = await radarr.searchByTmdbId(tmdbId);
+        lookupTitle = lookedUp?.title ?? '';
+      } catch {
+        // intentionally swallowed
+      }
       const response: MovieStatusResponse = {
         type: 'movie',
-        title: '',
+        title: lookupTitle,
         inLibrary: false,
         hasFile: false,
         isDownloading: false,
@@ -129,9 +136,16 @@ async function handleSeriesStatus(tvdbIdParam: string): Promise<NextResponse> {
     const series = allSeries.find((s) => s.tvdbId === tvdbId);
 
     if (!series || series.id === undefined) {
+      let lookupTitle = '';
+      try {
+        const results = await sonarr.searchByTvdbId(tvdbId);
+        lookupTitle = results[0]?.title ?? '';
+      } catch {
+        // intentionally swallowed
+      }
       const response: SeriesStatusResponse = {
         type: 'series',
-        title: '',
+        title: lookupTitle,
         inLibrary: false,
         hasFile: false,
         isDownloading: false,
