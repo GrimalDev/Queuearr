@@ -1,7 +1,47 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { useAppStore, QueueServiceError } from '@/store/app-store';
+import { useAppStore, QueueServiceError, SearchSortKey, SearchSortDir } from '@/store/app-store';
 import { SearchResult, QueueItem, RadarrMovie, SonarrSeries, RadarrQueueItem, SonarrQueueItem, TransmissionTorrent, TransmissionStatus } from '@/types';
+
+function sortResults(results: SearchResult[], key: SearchSortKey, dir: SearchSortDir): void {
+  const multiplier = dir === 'asc' ? 1 : -1;
+
+  results.sort((a, b) => {
+    switch (key) {
+      case 'rating':
+        return multiplier * ((a.rating ?? -1) - (b.rating ?? -1));
+
+      case 'popularity':
+        return multiplier * ((a.popularity ?? 0) - (b.popularity ?? 0));
+
+      case 'year':
+        return multiplier * (a.year - b.year);
+
+      case 'recent': {
+        const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
+        const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
+        const aValid = !isNaN(aTime);
+        const bValid = !isNaN(bTime);
+        if (!aValid && !bValid) return 0;
+        if (!aValid) return multiplier;
+        if (!bValid) return -multiplier;
+        return multiplier * (aTime - bTime);
+      }
+
+      case 'relevance':
+      default: {
+        const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
+        const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
+        const aValid = !isNaN(aTime);
+        const bValid = !isNaN(bTime);
+        if (aValid || bValid) {
+          return (bValid ? bTime : 0) - (aValid ? aTime : 0);
+        }
+        return (b.popularity ?? 0) - (a.popularity ?? 0);
+      }
+    }
+  });
+}
 
 export function useSearch() {
   const {
@@ -9,10 +49,13 @@ export function useSearch() {
     searchResults,
     isSearching,
     searchType,
+    searchSortKey,
+    searchSortDir,
     setSearchQuery,
     setSearchResults,
     setIsSearching,
     setSearchType,
+    setSearchSort,
     addAlert,
   } = useAppStore();
 
@@ -50,6 +93,7 @@ export function useSearch() {
                 libraryId: m.libraryId,
                 popularity: m.popularity ?? m.ratings?.tmdb?.votes ?? 0,
                 popularitySource: m.popularity !== undefined ? 'Radarr' : 'TMDB votes',
+                rating: m.ratings?.tmdb?.value ?? m.ratings?.imdb?.value,
                 isDownloading: m.isDownloading,
                 monitoredId: m.monitoredId,
                 isWatching: m.isWatching,
@@ -87,6 +131,7 @@ export function useSearch() {
                 libraryId: s.libraryId,
                 popularity: s.ratings?.votes ?? 0,
                 popularitySource: 'Sonarr votes',
+                rating: s.ratings?.value,
                 isDownloading: s.isDownloading,
                 monitoredId: s.monitoredId,
                 isWatching: s.isWatching,
@@ -104,16 +149,7 @@ export function useSearch() {
           }
         }
 
-        results.sort((a, b) => {
-          const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
-          const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
-          const aValid = !isNaN(aTime);
-          const bValid = !isNaN(bTime);
-          if (aValid || bValid) {
-            return (bValid ? bTime : 0) - (aValid ? aTime : 0);
-          }
-          return (b.popularity ?? 0) - (a.popularity ?? 0);
-        });
+        sortResults(results, searchSortKey, searchSortDir);
 
         setSearchResults(results);
       } catch (error) {
@@ -123,7 +159,7 @@ export function useSearch() {
         setIsSearching(false);
       }
     },
-    [searchType, setIsSearching, setSearchResults, addAlert]
+    [searchType, searchSortKey, searchSortDir, setIsSearching, setSearchResults, addAlert]
   );
 
   const debouncedSearch = useCallback(
@@ -147,6 +183,17 @@ export function useSearch() {
     previousSearchTypeRef.current = searchType;
   }, [searchType, searchQuery, search]);
 
+  const previousSortRef = useRef({ key: searchSortKey, dir: searchSortDir });
+  useEffect(() => {
+    const prev = previousSortRef.current;
+    if ((prev.key !== searchSortKey || prev.dir !== searchSortDir) && searchResults.length > 0) {
+      const resorted = [...searchResults];
+      sortResults(resorted, searchSortKey, searchSortDir);
+      setSearchResults(resorted);
+    }
+    previousSortRef.current = { key: searchSortKey, dir: searchSortDir };
+  }, [searchSortKey, searchSortDir, searchResults, setSearchResults]);
+
   const immediateSearch = useCallback(
     (query: string) => {
       if (searchTimeoutRef.current) {
@@ -163,7 +210,10 @@ export function useSearch() {
     searchResults,
     isSearching,
     searchType,
+    searchSortKey,
+    searchSortDir,
     setSearchType,
+    setSearchSort,
     search: debouncedSearch,
     immediateSearch,
     clearSearch: () => {

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Plus, Check, Film, Tv, Calendar, Loader2, Star, Bell, BellOff, Download, List } from 'lucide-react';
+import { Plus, Check, Film, Tv, Calendar, Loader2, Star, Bell, BellOff, Download, List, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,15 +12,39 @@ import { useSearch } from '@/hooks/use-media';
 import { useAppStore } from '@/store/app-store';
 import { SearchResult } from '@/types';
 import { SeriesBrowser } from './series-browser';
+import type { SearchSortKey } from '@/store/app-store';
+
+const SORT_OPTIONS: { key: SearchSortKey; label: string }[] = [
+  { key: 'relevance', label: 'Relevance' },
+  { key: 'rating', label: 'Rating' },
+  { key: 'popularity', label: 'Popularity' },
+  { key: 'recent', label: 'Recent' },
+  { key: 'year', label: 'Year' },
+];
 
 export function SearchResults() {
-  const { searchResults, isSearching, searchQuery } = useSearch();
+  const { searchResults, isSearching, searchQuery, searchSortKey, searchSortDir, setSearchSort } = useSearch();
   const { addAlert } = useAppStore();
   const router = useRouter();
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
   const [watchingStates, setWatchingStates] = useState<Map<string, boolean>>(new Map());
   const [browsingSeries, setBrowsingSeries] = useState<SearchResult | null>(null);
   const [grabbingMovieIds, setGrabbingMovieIds] = useState<Set<string>>(new Set());
+
+  const handleSortClick = (key: SearchSortKey): void => {
+    if (searchSortKey === key) {
+      setSearchSort(key, searchSortDir === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSearchSort(key, 'desc');
+    }
+  };
+
+  const SortIcon = ({ k }: { k: SearchSortKey }) => {
+    if (searchSortKey !== k) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+    return searchSortDir === 'desc'
+      ? <ArrowDown className="h-3 w-3" />
+      : <ArrowUp className="h-3 w-3" />;
+  };
 
   const formatSortScore = (value: number) =>
     value.toLocaleString(undefined, { maximumFractionDigits: 1 });
@@ -179,6 +203,21 @@ export function SearchResults() {
   return (
     <>
     <SeriesBrowser result={browsingSeries} onClose={() => setBrowsingSeries(null)} />
+    <div className="flex flex-wrap items-center gap-1.5 pb-3">
+      <span className="text-xs text-muted-foreground mr-1">Sort:</span>
+      {SORT_OPTIONS.map(({ key, label }) => (
+        <Button
+          key={key}
+          variant={searchSortKey === key ? 'secondary' : 'ghost'}
+          size="sm"
+          className="h-7 px-2 text-xs gap-1"
+          onClick={() => handleSortClick(key)}
+        >
+          {label}
+          <SortIcon k={key} />
+        </Button>
+      ))}
+    </div>
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {searchResults.map((result) => {
         const isWatching =

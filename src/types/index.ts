@@ -355,6 +355,8 @@ export interface SearchResult {
   libraryId?: number;
   popularity?: number;
   popularitySource?: string;
+  /** Normalised 0–10 rating (best available source: tmdb > imdb > sonarr) */
+  rating?: number;
   isDownloading?: boolean;
   monitoredId?: number;
   isWatching?: boolean;

@@ -6,11 +6,16 @@ export interface QueueServiceError {
   message: string;
 }
 
+export type SearchSortKey = 'relevance' | 'rating' | 'popularity' | 'year' | 'recent';
+export type SearchSortDir = 'asc' | 'desc';
+
 interface AppState {
   searchQuery: string;
   searchResults: SearchResult[];
   isSearching: boolean;
   searchType: 'all' | 'movies' | 'series';
+  searchSortKey: SearchSortKey;
+  searchSortDir: SearchSortDir;
 
   queueItems: QueueItem[];
   isLoadingQueue: boolean;
@@ -22,6 +27,7 @@ interface AppState {
   setSearchResults: (results: SearchResult[]) => void;
   setIsSearching: (isSearching: boolean) => void;
   setSearchType: (type: 'all' | 'movies' | 'series') => void;
+  setSearchSort: (key: SearchSortKey, dir: SearchSortDir) => void;
 
   setQueueItems: (items: QueueItem[]) => void;
   setIsLoadingQueue: (isLoading: boolean) => void;
@@ -37,6 +43,8 @@ export const useAppStore = create<AppState>((set) => ({
   searchResults: [],
   isSearching: false,
   searchType: 'all',
+  searchSortKey: 'relevance',
+  searchSortDir: 'desc',
 
   queueItems: [],
   isLoadingQueue: false,
@@ -48,6 +56,7 @@ export const useAppStore = create<AppState>((set) => ({
   setSearchResults: (results) => set({ searchResults: results }),
   setIsSearching: (isSearching) => set({ isSearching }),
   setSearchType: (type) => set({ searchType: type }),
+  setSearchSort: (key, dir) => set({ searchSortKey: key, searchSortDir: dir }),
 
   setQueueItems: (items) => set({ queueItems: items }),
   setIsLoadingQueue: (isLoading) => set({ isLoadingQueue: isLoading }),
