@@ -15,7 +15,6 @@ import { SeriesBrowser } from './series-browser';
 import type { SearchSortKey } from '@/store/app-store';
 
 const SORT_OPTIONS: { key: SearchSortKey; label: string }[] = [
-  { key: 'relevance', label: 'Relevance' },
   { key: 'rating', label: 'Rating' },
   { key: 'popularity', label: 'Popularity' },
   { key: 'recent', label: 'Recent' },

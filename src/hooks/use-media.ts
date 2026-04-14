@@ -11,9 +11,6 @@ function sortResults(results: SearchResult[], key: SearchSortKey, dir: SearchSor
       case 'rating':
         return multiplier * ((a.rating ?? -1) - (b.rating ?? -1));
 
-      case 'popularity':
-        return multiplier * ((a.popularity ?? 0) - (b.popularity ?? 0));
-
       case 'year':
         return multiplier * (a.year - b.year);
 
@@ -28,17 +25,9 @@ function sortResults(results: SearchResult[], key: SearchSortKey, dir: SearchSor
         return multiplier * (aTime - bTime);
       }
 
-      case 'relevance':
-      default: {
-        const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
-        const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
-        const aValid = !isNaN(aTime);
-        const bValid = !isNaN(bTime);
-        if (aValid || bValid) {
-          return (bValid ? bTime : 0) - (aValid ? aTime : 0);
-        }
-        return (b.popularity ?? 0) - (a.popularity ?? 0);
-      }
+      case 'popularity':
+      default:
+        return multiplier * ((a.popularity ?? 0) - (b.popularity ?? 0));
     }
   });
 }

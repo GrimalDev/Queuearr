@@ -6,7 +6,7 @@ export interface QueueServiceError {
   message: string;
 }
 
-export type SearchSortKey = 'relevance' | 'rating' | 'popularity' | 'year' | 'recent';
+export type SearchSortKey = 'rating' | 'popularity' | 'year' | 'recent';
 export type SearchSortDir = 'asc' | 'desc';
 
 interface AppState {
@@ -43,7 +43,7 @@ export const useAppStore = create<AppState>((set) => ({
   searchResults: [],
   isSearching: false,
   searchType: 'all',
-  searchSortKey: 'relevance',
+  searchSortKey: 'popularity',
   searchSortDir: 'desc',
 
   queueItems: [],
