@@ -139,6 +139,32 @@ export function SearchResults() {
     setGrabbingMovieIds((prev) => new Set(prev).add(result.id));
     try {
       const res = await fetch(`/api/radarr/movie/${result.libraryId}/grab`, { method: 'POST' });
+
+      if (res.status === 422) {
+        const body = await res.json() as { error?: string };
+        if (body.error === 'telesync_only') {
+          addAlert({
+            type: 'warning',
+            title: 'Not available yet',
+            message: `${result.title} is only available in TELESYNC quality. Download blocked until a proper release is out.`,
+            source: 'radarr',
+          });
+          fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: 'Film not available yet',
+              body: `${result.title} is only available in TELESYNC. Download blocked.`,
+              tag: `telesync-${result.id}`,
+              url: '/',
+            }),
+          }).catch(() => undefined);
+          setGrabbingMovieIds((prev) => { const n = new Set(prev); n.delete(result.id); return n; });
+          return;
+        }
+        throw new Error('Unexpected 422 response');
+      }
+
       if (!res.ok) throw new Error('Failed to grab');
       addAlert({
         type: 'success',
@@ -149,7 +175,6 @@ export function SearchResults() {
       router.push('/queue');
     } catch {
       addAlert({ type: 'error', title: 'Download failed', message: `Could not start download for ${result.title}.`, source: 'radarr' });
-      // Only unblock on failure so the user can retry.
       setGrabbingMovieIds((prev) => { const n = new Set(prev); n.delete(result.id); return n; });
     }
   };

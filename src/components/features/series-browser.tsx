@@ -254,7 +254,7 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
         </SheetHeader>
 
         {/* Body */}
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           <div className="p-4 space-y-2">
             <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
               Choose only the season(s) you need. Completed seasons are marked and do not show a download action.

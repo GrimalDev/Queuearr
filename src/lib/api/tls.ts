@@ -5,12 +5,22 @@ type ServiceName = 'radarr' | 'sonarr' | 'transmission';
 
 const cache = new Map<string, string>();
 
-function readCaFromPath(path: string): string {
+function readCaFromPath(path: string): string | undefined {
   const cached = cache.get(path);
   if (cached) return cached;
-  const value = fs.readFileSync(path, 'utf8');
-  cache.set(path, value);
-  return value;
+  try {
+    const value = fs.readFileSync(path, 'utf8');
+    cache.set(path, value);
+    return value;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      console.warn(`[tls] CA cert file not found at "${path}" — proceeding without custom CA.`);
+    } else {
+      console.warn(`[tls] Could not read CA cert file at "${path}": ${String(err)}`);
+    }
+    return undefined;
+  }
 }
 
 function resolveCaPem(service: ServiceName): string | undefined {

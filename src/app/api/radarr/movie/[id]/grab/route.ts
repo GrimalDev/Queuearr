@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
-import { smartGrab } from '@/lib/smart-grab';
+import { smartGrab, TeleSyncOnlyError } from '@/lib/smart-grab';
 import {
   getMonitoredDownloadBySourceMedia,
   upsertMonitoredDownload,
@@ -32,13 +32,11 @@ export async function POST(
   }
 
   try {
-    // Ensure there's a monitored download record so the user gets progress updates
     let monitored = await getMonitoredDownloadBySourceMedia('radarr', movieId);
     if (!monitored) {
       const movie = await radarr.getMovie(movieId);
       monitored = await upsertMonitoredDownload('radarr', movieId, movie.title);
     }
-    // Always add the user (onConflictDoNothing handles duplicates)
     await addUserToDownload(monitored.id, session.user.id);
 
     await smartGrab({ source: 'radarr', mediaId: movieId });
@@ -46,6 +44,9 @@ export async function POST(
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof TeleSyncOnlyError) {
+      return NextResponse.json({ error: 'telesync_only' }, { status: 422 });
+    }
     console.error('Radarr movie grab error:', error);
     return NextResponse.json({ error: 'Failed to trigger grab' }, { status: 500 });
   }

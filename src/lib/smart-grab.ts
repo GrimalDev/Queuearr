@@ -10,6 +10,28 @@ interface SmartGrabOptions {
   episodeId?: number;
 }
 
+export class TeleSyncOnlyError extends Error {
+  constructor() {
+    super('Only TELESYNC/CAM releases are available — film not yet properly released');
+    this.name = 'TeleSyncOnlyError';
+  }
+}
+
+const PRE_RELEASE_SOURCES = new Set(['telesync', 'cam', 'workprint', 'telecine']);
+
+const PRE_RELEASE_TITLE_PATTERN =
+  /\b(TELESYNC|TELECINE|WORKPRINT|CAMRIP)\b|[.\s-]TS[.\s-]|[.\s-]CAM[.\s-]/i;
+
+function isPreRelease(release: Release): boolean {
+  const source = release.quality?.quality?.source?.toLowerCase();
+  if (source) return PRE_RELEASE_SOURCES.has(source);
+  return PRE_RELEASE_TITLE_PATTERN.test(release.title);
+}
+
+function hasOnlyPreReleases(releases: Release[]): boolean {
+  return releases.length > 0 && releases.every(isPreRelease);
+}
+
 /**
  * Queries indexers via Radarr/Sonarr, sorts results by seeders descending,
  * and grabs the best non-rejected release.
@@ -23,6 +45,11 @@ export async function smartGrab({ source, mediaId, episodeId }: SmartGrabOptions
     if (!client) throw new Error('Radarr not configured');
 
     const releases = await client.getReleases(mediaId);
+
+    if (hasOnlyPreReleases(releases)) {
+      throw new TeleSyncOnlyError();
+    }
+
     const best = pickBest(releases);
 
     if (best) {

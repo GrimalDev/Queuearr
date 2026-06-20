@@ -412,6 +412,7 @@ export interface Release {
   qualityWeight?: number;
   customFormatScore?: number;
   downloadAllowed?: boolean;
+  quality?: MediaQuality;
 }
 
 export type QueueItemStatus =

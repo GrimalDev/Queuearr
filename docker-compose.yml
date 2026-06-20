@@ -34,6 +34,3 @@ services:
       - QUEUEARR_DATA_DIR=/app/data
     env_file:
       - .env
-
-volumes:
-  queuearr-data:
