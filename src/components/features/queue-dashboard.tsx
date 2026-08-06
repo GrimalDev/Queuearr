@@ -431,8 +431,9 @@ export function QueueDashboard() {
     }
   };
 
-  const problemItems = queueItems.filter((item) => item.hasError || item.isStalled);
-  const nonProblemItems = queueItems.filter((item) => !item.hasError && !item.isStalled);
+  const visibleQueueItems = queueItems.filter((item) => item.status !== 'seeding');
+  const problemItems = visibleQueueItems.filter((item) => item.hasError || item.isStalled);
+  const nonProblemItems = visibleQueueItems.filter((item) => !item.hasError && !item.isStalled);
   const activeDownloads = nonProblemItems.filter(
     (item) => item.status === 'downloading' || item.status === 'seeding'
   );
@@ -451,8 +452,8 @@ export function QueueDashboard() {
   const isProblemItem = (item: QueueItem) => item.hasError || item.isStalled || retryingItems.has(item.id);
   const orderedItems = [
     ...retryingOnlyItems,
-    ...queueItems.filter(isProblemItem),
-    ...queueItems.filter((item) => !isProblemItem(item)),
+    ...visibleQueueItems.filter(isProblemItem),
+    ...visibleQueueItems.filter((item) => !isProblemItem(item)),
   ];
 
   // Show error state when services fail to connect
@@ -682,7 +683,7 @@ export function QueueDashboard() {
         </div>
       )}
 
-      {!isFilterSwitching && queueItems.length === 0 && (
+      {!isFilterSwitching && visibleQueueItems.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="rounded-full bg-muted p-4 mb-4">
             <Download className="h-8 w-8 text-muted-foreground" />

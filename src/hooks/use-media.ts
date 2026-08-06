@@ -3,6 +3,8 @@ import { useSession } from 'next-auth/react';
 import { useAppStore, QueueServiceError, SearchSortKey, SearchSortDir } from '@/store/app-store';
 import { SearchResult, QueueItem, RadarrMovie, SonarrSeries, RadarrQueueItem, SonarrQueueItem, TransmissionTorrent, TransmissionStatus } from '@/types';
 
+const STALL_GRACE_PERIOD_SECONDS = 5 * 60;
+
 function sortResults(results: SearchResult[], key: SearchSortKey, dir: SearchSortDir): void {
   const multiplier = dir === 'asc' ? 1 : -1;
 
@@ -316,6 +318,9 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
 
             const isQueuedInTransmission = matchedTorrent?.status === TransmissionStatus.DOWNLOAD_WAIT;
             const isActivelyDownloading = matchedTorrent?.status === TransmissionStatus.DOWNLOAD;
+            const isStalledAfterGrace = matchedTorrent
+              ? hasExceededStallGracePeriod(matchedTorrent)
+              : false;
             
             const hasRealError = (!!item.errorMessage || (item.statusMessages?.length ?? 0) > 0) &&
               !isQueuedInTransmission;
@@ -341,7 +346,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
               eta: matchedTorrent?.eta && matchedTorrent.eta > 0 
                 ? formatEta(matchedTorrent.eta) 
                 : item.timeleft,
-              isStalled: !!(matchedTorrent?.isStalled && isActivelyDownloading),
+              isStalled: !!(matchedTorrent?.isStalled && isActivelyDownloading && isStalledAfterGrace),
               hasError: !!(hasRealError || transmissionHasError),
               errorMessage: hasRealError
                 ? (item.errorMessage || item.statusMessages?.[0]?.messages?.[0])
@@ -405,6 +410,9 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
 
             const isQueuedInTransmission = matchedTorrent?.status === TransmissionStatus.DOWNLOAD_WAIT;
             const isActivelyDownloading = matchedTorrent?.status === TransmissionStatus.DOWNLOAD;
+            const isStalledAfterGrace = matchedTorrent
+              ? hasExceededStallGracePeriod(matchedTorrent)
+              : false;
 
             const hasRealError = (!!item.errorMessage || (item.statusMessages?.length ?? 0) > 0) &&
               !isQueuedInTransmission;
@@ -445,7 +453,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
               eta: matchedTorrent?.eta && matchedTorrent.eta > 0
                 ? formatEta(matchedTorrent.eta)
                 : item.timeleft,
-              isStalled: !!(matchedTorrent?.isStalled && isActivelyDownloading),
+              isStalled: !!(matchedTorrent?.isStalled && isActivelyDownloading && isStalledAfterGrace),
               hasError: !!(hasRealError || transmissionHasError),
               errorMessage: hasRealError
                 ? (item.errorMessage || item.statusMessages?.[0]?.messages?.[0])
@@ -487,7 +495,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
             downloadSpeed: torrent.rateDownload,
             uploadSpeed: torrent.rateUpload,
             eta: torrent.eta > 0 ? formatEta(torrent.eta) : undefined,
-            isStalled: torrent.isStalled && torrent.status === TransmissionStatus.DOWNLOAD,
+            isStalled: torrent.isStalled && torrent.status === TransmissionStatus.DOWNLOAD && hasExceededStallGracePeriod(torrent),
             hasError: torrent.isProblematic && torrent.status === TransmissionStatus.DOWNLOAD,
             errorMessage: torrent.problemReason,
             peersConnected: torrent.peersConnected,
@@ -639,4 +647,13 @@ function formatEta(seconds: number): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
   return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
+}
+
+function hasExceededStallGracePeriod(torrent: TransmissionTorrent): boolean {
+  const referenceDate = torrent.activityDate > 0 ? torrent.activityDate : torrent.addedDate;
+  if (referenceDate <= 0) {
+    return false;
+  }
+
+  return Date.now() / 1000 - referenceDate >= STALL_GRACE_PERIOD_SECONDS;
 }
