@@ -299,6 +299,7 @@ function QueueItemCard({
 
 export function QueueDashboard() {
   const [queueFilter, setQueueFilter] = useState<'mine' | 'all'>('mine');
+  const [showSeeding, setShowSeeding] = useState(false);
   const { queueItems, isLoadingQueue, queueErrors, lastFetch, refresh } = useQueue(queueFilter);
   const setQueueItems = useAppStore((state) => state.setQueueItems);
   const { data: session } = useSession();
@@ -431,7 +432,7 @@ export function QueueDashboard() {
     }
   };
 
-  const visibleQueueItems = queueItems.filter((item) => item.status !== 'seeding');
+  const visibleQueueItems = queueItems.filter((item) => (isAdmin && showSeeding) || item.status !== 'seeding');
   const problemItems = visibleQueueItems.filter((item) => item.hasError || item.isStalled);
   const nonProblemItems = visibleQueueItems.filter((item) => !item.hasError && !item.isStalled);
   const activeDownloads = nonProblemItems.filter(
@@ -514,6 +515,17 @@ export function QueueDashboard() {
               >
                 All downloads
               </Button>
+              {isAdmin && (
+                <Button
+                  type="button"
+                  variant={showSeeding ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={() => setShowSeeding((visible) => !visible)}
+                >
+                  {showSeeding ? 'Hide seeding' : 'Show seeding'}
+                </Button>
+              )}
             </div>
             <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
               <RefreshCw className={cn('h-4 w-4 mr-2', isRefreshing && 'animate-spin')} />
@@ -593,10 +605,21 @@ export function QueueDashboard() {
               size="sm"
               className="h-7 px-2"
               onClick={() => setQueueFilter('all')}
-            >
-              All downloads
-            </Button>
-          </div>
+              >
+                All downloads
+              </Button>
+              {isAdmin && (
+                <Button
+                  type="button"
+                  variant={showSeeding ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={() => setShowSeeding((visible) => !visible)}
+                >
+                  {showSeeding ? 'Hide seeding' : 'Show seeding'}
+                </Button>
+              )}
+            </div>
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
             <RefreshCw className={cn('h-4 w-4 mr-2', isRefreshing && 'animate-spin')} />
             Refresh
