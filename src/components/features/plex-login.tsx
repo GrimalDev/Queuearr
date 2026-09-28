@@ -33,8 +33,20 @@ export function PlexLoginButton({ callbackUrl = '/' }: PlexLoginButtonProps) {
         const response = await fetch(`/api/plex/pin?pinId=${pinId}`);
         const data = await response.json();
 
+        if (!response.ok) {
+          clearInterval(pollInterval);
+          clearTimeout(timeout);
+          popupRef.current?.close();
+          popupRef.current = null;
+          setError(data.error || 'Failed to check Plex sign-in. Please try again.');
+          setIsLoading(false);
+          setPinId(null);
+          return;
+        }
+
         if (data.completed && data.authToken) {
           clearInterval(pollInterval);
+          clearTimeout(timeout);
           popupRef.current?.close();
           popupRef.current = null;
 
@@ -106,6 +118,10 @@ export function PlexLoginButton({ callbackUrl = '/' }: PlexLoginButtonProps) {
       });
       const data = await response.json();
 
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to start Plex sign-in. Please try again.');
+      }
+
       if (data.pin && data.authUrl) {
         popup.location.href = data.authUrl;
         setPinId(data.pin.id);
@@ -116,7 +132,7 @@ export function PlexLoginButton({ callbackUrl = '/' }: PlexLoginButtonProps) {
       console.error('Login error:', err);
       popupRef.current?.close();
       popupRef.current = null;
-      setError('Failed to start login. Please try again.');
+      setError(err instanceof Error ? err.message : 'Failed to start login. Please try again.');
       setIsLoading(false);
     }
   };

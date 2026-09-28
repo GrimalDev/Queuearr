@@ -2,6 +2,23 @@
 
 Guidelines for agentic coding agents working in this repository.
 
+Use standard technical English and short, clear explanations. The user's shell is fish.
+
+## Local development workflow
+
+- Run the app with Docker Compose and the dev override by default. Use both
+  `docker-compose.yml` and `docker-compose.dev.yml`; the dev file is not standalone.
+- Run the stack in a new pane of the existing `queuarr` tmux session. Inspect the
+  session first and preserve the editor and other running processes. Do not start
+  a competing host `npm run dev` server on port 3000.
+- Check that Docker, Compose, and a running Docker engine are available before
+  starting. A missing Docker runtime is a setup blocker, not an application error.
+- Use the project's `.env` for Docker configuration. Next.js reads `.env.local`,
+  but Compose does not automatically load it. Do not print secrets or copy them
+  into logs, commands, commits, or documentation.
+- Verify startup in the pane and check the HTTP response. A successful `/login`
+  response does not prove that Plex authentication is configured or working.
+
 ## Project Overview
 
 **Queuearr** is a Next.js 16 (App Router) media management dashboard integrating Plex, Radarr, Sonarr, and Transmission. Stack: React 19, TypeScript (strict), Tailwind CSS + shadcn/ui, Drizzle ORM (SQLite), NextAuth, Zustand.
@@ -10,9 +27,18 @@ Guidelines for agentic coding agents working in this repository.
 
 ## Build & Dev Commands
 
-```bash
+```fish
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+The current dev override runs the built standalone app, without hot reload.
+Rebuild the image after code changes. Use host commands for checks with a
+compatible Node.js version; the existing SQLite dependency does not support
+Node.js 26. Node.js 24 was used for local verification.
+
+```fish
 npm install          # Install dependencies (bun.lock present — bun install also works)
-npm run dev          # Start Next.js dev server (next dev)
+npm run dev          # Host dev server, only when explicitly requested
 npm run build        # Production build (next build)
 npm run start        # Start production server — requires build first
 npm run lint         # Run ESLint (eslint-config-next/core-web-vitals + typescript presets)
@@ -59,7 +85,16 @@ Config: `tsconfig.json` — `strict: true`, `noEmit: true`, `moduleResolution: b
 
 ## Environment Setup
 
-Copy `.env.example` → `.env` and fill in required values:
+Use the existing project `.env` when available. For a new setup, copy
+`.env.example` to `.env` and fill in the required values. Do not overwrite an
+existing environment file. Generate a session secret with
+`openssl rand -base64 32` and a unique client ID with `uuidgen`.
+
+Plex login requires a stable `PLEX_CLIENT_ID`, `PLEX_SERVER_MACHINE_IDENTIFIER`,
+and `NEXTAUTH_SECRET`. Set `NEXTAUTH_URL` to the local URL used in the browser.
+The same client ID must be used to create and poll a Plex PIN; changing it during
+sign-in makes Plex reject the PIN. Never bypass the server-access restriction to
+make an unconfigured local login succeed.
 
 | Variable | Purpose |
 |---|---|
@@ -70,7 +105,8 @@ Copy `.env.example` → `.env` and fill in required values:
 | `TRANSMISSION_URL` | Transmission integration |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Push notifications |
 | `SMTP_*` | Email notifications |
-| `DATA_PATH` | Path to data directory (default `./data`) |
+| `DATA_PATH` | Host data directory for Compose; set explicitly, e.g. `./data` |
+| `QUEUEARR_DATA_DIR` | App database directory; Compose sets `/app/data` |
 
 ---
 
@@ -179,12 +215,41 @@ public/                  # Static assets
 
 ## Docker
 
-```bash
-docker-compose up                            # Production stack
-docker-compose -f docker-compose.dev.yml up  # Dev stack
+```fish
+# Run from the repository directory, with .env configured and Docker running.
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+# Inspect the same stack.
+docker compose -f docker-compose.yml -f docker-compose.dev.yml ps
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs --tail=80 queuearr
+
+# Production configuration only.
+docker compose up --build
 ```
 
 `next.config.ts` sets `output: 'standalone'` for containerized deployment.
+The app is available at `http://localhost:3000`. Compose starts Queuearr only;
+Plex, Radarr, Sonarr, and Transmission must already be reachable at their
+configured URLs. Inside a container, `localhost` refers to that container. Use
+`host.docker.internal` for services running directly on the Mac.
+
+The dev override does not require a certificate. If local services require a
+custom CA, provide an actual `./plex-local.pem` file and add
+`-f docker-compose.cert.yml` after the dev override. This mounts the certificate
+read-only under `/run/queuearr-certs/` and sets `NODE_EXTRA_CA_CERTS` and
+`SERVICE_CA_CERT_PATH`. Service-specific `*_CA_CERT_PATH` values take precedence;
+if configured, those must also point to files inside the container. Its bind
+mount rejects missing paths instead of creating a directory. Do not create an
+empty certificate or disable TLS verification. Remove any obsolete
+`NODE_EXTRA_CA_CERTS=/app/plex-local.pem` setting from the local `.env` when
+running without the certificate override. Preserve existing data volumes when
+stopping or restarting the stack.
+
+Example new pane in the existing session:
+
+```fish
+tmux split-window -v -t '=queuarr' -c /Users/grimaldev/code/projects/queuarr fish -c 'docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build; exec fish'
+```
 
 ---
 

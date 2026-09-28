@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import type { PendingInvite } from '@/types';
+import type { PendingInvite, PaymentStatus } from '@/types';
+import { PaymentSettings } from '@/components/features/payment-settings';
 import { INVITE_LIFETIME_DAYS } from '@/lib/invite-policy';
 import {
   Check,
@@ -36,7 +37,7 @@ interface ServiceStatus {
   url?: string;
 }
 
-interface UserRecord {
+interface UserRecord extends PaymentStatus {
   id: string;
   username: string;
   email: string | null;
@@ -98,6 +99,10 @@ function UsersManager() {
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">Payment status is self-reported. No transfer verification.</p>
+        <Button variant="outline" size="sm" onClick={() => void fetchUsers(page, search)} disabled={loading}>Refresh</Button>
+      </div>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -118,7 +123,7 @@ function UsersManager() {
         data.users.map((user) => {
           const isSelf = user.id === session?.user?.id;
           return (
-            <div key={user.id} className="flex items-center justify-between gap-2 p-3 rounded-lg border">
+            <div key={user.id} className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border">
               <div className="flex items-center gap-3 min-w-0">
                 <Avatar className="h-9 w-9 shrink-0">
                   <AvatarImage src={user.avatarUrl || undefined} alt={user.username} />
@@ -128,6 +133,19 @@ function UsersManager() {
                   <p className="font-medium text-sm truncate">{user.username}</p>
                   {user.email && (
                     <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                  )}
+                  <p className="text-xs mt-1">
+                    {user.paymentCurrent
+                      ? `Reported paid · reminders paused until ${new Date(user.paymentRemindersPausedUntil!).toLocaleDateString()}`
+                      : user.paymentReportedAt ? 'Renewal due' : 'No payment reported'}
+                  </p>
+                  {user.paymentReportedAt && (
+                    <p className="text-xs text-muted-foreground">Last reported payment: {new Date(user.paymentReportedAt).toLocaleDateString()}</p>
+                  )}
+                  {user.paymentDeferredAt && (
+                    <p className="text-xs text-muted-foreground">
+                      Pay later chosen {user.paymentDeferralCount} time{user.paymentDeferralCount !== 1 ? 's' : ''} · last {new Date(user.paymentDeferredAt).toLocaleDateString()}
+                    </p>
                   )}
                 </div>
               </div>
@@ -1011,6 +1029,14 @@ export default function AdminSettingsPage() {
         <CardContent>
           <UsersManager />
         </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Voluntary Payments</CardTitle>
+          <CardDescription>Set the payment link and control reminders. Users always keep access.</CardDescription>
+        </CardHeader>
+        <CardContent><PaymentSettings /></CardContent>
       </Card>
 
       <Card>

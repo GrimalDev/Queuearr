@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getUsers } from '@/lib/db/users';
+import { serializePaymentStatus } from '@/lib/payments';
 
 const DEFAULT_LIMIT = 10;
 
@@ -18,5 +19,15 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get('search')?.trim() || undefined;
 
   const result = await getUsers({ page, limit, search });
-  return NextResponse.json(result);
+  return NextResponse.json({
+    total: result.total,
+    users: result.users.map((user) => ({
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
+      role: user.role,
+      ...serializePaymentStatus(user),
+    })),
+  });
 }

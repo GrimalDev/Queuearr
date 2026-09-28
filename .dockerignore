@@ -2,6 +2,6 @@
 .next
 node_modules
 data
-*.env.local
-.env*.local
+.env
+.env.*
 *.pem

@@ -9,8 +9,18 @@ export const users = sqliteTable('users', {
   plexToken: text('plex_token').notNull(),
   role: text('role').notNull().default('user'),
   apiToken: text('api_token'),
+  paymentReportedAt: integer('payment_reported_at', { mode: 'timestamp' }),
+  paymentRemindersPausedUntil: integer('payment_reminders_paused_until', { mode: 'timestamp' }),
+  paymentDeferredAt: integer('payment_deferred_at', { mode: 'timestamp' }),
+  paymentDeferralCount: integer('payment_deferral_count').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp' }),
   updatedAt: integer('updated_at', { mode: 'timestamp' }),
+});
+
+export const paymentSettings = sqliteTable('payment_settings', {
+  id: integer('id').primaryKey(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull(),
+  paymentUrl: text('payment_url').notNull(),
 });
 
 export const pushSubscriptions = sqliteTable('push_subscriptions', {
