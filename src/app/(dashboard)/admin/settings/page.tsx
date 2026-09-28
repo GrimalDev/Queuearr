@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
+import type { PendingInvite } from '@/types';
+import { INVITE_LIFETIME_DAYS } from '@/lib/invite-policy';
 import {
   Check,
   X,
@@ -359,28 +361,36 @@ interface PlexLibrary {
   type: 'movie' | 'show';
 }
 
-interface InvitedUser {
-  id: string;
-  email: string;
-  invitedAt: string;
-}
-
 function InviteUsersManager() {
   const [email, setEmail] = useState('');
   const [libraries, setLibraries] = useState<PlexLibrary[]>([]);
   const [selectedLibraries, setSelectedLibraries] = useState<number[]>([]);
-  const [invitedUsers, setInvitedUsers] = useState<InvitedUser[]>([]);
+  const [invitedUsers, setInvitedUsers] = useState<PendingInvite[]>([]);
+  const [cleanupWarning, setCleanupWarning] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [resendingEmail, setResendingEmail] = useState<string | null>(null);
   const [revokingEmail, setRevokingEmail] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const fetchInvites = useCallback(async (): Promise<void> => {
+    try {
+      const response = await fetch('/api/admin/invite', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Failed to refresh invites');
+      const data = await response.json();
+      setInvitedUsers(data.invitedUsers || []);
+      setCleanupWarning(data.cleanupWarning || null);
+    } catch (error) {
+      console.error('Failed to refresh invites', error);
+      setCleanupWarning('Could not refresh invites. Retrying automatically.');
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
-      const [libsRes, invitesRes] = await Promise.all([
+      const [libsRes] = await Promise.all([
         fetch('/api/admin/plex/libraries'),
-        fetch('/api/admin/invite'),
+        fetchInvites(),
       ]);
 
       if (libsRes.ok) {
@@ -390,21 +400,21 @@ function InviteUsersManager() {
         const allIds = nextLibraries.map((lib: PlexLibrary) => lib.id);
         setSelectedLibraries((prev) => (prev.length === 0 ? allIds : prev));
       }
-
-      if (invitesRes.ok) {
-        const data = await invitesRes.json();
-        setInvitedUsers(data.invitedUsers || []);
-      }
     } catch (error) {
       console.error('Failed to fetch invite data', error);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [fetchInvites]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    const timer = setInterval(() => void fetchInvites(), 30_000);
+    return () => clearInterval(timer);
+  }, [fetchInvites]);
 
   const handleInvite = async () => {
     const normalizedEmail = email.trim();
@@ -605,6 +615,12 @@ function InviteUsersManager() {
         </div>
       </div>
 
+      <p className="text-sm text-muted-foreground">
+        Unaccepted invites expire after {INVITE_LIFETIME_DAYS} days. Resending renews the expiration date.
+        Accepted invites are removed automatically.
+      </p>
+      {cleanupWarning && <p role="status" className="text-sm text-destructive">{cleanupWarning}</p>}
+
       {invitedUsers.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-sm font-medium">Pending Invites</h4>
@@ -616,7 +632,14 @@ function InviteUsersManager() {
               >
                 <div className="flex items-center gap-2">
                   <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span>{user.email}</span>
+                  <div>
+                    <p>{user.email}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(user.expiresAt).getTime() <= Date.now()
+                        ? 'Expired · awaiting cleanup'
+                        : `Expires ${new Date(user.expiresAt).toLocaleString()}`}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-1">
                   <Button

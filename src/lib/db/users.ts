@@ -1,7 +1,8 @@
-import { eq, count, asc, or, like } from 'drizzle-orm';
-import { db } from './index';
-import { users, invitedUsers } from './schema';
-import type { User, NewUser, InvitedUser, NewInvitedUser } from './schema';
+import { eq, count, asc, or, like, and, isNull, sql } from 'drizzle-orm';
+import { db } from '@/lib/db';
+import { users, invitedUsers } from '@/lib/db/schema';
+import type { User, NewUser, InvitedUser, NewInvitedUser } from '@/lib/db/schema';
+import { getInviteExpiresAt } from '@/lib/invite-policy';
 
 export async function upsertUser(user: NewUser): Promise<{ user: User; isNew: boolean }> {
   const now = new Date();
@@ -142,7 +143,7 @@ function normalizeInviteEmail(email: string): string {
 export async function getInvitedUserByEmail(email: string): Promise<InvitedUser | undefined> {
   const normalizedEmail = normalizeInviteEmail(email);
   return db.query.invitedUsers.findFirst({
-    where: eq(invitedUsers.email, normalizedEmail),
+    where: sql`lower(trim(${invitedUsers.email})) = ${normalizedEmail}`,
   });
 }
 
@@ -211,7 +212,29 @@ export async function updateInvitedUser(
 
 export async function deleteInvitedUser(email: string): Promise<void> {
   const normalizedEmail = normalizeInviteEmail(email);
-  await db.delete(invitedUsers).where(eq(invitedUsers.email, normalizedEmail));
+  await db.delete(invitedUsers).where(sql`lower(trim(${invitedUsers.email})) = ${normalizedEmail}`);
+}
+
+export async function deleteRegisteredUserInvites(): Promise<void> {
+  await db.delete(invitedUsers).where(sql`exists (
+    select 1 from ${users}
+    where lower(trim(${users.email})) = lower(trim(${invitedUsers.email}))
+  )`);
+}
+
+export async function getAllInvitedUsers(): Promise<InvitedUser[]> {
+  return db.select().from(invitedUsers);
+}
+
+export async function deleteUnchangedInvite(invite: InvitedUser): Promise<void> {
+  // Do not remove an invite that was renewed while Plex was being queried.
+  await db.delete(invitedUsers).where(and(
+    eq(invitedUsers.id, invite.id),
+    invite.invitedAt ? eq(invitedUsers.invitedAt, invite.invitedAt) : isNull(invitedUsers.invitedAt),
+    invite.plexInviteSent === null
+      ? isNull(invitedUsers.plexInviteSent)
+      : eq(invitedUsers.plexInviteSent, invite.plexInviteSent),
+  ));
 }
 
 export async function getInvitedUsers(opts: {
@@ -240,5 +263,5 @@ export async function isEmailInvited(email: string): Promise<boolean> {
   const invited = await db.query.invitedUsers.findFirst({
     where: eq(invitedUsers.email, normalizedEmail),
   });
-  return !!invited;
+  return !!invited && getInviteExpiresAt(invited.invitedAt).getTime() > Date.now();
 }

@@ -491,3 +491,10 @@ export interface ServiceSettings {
     serverMachineIdentifier?: string;
   };
 }
+
+export interface PendingInvite {
+  id: number;
+  email: string;
+  invitedAt: string | null;
+  expiresAt: string;
+}
