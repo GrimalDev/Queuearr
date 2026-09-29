@@ -46,7 +46,7 @@ export const authOptions: AuthOptions = {
         }
 
         try {
-          const { upsertUser, deleteInvitedUser } = await import('@/lib/db/users');
+          const { upsertUser } = await import('@/lib/db/users');
           const authToken = credentials.authToken as string;
           const plexClient = new PlexAuthClient(process.env.PLEX_CLIENT_ID);
           const plexUser = await plexClient.getUser(authToken);
@@ -70,14 +70,6 @@ export const authOptions: AuthOptions = {
              avatarUrl: plexUser.thumb,
              plexToken: authToken,
            });
-
-          if (dbUser.email) {
-            try {
-              await deleteInvitedUser(dbUser.email);
-            } catch (error) {
-              console.error('Failed to consume invite after sign-in; cleanup will retry:', error);
-            }
-          }
 
           const user = {
              id: dbUser.id,

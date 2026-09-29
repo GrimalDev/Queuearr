@@ -6,8 +6,6 @@ import { MainNav } from '@/components/features/main-nav';
 import { BottomNav } from '@/components/features/bottom-nav';
 import { InstallPrompt } from '@/components/pwa/install-prompt';
 import { NotificationReminder } from '@/components/pwa/notification-reminder';
-import { PaymentReminder } from '@/components/features/payment-reminder';
-import { isFakePaywallEnabled } from '@/lib/payments';
 
 export default async function DashboardLayout({
   children,
@@ -26,17 +24,8 @@ export default async function DashboardLayout({
         <MainNav initialSession={session} />
         <main className="flex-1 container mx-auto py-6 px-4 pb-24 md:pb-6">{children}</main>
         <BottomNav />
-        {isFakePaywallEnabled() ? (
-          <PaymentReminder key={session.user.id}>
-            <InstallPrompt />
-            <NotificationReminder />
-          </PaymentReminder>
-        ) : (
-          <>
-            <InstallPrompt />
-            <NotificationReminder />
-          </>
-        )}
+        <InstallPrompt />
+        <NotificationReminder />
       </div>
     </Providers>
   );

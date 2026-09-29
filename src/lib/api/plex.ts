@@ -330,10 +330,10 @@ export class PlexAdminClient {
     const url = `${PLEX_TV_API}/servers/${this.machineIdentifier}/shared_servers`;
 
     try {
-      const response = await axios.get(url, { headers: this.headers, timeout: 10_000 });
+      const response = await axios.get(url, { headers: this.headers });
       const data = response.data;
       
-      if (data?.MediaContainer?.SharedServer) {
+      if (data.MediaContainer?.SharedServer) {
         return data.MediaContainer.SharedServer
           .map((s: { id: number; email?: string; username?: string }) => ({
             id: Number.parseInt(String(s.id), 10),
@@ -373,8 +373,7 @@ export class PlexAdminClient {
         return sharedUsers;
       }
 
-      if (data?.MediaContainer && Number(data.MediaContainer.size) === 0) return [];
-      throw new Error('Unexpected Plex shared users response');
+      return [];
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;
@@ -415,21 +414,18 @@ export class PlexAdminClient {
     const url = `${PLEX_TV_API}/invites/requested`;
 
     try {
-      const response = await axios.get(url, { headers: this.headers, timeout: 10_000 });
+      const response = await axios.get(url, { headers: this.headers });
       const data = response.data;
 
       // JSON response
       if (typeof data === 'object' && data !== null && data.MediaContainer?.Invite) {
         return (data.MediaContainer.Invite as Array<{ id: number; email?: string; username?: string }>)
-          .map((invite) => {
-            const id = Number(invite.id);
-            if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid Plex pending invite ID');
-            return {
-              id,
-              email: typeof invite.email === 'string' ? invite.email : '',
-              username: typeof invite.username === 'string' ? invite.username : '',
-            };
-          });
+          .map((invite) => ({
+            id: Number(invite.id),
+            email: typeof invite.email === 'string' ? invite.email : '',
+            username: typeof invite.username === 'string' ? invite.username : '',
+          }))
+          .filter((invite) => Number.isInteger(invite.id) && invite.id > 0);
       }
 
       // XML response fallback
@@ -455,15 +451,15 @@ export class PlexAdminClient {
             if (key === 'username') username = value;
           }
 
-          if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid Plex pending invite ID');
-          pendingInvites.push({ id, email, username });
+          if (Number.isInteger(id) && id > 0) {
+            pendingInvites.push({ id, email, username });
+          }
         }
 
         return pendingInvites;
       }
 
-      if (data?.MediaContainer && Number(data.MediaContainer.size) === 0) return [];
-      throw new Error('Unexpected Plex pending invites response');
+      return [];
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;
@@ -491,7 +487,6 @@ export class PlexAdminClient {
     try {
       await axios.delete(url, {
         headers: this.headers,
-        timeout: 10_000,
         params: { friend: 1, home: 0, server: 1 },
       });
       return true;

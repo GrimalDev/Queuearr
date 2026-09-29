@@ -71,13 +71,7 @@
       "when": 1777800000000,
       "tag": "0009_add_user_api_token",
       "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "6",
-      "when": 1790561587414,
-      "tag": "0010_voluntary_payments",
-      "breakpoints": true
     }
   ]
 }
+

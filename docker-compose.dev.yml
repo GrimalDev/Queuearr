@@ -3,3 +3,4 @@ services:
     restart: no
     volumes:
       - ${DATA_PATH}:/app/data
+      - ./plex-local.pem:/app/plex-local.pem

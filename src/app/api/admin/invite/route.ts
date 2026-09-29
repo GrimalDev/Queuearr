@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getPlexAdminClient } from '@/lib/api/plex';
-import { cleanupInvites } from '@/lib/invite-cleanup';
-import { getInviteExpiresAt } from '@/lib/invite-policy';
 import {
   upsertInvitedUser,
   getInvitedUserByEmail,
@@ -152,7 +150,7 @@ function parseStoredLibrarySectionIds(
 }
 
 // GET /api/admin/invite - List invited users
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
 
   if (!session || session.user.role !== 'admin') {
@@ -163,16 +161,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const page = Math.max(0, parseInt(searchParams.get('page') ?? '0', 10));
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? String(DEFAULT_LIMIT), 10)));
 
-  const cleanupComplete = await cleanupInvites();
   const result = await getInvitedUsers({ page, limit });
-  return NextResponse.json({
-    ...result,
-    invitedUsers: result.invitedUsers.map((invite) => ({
-      ...invite,
-      expiresAt: getInviteExpiresAt(invite.invitedAt).toISOString(),
-    })),
-    cleanupWarning: cleanupComplete ? null : 'Invite cleanup is delayed. Queuearr will retry automatically.',
-  });
+  return NextResponse.json(result);
 }
 
 // POST /api/admin/invite - Invite a new user
@@ -374,13 +364,7 @@ export async function DELETE(request: NextRequest) {
         matchesSharedEmail(invite, normalizedEmail)
       );
       if (pendingInvite) {
-        const cancelled = await plexClient.cancelPendingInvite(pendingInvite.id);
-        if (!cancelled) {
-          return NextResponse.json(
-            { error: 'Failed to cancel the pending Plex invite. Please retry.' },
-            { status: 502 }
-          );
-        }
+        await plexClient.cancelPendingInvite(pendingInvite.id);
       }
     } catch (error) {
       console.error('Failed while revoking Plex share during invite deletion:', error);
