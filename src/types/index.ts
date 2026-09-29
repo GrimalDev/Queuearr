@@ -491,3 +491,27 @@ export interface ServiceSettings {
     serverMachineIdentifier?: string;
   };
 }
+
+export interface PendingInvite {
+  id: number;
+  email: string;
+  invitedAt: string | null;
+  expiresAt: string;
+}
+
+export interface PaymentSettings {
+  enabled: boolean;
+  paymentUrl: string;
+}
+
+export interface PaymentStatus {
+  paymentReportedAt: string | null;
+  paymentRemindersPausedUntil: string | null;
+  paymentDeferredAt: string | null;
+  paymentDeferralCount: number;
+  paymentCurrent: boolean;
+}
+
+export interface PaymentReminderStatus extends PaymentStatus, PaymentSettings {
+  shouldRemind: boolean;
+}

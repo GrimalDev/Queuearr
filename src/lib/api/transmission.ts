@@ -1,5 +1,4 @@
 import axios, { AxiosInstance } from 'axios';
-import { Transmission } from '@ctrl/transmission';
 import { TransmissionTorrent, TransmissionStatus, TransmissionErrorType } from '@/types';
 import { createHttpsAgentForService } from '@/lib/api/tls';
 
@@ -58,8 +57,6 @@ interface TorrentFields {
   activityDate: number;
   queuePosition: number;
   downloadDir: string;
-  downloadSpeed?: number;
-  uploadSpeed?: number;
 }
 
 function isTorrentFields(value: unknown): value is TorrentFields {
@@ -105,9 +102,9 @@ function toTransmissionTorrent(t: TorrentFields): TransmissionTorrent {
 }
 
 export class TransmissionClient {
-  private client: Transmission;
   private rpcClient: AxiosInstance;
   private baseUrl: string;
+  private sessionId?: string;
   private username?: string;
   private password?: string;
 
@@ -116,11 +113,6 @@ export class TransmissionClient {
     this.username = config.username;
     this.password = config.password;
     const httpsAgent = createHttpsAgentForService('transmission');
-    this.client = new Transmission({
-      baseUrl: this.baseUrl,
-      username: this.username,
-      password: this.password,
-    });
     this.rpcClient = axios.create({
       baseURL: this.buildRpcUrl(),
       timeout: 10000,
@@ -146,12 +138,12 @@ export class TransmissionClient {
   private async rpcRequest<T>(
     method: string,
     args: Record<string, unknown> = {},
-    sessionId?: string
+    retrySession = true
   ): Promise<T> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    if (sessionId) headers['X-Transmission-Session-Id'] = sessionId;
+    if (this.sessionId) headers['X-Transmission-Session-Id'] = this.sessionId;
     const authHeader = this.buildAuthHeader();
     if (authHeader) headers.Authorization = authHeader;
 
@@ -166,6 +158,7 @@ export class TransmissionClient {
     });
 
     if (response.status === 409) {
+      if (!retrySession) throw new Error('Transmission rejected the refreshed session id');
       const nextSessionIdHeader = response.headers['x-transmission-session-id'];
       const nextSessionId = Array.isArray(nextSessionIdHeader)
         ? nextSessionIdHeader[0]
@@ -173,7 +166,8 @@ export class TransmissionClient {
       if (!nextSessionId) {
         throw new Error('Transmission session id missing from 409 response');
       }
-      return this.rpcRequest<T>(method, args, nextSessionId);
+      this.sessionId = nextSessionId;
+      return this.rpcRequest<T>(method, args, false);
     }
 
     if (response.status < 200 || response.status >= 300) {
@@ -191,7 +185,7 @@ export class TransmissionClient {
     return json as T;
   }
 
-  private async listTorrentsFallback(fields: string[]): Promise<TorrentFields[]> {
+  private async listTorrents(fields: string[]): Promise<TorrentFields[]> {
     const data = await this.rpcRequest<{ arguments?: { torrents?: TorrentFields[] } }>('torrent-get', {
       fields,
     });
@@ -203,80 +197,35 @@ export class TransmissionClient {
   }
 
   async getTorrents(): Promise<TransmissionTorrent[]> {
-    let response: Awaited<ReturnType<Transmission['listTorrents']>>;
-    try {
-      response = await this.client.listTorrents(undefined, [
-        'id',
-        'hashString',
-        'name',
-        'status',
-        'percentDone',
-        'rateDownload',
-        'rateUpload',
-        'eta',
-        'sizeWhenDone',
-        'leftUntilDone',
-        'totalSize',
-        'downloadedEver',
-        'uploadedEver',
-        'uploadRatio',
-        'isStalled',
-        'isFinished',
-        'error',
-        'errorString',
-        'peersConnected',
-        'peersSendingToUs',
-        'peersGettingFromUs',
-        'addedDate',
-        'doneDate',
-        'activityDate',
-        'queuePosition',
-        'downloadDir',
-      ]);
-    } catch (error) {
-      try {
-        const torrents = await this.listTorrentsFallback([
-          'id',
-          'hashString',
-          'name',
-          'status',
-          'percentDone',
-          'rateDownload',
-          'rateUpload',
-          'eta',
-          'sizeWhenDone',
-          'leftUntilDone',
-          'totalSize',
-          'downloadedEver',
-          'uploadedEver',
-          'uploadRatio',
-          'isStalled',
-          'isFinished',
-          'error',
-          'errorString',
-          'peersConnected',
-          'peersSendingToUs',
-          'peersGettingFromUs',
-          'addedDate',
-          'doneDate',
-          'activityDate',
-          'queuePosition',
-          'downloadDir',
-        ]);
-        return torrents.filter(isTorrentFields).map(toTransmissionTorrent);
-      } catch (fallbackError) {
-        const message = error instanceof Error ? error.message : String(error);
-        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-        throw new Error(`Transmission listTorrents failed: ${message}. Fallback failed: ${fallbackMessage}`);
-      }
-    }
-
-    const torrents = response?.arguments?.torrents;
-    if (!Array.isArray(torrents)) {
-      throw new Error('Transmission response missing torrents list');
-    }
-
-    return (torrents as unknown[]).filter(isTorrentFields).map(toTransmissionTorrent);
+    const torrents = await this.listTorrents([
+      'id',
+      'hashString',
+      'name',
+      'status',
+      'percentDone',
+      'rateDownload',
+      'rateUpload',
+      'eta',
+      'sizeWhenDone',
+      'leftUntilDone',
+      'totalSize',
+      'downloadedEver',
+      'uploadedEver',
+      'uploadRatio',
+      'isStalled',
+      'isFinished',
+      'error',
+      'errorString',
+      'peersConnected',
+      'peersSendingToUs',
+      'peersGettingFromUs',
+      'addedDate',
+      'doneDate',
+      'activityDate',
+      'queuePosition',
+      'downloadDir',
+    ]);
+    return torrents.filter(isTorrentFields).map(toTransmissionTorrent);
   }
 
   async getTorrent(hashOrId: string | number): Promise<TransmissionTorrent | undefined> {
@@ -288,15 +237,15 @@ export class TransmissionClient {
   }
 
   async pauseTorrent(hashOrId: string | number): Promise<void> {
-    await this.client.pauseTorrent(hashOrId);
+    await this.rpcRequest('torrent-stop', { ids: [hashOrId] });
   }
 
   async resumeTorrent(hashOrId: string | number): Promise<void> {
-    await this.client.resumeTorrent(hashOrId);
+    await this.rpcRequest('torrent-start', { ids: [hashOrId] });
   }
 
   async removeTorrent(hashOrId: string | number, deleteLocalData = false): Promise<void> {
-    await this.client.removeTorrent(hashOrId, deleteLocalData);
+    await this.rpcRequest('torrent-remove', { ids: [hashOrId], 'delete-local-data': deleteLocalData });
   }
 
   async queueTorrentTop(hashOrId: string | number): Promise<void> {
@@ -314,45 +263,23 @@ export class TransmissionClient {
     seedQueueSize: number;
     seedQueueEnabled: boolean;
   }> {
-    let torrents: Array<{ downloadSpeed?: number; uploadSpeed?: number; state?: string }>; 
-    let sessionArgs: Record<string, unknown>;
+    const [torrents, session] = await Promise.all([
+      this.listTorrents(['rateDownload', 'rateUpload', 'status']),
+      this.rpcRequest<{ arguments?: Record<string, unknown> }>('session-get'),
+    ]);
+    const sessionArgs = session.arguments ?? {};
 
-    try {
-      const [allData, session] = await Promise.all([
-        this.client.getAllData(),
-        this.client.getSession(),
-      ]);
-      torrents = allData.torrents || [];
-      sessionArgs = session.arguments as unknown as Record<string, unknown>;
-    } catch {
-      const rawTorrents = await this.listTorrentsFallback([
-        'downloadSpeed',
-        'uploadSpeed',
-        'status',
-      ]);
-      torrents = rawTorrents.map((t) => ({
-        downloadSpeed: t.downloadSpeed,
-        uploadSpeed: t.uploadSpeed,
-        state: t.status === TransmissionStatus.DOWNLOAD ? 'downloading'
-          : t.status === TransmissionStatus.SEED ? 'seeding'
-            : t.status === TransmissionStatus.STOPPED ? 'paused'
-              : undefined,
-      }));
-      const session = await this.rpcRequest<{ arguments?: Record<string, unknown> }>('session-get');
-      sessionArgs = session.arguments ?? {};
-    }
-    
     let downloadSpeed = 0;
     let uploadSpeed = 0;
     let activeTorrentCount = 0;
     let pausedTorrentCount = 0;
 
     for (const t of torrents) {
-      downloadSpeed += t.downloadSpeed || 0;
-      uploadSpeed += t.uploadSpeed || 0;
-      if (t.state === 'downloading' || t.state === 'seeding') {
+      downloadSpeed += t.rateDownload || 0;
+      uploadSpeed += t.rateUpload || 0;
+      if (t.status === TransmissionStatus.DOWNLOAD || t.status === TransmissionStatus.SEED) {
         activeTorrentCount++;
-      } else if (t.state === 'paused') {
+      } else if (t.status === TransmissionStatus.STOPPED) {
         pausedTorrentCount++;
       }
     }
@@ -372,7 +299,7 @@ export class TransmissionClient {
 
   async testConnection(): Promise<boolean> {
     try {
-      await this.client.getSession();
+      await this.rpcRequest('session-get');
       return true;
     } catch {
       return false;

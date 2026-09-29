@@ -1,0 +1,12 @@
+services:
+  queuearr:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/queuearr-certs/plex-local.pem
+      SERVICE_CA_CERT_PATH: /run/queuearr-certs/plex-local.pem
+    volumes:
+      - type: bind
+        source: ./plex-local.pem
+        target: /run/queuearr-certs/plex-local.pem
+        read_only: true
+        bind:
+          create_host_path: false

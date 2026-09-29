@@ -1,4 +1,5 @@
 import nodemailer, { Transporter } from 'nodemailer';
+import { INVITE_LIFETIME_DAYS } from '@/lib/invite-policy';
 
 interface QueuearrInviteEmailParams {
   to: string;
@@ -62,6 +63,7 @@ function getInviteTransporter(): Transporter {
 function buildInviteText(queuearrUrl: string): string {
   return [
     'You have been invited to Queuearr.',
+    `Please accept the Plex invitation within ${INVITE_LIFETIME_DAYS} days. Unaccepted invitations expire automatically.`,
     '',
     'Please follow these 3 steps in order:',
     '1) Create or sign in to your Plex account at https://app.plex.tv',
@@ -90,6 +92,7 @@ function buildInviteText(queuearrUrl: string): string {
 function buildInviteHtml(queuearrUrl: string): string {
   return `
     <p>You have been invited to <strong>Queuearr</strong>.</p>
+    <p>Please accept the Plex invitation within ${INVITE_LIFETIME_DAYS} days. Unaccepted invitations expire automatically.</p>
     <p>Please follow these <strong>3 steps</strong> in order:</p>
     <ol>
       <li>Create or sign in to your Plex account at <a href="https://app.plex.tv">app.plex.tv</a></li>
