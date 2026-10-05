@@ -22,7 +22,7 @@ export async function getPaymentReminderStatus(userId: string): Promise<PaymentR
   const settings = await getPaymentSettings();
   const status = serializePaymentStatus(user);
   const enabled = isFakePaywallEnabled() && settings.enabled;
-  return { ...settings, ...status, enabled, shouldRemind: enabled && !status.paymentCurrent };
+  return { ...settings, ...status, enabled, shouldRemind: enabled && user.role !== 'admin' && !status.paymentCurrent };
 }
 
 export function recordPaymentChoice(userId: string, action: 'confirm' | 'later'): PaymentStatus | null {

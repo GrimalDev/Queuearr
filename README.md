@@ -45,7 +45,8 @@ Voluntary payment prompts are disabled by default. Set
 them. False or unset overrides the Admin Settings switch and disables payment
 confirmations. Existing payment records and settings are preserved.
 
-When enabled, signed-in users see a payment reminder when they open or return to Queuearr.
+When enabled, signed-in users other than admins see a payment reminder when they
+open or return to Queuearr. Admins are exempt from payment reminders.
 Pay later keeps access open for the visit; navigating between pages does not
 show another reminder. Pay now opens a QR code and payment link. Only clicking
 I've paid records a self-reported payment and pauses reminders for one calendar
