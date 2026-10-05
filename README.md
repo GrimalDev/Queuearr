@@ -38,6 +38,16 @@ The policy applies to existing invites using their last send date. Legacy invite
 without a send date are treated as expired. Cleanup requires Queuearr to be running;
 after downtime it runs on startup. No database migration is needed.
 
+## Notifications
+
+Admin Settings supports multiline notification messages, including blank lines
+and indentation. Formatting is preserved in storage, notification history, and
+the Service Notifications page. Messages are limited to 1,000 characters.
+
+Use Edit in Notification History to change a saved notification's title, message,
+or link. Saving does not send another push notification or reset its send time
+or read status. Native push notification appearance depends on the device.
+
 ## Voluntary payments
 
 Voluntary payment prompts are disabled by default. Set

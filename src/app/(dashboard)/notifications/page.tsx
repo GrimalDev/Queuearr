@@ -6,17 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { emitNotificationsSync } from '@/lib/notifications-sync';
-
-interface Notification {
-  id: number;
-  title: string;
-  body: string;
-  url: string | null;
-  sentAt: string;
-}
+import type { NotificationRecord } from '@/types';
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -117,7 +110,7 @@ export default function NotificationsPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">{notification.body}</p>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">{notification.body}</p>
               </CardContent>
             </Card>
           ))}

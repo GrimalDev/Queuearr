@@ -3,11 +3,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { broadcastNotification, isVapidConfigured } from '@/lib/push';
 import { addNotification, getNotifications } from '@/lib/db/notifications';
+import { parseNotificationContent } from '@/lib/notification-content';
 
 export const dynamic = 'force-dynamic';
 
-const MAX_TITLE_LENGTH = 200;
-const MAX_BODY_LENGTH = 1000;
 const DEFAULT_LIMIT = 20;
 
 export async function GET(request: NextRequest) {
@@ -24,7 +23,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(result);
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
   if (!session || session.user.role !== 'admin') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
@@ -35,20 +34,19 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { title, body, icon, url, tag } = await request.json();
+    const value: unknown = await request.json().catch(() => null);
+    const content = parseNotificationContent(value);
+    if (!content) {
+      return NextResponse.json({ error: 'Invalid title, message, or relative URL' }, { status: 400 });
+    }
+    const { title, body, url } = content;
+    const { icon, tag } = value as Record<string, unknown>;
+    if ((icon !== undefined && icon !== null && typeof icon !== 'string') ||
+        (tag !== undefined && tag !== null && typeof tag !== 'string')) {
+      return NextResponse.json({ error: 'Invalid icon or tag' }, { status: 400 });
+    }
 
-    if (typeof title !== 'string' || !title || title.length > MAX_TITLE_LENGTH) {
-      return NextResponse.json({ error: 'Invalid or missing title' }, { status: 400 });
-    }
-    if (typeof body !== 'string' || !body || body.length > MAX_BODY_LENGTH) {
-      return NextResponse.json({ error: 'Invalid or missing body' }, { status: 400 });
-    }
-    // Only allow same-origin relative URLs
-    if (url && (typeof url !== 'string' || !url.startsWith('/'))) {
-      return NextResponse.json({ error: 'URL must be a relative path' }, { status: 400 });
-    }
-
-    const payload = { title, body, icon, url, tag };
+    const payload = { title, body, icon: icon || undefined, url: url || undefined, tag: tag || undefined };
 
     await addNotification({
       title,

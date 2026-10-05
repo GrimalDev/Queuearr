@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useSession } from 'next-auth/react';
-import type { PendingInvite, PaymentStatus } from '@/types';
+import type { NotificationRecord, PendingInvite, PaymentStatus } from '@/types';
 import { PaymentSettings } from '@/components/features/payment-settings';
+import { NotificationEditDialog } from '@/components/features/notification-edit-dialog';
 import { INVITE_LIFETIME_DAYS } from '@/lib/invite-policy';
+import { MAX_NOTIFICATION_BODY_LENGTH, MAX_NOTIFICATION_TITLE_LENGTH, parseNotificationContent } from '@/lib/notification-content';
 import {
   Check,
   X,
@@ -20,10 +22,12 @@ import {
   BellOff,
   Mail,
   Send,
+  Pencil,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -698,7 +702,7 @@ function InviteUsersManager() {
   );
 }
 
-function BroadcastNotificationManager() {
+function BroadcastNotificationManager({ onSent }: { onSent: () => void }): ReactNode {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [url, setUrl] = useState('/notifications');
@@ -710,7 +714,7 @@ function BroadcastNotificationManager() {
     failed?: number;
   } | null>(null);
 
-  const handleSend = async () => {
+  const handleSend = async (): Promise<void> => {
     if (!title.trim()) {
       setMessage({ type: 'error', text: 'Title is required.' });
       return;
@@ -719,7 +723,8 @@ function BroadcastNotificationManager() {
       setMessage({ type: 'error', text: 'Message body is required.' });
       return;
     }
-    if (url && !url.startsWith('/')) {
+    const content = parseNotificationContent({ title, body, url });
+    if (!content) {
       setMessage({ type: 'error', text: 'URL must be a relative path (starting with /).' });
       return;
     }
@@ -731,11 +736,7 @@ function BroadcastNotificationManager() {
       const res = await fetch('/api/admin/notifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: title.trim(),
-          body: body.trim(),
-          url: url.trim() || undefined,
-        }),
+        body: JSON.stringify(content),
       });
 
       if (res.ok) {
@@ -749,6 +750,7 @@ function BroadcastNotificationManager() {
         setTitle('');
         setBody('');
         setUrl('/notifications');
+        onSent();
       } else {
         const errorData = await res.json().catch(() => ({}));
         setMessage({ type: 'error', text: errorData.error || 'Failed to send notification.' });
@@ -769,18 +771,19 @@ function BroadcastNotificationManager() {
           placeholder="System Update"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          maxLength={200}
+          maxLength={MAX_NOTIFICATION_TITLE_LENGTH}
         />
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="notification-body">Message</Label>
-        <Input
+        <Textarea
           id="notification-body"
           placeholder="Your notification message..."
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          maxLength={1000}
+          maxLength={MAX_NOTIFICATION_BODY_LENGTH}
+          rows={6}
         />
       </div>
 
@@ -824,16 +827,9 @@ function BroadcastNotificationManager() {
   );
 }
 
-function NotificationHistoryManager() {
-  const [notifications, setNotifications] = useState<
-    Array<{
-      id: number;
-      title: string;
-      body: string;
-      url: string | null;
-      sentAt: string;
-    }>
-  >([]);
+function NotificationHistoryManager(): ReactNode {
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
+  const [editingNotification, setEditingNotification] = useState<NotificationRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
@@ -895,9 +891,19 @@ function NotificationHistoryManager() {
             >
               <div className="flex-1 min-w-0 space-y-1">
                 <p className="font-medium text-sm truncate">{notification.title}</p>
-                <p className="text-xs text-muted-foreground line-clamp-2">{notification.body}</p>
+                <p className="text-xs text-muted-foreground whitespace-pre-wrap break-words">{notification.body}</p>
                 <p className="text-xs text-muted-foreground">{formatDate(notification.sentAt)}</p>
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setEditingNotification(notification)}
+                title="Edit notification"
+                aria-label="Edit notification"
+                className="shrink-0"
+              >
+                <Pencil className="h-4 w-4" aria-hidden="true" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -939,11 +945,23 @@ function NotificationHistoryManager() {
           )}
         </>
       )}
+      {editingNotification && (
+        <NotificationEditDialog
+          key={editingNotification.id}
+          notification={editingNotification}
+          onClose={() => setEditingNotification(null)}
+          onSaved={(updated) => {
+            setNotifications((current) => current.map((item) => item.id === updated.id ? updated : item));
+            setEditingNotification(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 export default function AdminSettingsPage() {
+  const [notificationRevision, setNotificationRevision] = useState(0);
   const [services, setServices] = useState<ServiceStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isTesting, setIsTesting] = useState(false);
@@ -1045,7 +1063,7 @@ export default function AdminSettingsPage() {
           <CardDescription>Send a push notification to all users</CardDescription>
         </CardHeader>
         <CardContent>
-          <BroadcastNotificationManager />
+          <BroadcastNotificationManager onSent={() => setNotificationRevision((revision) => revision + 1)} />
         </CardContent>
       </Card>
 
@@ -1055,7 +1073,7 @@ export default function AdminSettingsPage() {
           <CardDescription>View and manage previously sent notifications</CardDescription>
         </CardHeader>
         <CardContent>
-          <NotificationHistoryManager />
+          <NotificationHistoryManager key={notificationRevision} />
         </CardContent>
       </Card>
 

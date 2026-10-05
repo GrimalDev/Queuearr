@@ -499,6 +499,17 @@ export interface PendingInvite {
   expiresAt: string;
 }
 
+export interface NotificationContent {
+  title: string;
+  body: string;
+  url: string | null;
+}
+
+export interface NotificationRecord extends NotificationContent {
+  id: number;
+  sentAt: string;
+}
+
 export interface PaymentSettings {
   enabled: boolean;
   paymentUrl: string;

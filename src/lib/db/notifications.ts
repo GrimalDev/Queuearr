@@ -1,7 +1,8 @@
 import { and, eq, desc, isNull, count, sql } from 'drizzle-orm';
-import { db } from './index';
-import { notifications, notificationReads } from './schema';
-import type { Notification, NewNotification } from './schema';
+import { db } from '@/lib/db';
+import { notifications, notificationReads } from '@/lib/db/schema';
+import type { Notification, NewNotification } from '@/lib/db/schema';
+import type { NotificationContent } from '@/types';
 
 export async function addNotification(
   notification: Omit<NewNotification, 'sentAt'>
@@ -56,6 +57,18 @@ export async function deleteNotification(id: number): Promise<void> {
     .update(notifications)
     .set({ deletedAt: now })
     .where(eq(notifications.id, id));
+}
+
+export async function updateNotification(
+  id: number,
+  content: NotificationContent
+): Promise<Notification | undefined> {
+  const [updated] = await db
+    .update(notifications)
+    .set({ title: content.title, body: content.body, url: content.url })
+    .where(and(eq(notifications.id, id), isNull(notifications.deletedAt)))
+    .returning();
+  return updated;
 }
 
 export async function getUnreadNotificationsCount(userId: string): Promise<number> {
