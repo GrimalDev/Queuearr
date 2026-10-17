@@ -2,14 +2,6 @@ export interface RadarrMovie {
   id?: number;
   title: string;
   originalTitle?: string;
-  originalLanguage?: RadarrLanguage;
-  movieFile?: {
-    id: number;
-    path?: string;
-    languages?: RadarrLanguage[];
-    quality?: MediaQuality;
-    edition?: string;
-  };
   sortTitle?: string;
   sizeOnDisk?: number;
   overview?: string;
@@ -91,31 +83,6 @@ export interface RadarrQualityProfile {
   upgradeAllowed?: boolean;
   cutoff?: number;
   items?: QualityProfileItem[];
-  language?: RadarrLanguage;
-  minFormatScore?: number;
-  cutoffFormatScore?: number;
-  minUpgradeFormatScore?: number;
-  formatItems?: { format: number; name: string; score: number }[];
-}
-
-export interface RadarrLanguage {
-  id: number;
-  name: string;
-}
-
-export type MovieAudioLanguage = 'original' | 'english' | 'french';
-
-export interface RadarrCustomFormat {
-  id: number;
-  name: string;
-  includeCustomFormatWhenRenaming: boolean;
-  specifications: {
-    name: string;
-    implementation: string;
-    negate: boolean;
-    required: boolean;
-    fields: { name: string; value?: unknown }[];
-  }[];
 }
 
 export interface QualityProfileItem {
@@ -395,11 +362,6 @@ export interface SearchResult {
   isWatching?: boolean;
   /** Movies: whether a file exists on disk */
   hasFile?: boolean;
-  originalLanguage?: RadarrLanguage;
-  availableAudioLanguages?: RadarrLanguage[];
-  requestedAudioLanguages?: RadarrLanguage[];
-  audioRequestState?: string;
-  audioRequestDetail?: string;
   /** Series: season list with statistics (from Sonarr lookup or library) */
   seasons?: SonarrSeason[];
   releaseDate?: string;
@@ -451,15 +413,6 @@ export interface Release {
   customFormatScore?: number;
   downloadAllowed?: boolean;
   quality?: MediaQuality;
-  languages?: RadarrLanguage[];
-  customFormats?: { id: number; name: string }[];
-  protocol?: string;
-  magnetUrl?: string;
-  downloadUrl?: string;
-  infoHash?: string;
-  edition?: string;
-  mappedMovieId?: number;
-  tmdbId?: number;
 }
 
 export type QueueItemStatus =

@@ -17,7 +17,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 FROM base AS runner
-RUN apk add --no-cache ffmpeg
 WORKDIR /app
 
 ENV NODE_ENV=production

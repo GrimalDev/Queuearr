@@ -5,7 +5,6 @@ import {
   RadarrQueueItem,
   RadarrQualityProfile,
   RadarrRootFolder,
-  RadarrCustomFormat,
   Release,
 } from '@/types';
 
@@ -51,36 +50,6 @@ export class RadarrClient {
 
   async getMovie(id: number): Promise<RadarrMovie> {
     const response = await this.client.get<RadarrMovie>(`/api/v3/movie/${id}`);
-    return response.data;
-  }
-
-  async updateMovie(movie: RadarrMovie): Promise<RadarrMovie> {
-    const response = await this.client.put<RadarrMovie>(`/api/v3/movie/${movie.id}`, movie);
-    return response.data;
-  }
-
-  async getCustomFormats(): Promise<RadarrCustomFormat[]> {
-    const response = await this.client.get<RadarrCustomFormat[]>('/api/v3/customformat');
-    return response.data;
-  }
-
-  async hasIsolatedAudioCategory(): Promise<boolean> {
-    const response = await this.client.get<{ enable: boolean; implementation: string; fields: { name: string; value?: unknown }[] }[]>('/api/v3/downloadclient');
-    return response.data.filter((client) => client.enable && client.implementation === 'Transmission').every((client) => {
-      const category = client.fields.find((field) => field.name === 'movieCategory')?.value;
-      const directory = client.fields.find((field) => field.name === 'movieDirectory')?.value;
-      return typeof category === 'string' && category.trim().length > 0 &&
-        !category.toLowerCase().startsWith('queuearr-audio') && !directory;
-    });
-  }
-
-  async createCustomFormat(format: Omit<RadarrCustomFormat, 'id'>): Promise<RadarrCustomFormat> {
-    const response = await this.client.post<RadarrCustomFormat>('/api/v3/customformat', format);
-    return response.data;
-  }
-
-  async createQualityProfile(profile: Omit<RadarrQualityProfile, 'id'>): Promise<RadarrQualityProfile> {
-    const response = await this.client.post<RadarrQualityProfile>('/api/v3/qualityprofile', profile);
     return response.data;
   }
 
@@ -151,10 +120,6 @@ export class RadarrClient {
 
   async triggerSearch(movieIds: number[]): Promise<void> {
     await this.client.post('/api/v3/command', { name: 'MoviesSearch', movieIds });
-  }
-
-  async rescanMovie(movieId: number): Promise<void> {
-    await this.client.post('/api/v3/command', { name: 'RescanMovie', movieId });
   }
 
   async getReleases(movieId: number): Promise<Release[]> {
