@@ -263,3 +263,20 @@ tmux split-window -v -t '=queuarr' -c /Users/grimaldev/code/projects/queuarr fis
 | `next.config.ts` | Next.js — standalone output, image domains, SW headers |
 | `postcss.config.mjs` | PostCSS — Tailwind CSS plugin |
 | `components.json` | shadcn/ui component registry config |
+
+## Movie audio pipeline
+
+- Movie language requests use `/api/radarr/audio`, the movie-audio libraries,
+  SQLite policies/jobs/leases, and the instrumentation-started worker.
+- Use FFprobe for inspection and FFmpeg stream copy for audio merging. Never
+  infer synchronization from duration alone or silently drop existing tracks.
+- `AUDIO_MERGE_ENABLED` defaults to false. Do not enable it or initiate real
+  downloads during development without configured shared media folders.
+- Audio container paths are fixed at `/movies`, `/data/queuearr-audio`, and
+  `/audio-backups`. Set host sources directly in `docker-compose.audio.yml`;
+  do not introduce path environment variables.
+- Donors must remain isolated from Radarr's import category. Keep originals and
+  seeding files intact. Publication replaces an inode after verification and
+  backup; it must never modify a hard-linked download in place.
+- Validate using temporary synthetic media and mocked service responses. Follow
+  the existing rule against adding test infrastructure without authorization.

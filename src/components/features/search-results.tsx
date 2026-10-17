@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
-import { Plus, Check, Film, Tv, Calendar, Loader2, Star, Bell, BellOff, Download, List, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Check, Film, Tv, Calendar, Star, Bell, BellOff, Download, List, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +10,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useSearch } from '@/hooks/use-media';
 import { useAppStore } from '@/store/app-store';
 import { SearchResult } from '@/types';
-import { SeriesBrowser } from './series-browser';
+import { SeriesBrowser } from '@/components/features/series-browser';
+import { MovieAudioRequest } from '@/components/features/movie-audio-request';
 import type { SearchSortKey } from '@/store/app-store';
 
 const SORT_OPTIONS: { key: SearchSortKey; label: string }[] = [
@@ -24,11 +24,8 @@ const SORT_OPTIONS: { key: SearchSortKey; label: string }[] = [
 export function SearchResults() {
   const { searchResults, isSearching, searchQuery, searchSortKey, searchSortDir, setSearchSort } = useSearch();
   const { addAlert } = useAppStore();
-  const router = useRouter();
-  const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
   const [watchingStates, setWatchingStates] = useState<Map<string, boolean>>(new Map());
   const [browsingSeries, setBrowsingSeries] = useState<SearchResult | null>(null);
-  const [grabbingMovieIds, setGrabbingMovieIds] = useState<Set<string>>(new Set());
 
   const handleSortClick = (key: SearchSortKey): void => {
     if (searchSortKey === key) {
@@ -47,52 +44,6 @@ export function SearchResults() {
 
   const formatSortScore = (value: number) =>
     value.toLocaleString(undefined, { maximumFractionDigits: 1 });
-
-  const handleAdd = async (result: SearchResult) => {
-    setAddingIds((prev) => new Set(prev).add(result.id));
-
-    try {
-      const endpoint = result.type === 'movie' ? '/api/radarr/search' : '/api/sonarr/search';
-      const body =
-        result.type === 'movie'
-          ? { title: result.title, tmdbId: result.tmdbId, year: result.year }
-          : { title: result.title, tvdbId: result.tvdbId };
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (response.ok) {
-        addAlert({
-          type: 'success',
-          title: 'Added Successfully',
-          message: `${result.title} has been added to ${result.type === 'movie' ? 'Radarr' : 'Sonarr'}`,
-          source: result.type === 'movie' ? 'radarr' : 'sonarr',
-        });
-        router.push('/queue');
-      } else {
-        throw new Error('Failed to add');
-      }
-    } catch (error) {
-      console.error('Add error:', error);
-      addAlert({
-        type: 'error',
-        title: 'Failed to Add',
-        message: `Could not add ${result.title}. Please try again.`,
-        source: result.type === 'movie' ? 'radarr' : 'sonarr',
-      });
-      // Only clear the loading state on failure so the user can retry.
-      // On success we navigate away, so we intentionally leave the id in
-      // the set to keep the button disabled until the page unmounts.
-      setAddingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(result.id);
-        return next;
-      });
-    }
-  };
 
   const handleToggleWatch = async (result: SearchResult) => {
     const source = result.type === 'movie' ? 'radarr' : 'sonarr';
@@ -131,51 +82,6 @@ export function SearchResults() {
         message: `Could not update notifications for ${result.title}.`,
         source,
       });
-    }
-  };
-
-  const handleGrabMissingMovie = async (result: SearchResult) => {
-    if (!result.libraryId) return;
-    setGrabbingMovieIds((prev) => new Set(prev).add(result.id));
-    try {
-      const res = await fetch(`/api/radarr/movie/${result.libraryId}/grab`, { method: 'POST' });
-
-      if (res.status === 422) {
-        const body = await res.json() as { error?: string };
-        if (body.error === 'telesync_only') {
-          addAlert({
-            type: 'warning',
-            title: 'Not available yet',
-            message: `${result.title} is only available in TELESYNC quality. Download blocked until a proper release is out.`,
-            source: 'radarr',
-          });
-          fetch('/api/push/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              title: 'Film not available yet',
-              body: `${result.title} is only available in TELESYNC. Download blocked.`,
-              tag: `telesync-${result.id}`,
-              url: '/',
-            }),
-          }).catch(() => undefined);
-          setGrabbingMovieIds((prev) => { const n = new Set(prev); n.delete(result.id); return n; });
-          return;
-        }
-        throw new Error('Unexpected 422 response');
-      }
-
-      if (!res.ok) throw new Error('Failed to grab');
-      addAlert({
-        type: 'success',
-        title: 'Download started',
-        message: `Searching for ${result.title}…`,
-        source: 'radarr',
-      });
-      router.push('/queue');
-    } catch {
-      addAlert({ type: 'error', title: 'Download failed', message: `Could not start download for ${result.title}.`, source: 'radarr' });
-      setGrabbingMovieIds((prev) => { const n = new Set(prev); n.delete(result.id); return n; });
     }
   };
 
@@ -350,55 +256,16 @@ export function SearchResults() {
                     Download only the needed season(s) instead of grabbing the whole series.
                   </p>
                 </div>
-              ) : result.isDownloading ? (
-                /* ── Movie: currently downloading ── */
-                <div className="flex gap-2">
-                  <Button className="flex-1" variant="secondary" disabled>
-                    <Download className="h-4 w-4 mr-2" />
-                    Downloading
-                  </Button>
-                  <Button
-                    variant={isWatching ? 'default' : 'outline'}
-                    size="icon"
-                    onClick={() => handleToggleWatch(result)}
-                    title={isWatching ? 'Unsubscribe from notifications' : 'Get notified when done'}
-                  >
-                    {isWatching ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
-                  </Button>
-                </div>
-              ) : result.inLibrary && !result.hasFile ? (
-                /* ── Movie: in library but missing file ── */
-                <Button
-                  className="w-full"
-                  variant="default"
-                  disabled={grabbingMovieIds.has(result.id)}
-                  onClick={() => handleGrabMissingMovie(result)}
-                >
-                  {grabbingMovieIds.has(result.id) ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Searching…</>
-                  ) : (
-                    <><Download className="h-4 w-4 mr-2" />Download</>
-                  )}
-                </Button>
-              ) : result.inLibrary ? (
-                /* ── Movie: already downloaded ── */
-                <Button className="w-full" variant="secondary" disabled>
-                  <Check className="h-4 w-4 mr-2" />
-                  Already Added
-                </Button>
               ) : (
-                /* ── Movie: not in library ── */
-                <Button
-                  className="w-full"
-                  disabled={addingIds.has(result.id)}
-                  onClick={() => handleAdd(result)}
-                >
-                  {addingIds.has(result.id) ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Adding…</>
-                  ) : (
-                    <><Plus className="h-4 w-4 mr-2" />Grab Title</>
+                <div className="space-y-2">
+                  <MovieAudioRequest key={result.id} result={result} />
+                  {result.libraryId && (result.isDownloading || (result.audioRequestState && result.audioRequestState !== 'available')) && (
+                    <Button className="w-full" variant="outline" onClick={() => handleToggleWatch(result)}>
+                      {isWatching ? <Bell className="mr-2 h-4 w-4" /> : <BellOff className="mr-2 h-4 w-4" />}
+                      {isWatching ? 'Stop notifications' : 'Notify me when ready'}
+                    </Button>
                   )}
-                </Button>
+                </div>
               )}
             </CardContent>
           </Card>

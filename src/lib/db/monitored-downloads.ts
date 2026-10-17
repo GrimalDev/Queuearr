@@ -1,7 +1,7 @@
 import { eq, and, isNull, desc } from 'drizzle-orm';
-import { db } from './index';
-import { monitoredDownloads, monitoredDownloadUsers } from './schema';
-import type { MonitoredDownload } from './schema';
+import { db } from '@/lib/db';
+import { monitoredDownloads, monitoredDownloadUsers } from '@/lib/db/schema';
+import type { MonitoredDownload } from '@/lib/db/schema';
 
 export async function upsertMonitoredDownload(
   source: 'radarr' | 'sonarr',
@@ -30,6 +30,19 @@ export async function addUserToDownload(downloadId: number, userId: string): Pro
     .insert(monitoredDownloadUsers)
     .values({ downloadId, userId })
     .onConflictDoNothing();
+}
+
+export async function reopenMonitoredDownload(
+  source: 'radarr' | 'sonarr', mediaId: number, title: string,
+): Promise<MonitoredDownload> {
+  const download = await upsertMonitoredDownload(source, mediaId, title);
+  if (download.completedAt !== null) {
+    const now = Date.now();
+    await db.update(monitoredDownloads).set({
+      completedAt: null, lastStatus: null, createdAt: now, lastActivityAt: now, lastBytesAt: now,
+    }).where(eq(monitoredDownloads.id, download.id));
+  }
+  return download;
 }
 
 export interface ActiveMonitoredDownload {

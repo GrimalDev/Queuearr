@@ -23,6 +23,32 @@ export const paymentSettings = sqliteTable('payment_settings', {
   paymentUrl: text('payment_url').notNull(),
 });
 
+export const movieAudioPolicies = sqliteTable('movie_audio_policies', {
+  tmdbId: integer('tmdb_id').primaryKey(),
+  radarrMovieId: integer('radarr_movie_id').notNull(),
+  baseProfileId: integer('base_profile_id').notNull(),
+  requiredLanguages: text('required_languages').notNull(),
+});
+
+// Serializes read/merge/write requests across server processes sharing this DB.
+export const movieAudioLocks = sqliteTable('movie_audio_locks', {
+  id: integer('id').primaryKey(),
+  owner: text('owner').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+});
+
+export const movieAudioJobs = sqliteTable('movie_audio_jobs', {
+  tmdbId: integer('tmdb_id').primaryKey(),
+  state: text('state').notNull().default('pending'),
+  detail: text('detail').notNull().default('Waiting for a suitable release.'),
+  donorHash: text('donor_hash'),
+  donorLanguageId: integer('donor_language_id'),
+  restoreMonitored: integer('restore_monitored', { mode: 'boolean' }),
+  outputPath: text('output_path'),
+  updatedAt: integer('updated_at').notNull(),
+  nextAttemptAt: integer('next_attempt_at').notNull().default(0),
+});
+
 export const pushSubscriptions = sqliteTable('push_subscriptions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   endpoint: text('endpoint').notNull().unique(),

@@ -8,6 +8,14 @@ interface TransmissionConfig {
   password?: string;
 }
 
+export interface AudioDonorTorrent {
+  hashString: string;
+  downloadDir: string;
+  percentDone: number;
+  labels: string[];
+  files: { name: string; length: number; bytesCompleted: number }[];
+}
+
 function normalizeTransmissionUrl(baseUrl: string): string {
   try {
     const url = new URL(baseUrl);
@@ -234,6 +242,32 @@ export class TransmissionClient {
       return torrents.find((t) => t.id === hashOrId);
     }
     return torrents.find((t) => t.hashString === hashOrId);
+  }
+
+  async getAudioDonors(): Promise<AudioDonorTorrent[]> {
+    const response = await this.rpcRequest<{ arguments?: { torrents?: AudioDonorTorrent[] } }>('torrent-get', {
+      fields: ['hashString', 'downloadDir', 'percentDone', 'labels', 'files'],
+    });
+    return response.arguments?.torrents ?? [];
+  }
+
+  async supportsAudioDonors(): Promise<boolean> {
+    const response = await this.rpcRequest<{ arguments?: { version?: string } }>('session-get', {});
+    return Number.parseInt(response.arguments?.version ?? '', 10) >= 4;
+  }
+
+  async addAudioDonor(source: { filename: string } | { metainfo: string }, downloadDir: string, label: string): Promise<string> {
+    const result = await this.rpcRequest<{ arguments?: {
+      'torrent-added'?: { hashString: string };
+      'torrent-duplicate'?: { hashString: string };
+    } }>('torrent-add', { ...source, 'download-dir': downloadDir, labels: [label], paused: true });
+    const added = result.arguments?.['torrent-added'];
+    if (added) return added.hashString;
+    const duplicate = result.arguments?.['torrent-duplicate'];
+    const owned = duplicate && (await this.getAudioDonors()).find((torrent) =>
+      torrent.hashString === duplicate.hashString && torrent.labels?.includes(label) && torrent.downloadDir === downloadDir);
+    if (owned) return owned.hashString;
+    throw new Error('This donor torrent is already managed elsewhere. Its files and settings were left unchanged.');
   }
 
   async pauseTorrent(hashOrId: string | number): Promise<void> {

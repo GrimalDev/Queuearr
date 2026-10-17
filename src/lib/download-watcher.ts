@@ -1,3 +1,4 @@
+import { acquireMovieAudioLock, releaseMovieAudioLock, getMovieAudioJobs, getMovieAudioPolicies } from '@/lib/db/movie-audio';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { createSonarrClient } from '@/lib/api/sonarr';
 import { createTransmissionClient } from '@/lib/api/transmission';
@@ -152,6 +153,8 @@ async function checkDownloads(): Promise<void> {
       monitored = await getActiveMonitoredDownloads();
     }
 
+    const audioPolicies = new Map([...getMovieAudioPolicies().values()].map((policy) => [policy.radarrMovieId, policy]));
+    const audioJobs = new Map(getMovieAudioJobs().map((job) => [job.tmdbId, job]));
     for (const download of monitored) {
       const queueItems =
         download.source === 'radarr'
@@ -175,18 +178,25 @@ async function checkDownloads(): Promise<void> {
 
       let effectiveStatus = resolveStatus(queueItems, torrentsByHash);
 
-      if (queueItems.length === 0 && download.lastStatus !== null) {
-        // Left the queue → completed
-        await Promise.all(
-          download.userIds.map((userId) =>
-            sendToUser(userId, {
-              title: READY_NOTIFICATION.title(download.title),
-              body: READY_NOTIFICATION.body,
-              tag: `download-complete-${download.id}`,
-            })
-          )
-        );
-        await markDownloadCompleted(download.id);
+      const audioPolicy = download.source === 'radarr' ? audioPolicies.get(download.mediaId) : undefined;
+      const audioReady = audioPolicy ? audioJobs.get(audioPolicy.tmdbId)?.state === 'available' : undefined;
+      if (queueItems.length === 0 && (audioPolicy ? audioReady : download.lastStatus !== null)) {
+        const audioLock = audioPolicy ? acquireMovieAudioLock(audioPolicy.tmdbId + 2) : null;
+        if (audioPolicy && !audioLock) continue;
+        try {
+          // A new language request may have arrived since the initial status read.
+          if (audioPolicy && getMovieAudioJobs().find((job) => job.tmdbId === audioPolicy.tmdbId)?.state !== 'available') continue;
+          await Promise.all(
+            download.userIds.map((userId) =>
+              sendToUser(userId, {
+                title: READY_NOTIFICATION.title(download.title),
+                body: audioPolicy ? 'All requested audio languages are available.' : READY_NOTIFICATION.body,
+                tag: `download-complete-${download.id}`,
+              })
+            )
+          );
+          await markDownloadCompleted(download.id);
+        } finally { if (audioLock) releaseMovieAudioLock(audioLock); }
         continue;
       }
 
