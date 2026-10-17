@@ -67,7 +67,7 @@ export function useSearch() {
         if (searchType === 'all' || searchType === 'movies') {
           const response = await fetch(`/api/radarr/search?q=${encodeURIComponent(query)}`);
           if (response.ok) {
-            const movies: (RadarrMovie & { inLibrary: boolean; libraryId?: number; isDownloading?: boolean; monitoredId?: number; isWatching?: boolean })[] =
+            const movies: (RadarrMovie & Pick<SearchResult, 'availableAudioLanguages' | 'requestedAudioLanguages' | 'audioRequestState' | 'audioRequestDetail'> & { inLibrary: boolean; libraryId?: number; isDownloading?: boolean; monitoredId?: number; isWatching?: boolean })[] =
               await response.json();
             results.push(
               ...movies.map((m) => ({
@@ -89,6 +89,11 @@ export function useSearch() {
                 monitoredId: m.monitoredId,
                 isWatching: m.isWatching,
                 hasFile: m.hasFile,
+                originalLanguage: m.originalLanguage,
+                availableAudioLanguages: m.availableAudioLanguages,
+                requestedAudioLanguages: m.requestedAudioLanguages,
+                audioRequestState: m.audioRequestState,
+                audioRequestDetail: m.audioRequestDetail,
                 releaseDate: m.inCinemas ?? m.physicalRelease ?? m.digitalRelease ?? m.added,
               }))
             );

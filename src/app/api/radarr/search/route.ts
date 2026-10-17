@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth';
 import { isAxiosError } from 'axios';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
+import { getMovieAudioPolicies, getMovieAudioJobs } from '@/lib/db/movie-audio';
+import { getAvailableAudio } from '@/lib/movie-audio-policy';
 import { smartGrab } from '@/lib/smart-grab';
 import { invalidateQueueCache } from '@/lib/queue-cache';
 import {
@@ -38,6 +40,8 @@ export async function GET(request: NextRequest) {
       radarr.getQueue(false),
     ]);
 
+    const audioPolicies = getMovieAudioPolicies();
+    const audioJobs = new Map(getMovieAudioJobs().map((job) => [job.tmdbId, job]));
     const existingTmdbIds = new Set(existingMovies.map((m) => m.tmdbId));
     const queuedMovieIds = new Set(radarrQueue.records.map((item) => item.movieId).filter(Boolean));
 
@@ -47,12 +51,18 @@ export async function GET(request: NextRequest) {
         const libraryId = libraryMovie?.id;
         const monitoredId = libraryId !== undefined ? activeMediaIds.get(libraryId) : undefined;
         const isDownloading = monitoredId !== undefined && queuedMovieIds.has(libraryId!);
-        const watching = isDownloading
+        const watching = monitoredId !== undefined
           ? await isUserWatching(monitoredId!, session.user.id)
           : false;
 
         return {
           ...movie,
+          hasFile: libraryMovie?.hasFile ?? false,
+          originalLanguage: libraryMovie?.originalLanguage ?? movie.originalLanguage,
+          availableAudioLanguages: libraryMovie ? getAvailableAudio(libraryMovie) : [],
+          requestedAudioLanguages: audioPolicies.get(movie.tmdbId)?.requiredLanguages ?? [],
+          audioRequestState: audioJobs.get(movie.tmdbId)?.state,
+          audioRequestDetail: audioJobs.get(movie.tmdbId)?.detail,
           inLibrary: existingTmdbIds.has(movie.tmdbId),
           libraryId,
           isDownloading,

@@ -1,0 +1,20 @@
+# Optional: append -f docker-compose.audio.yml after the base/dev files.
+# Create folders first. Paths must match Radarr / Transmission inside containers.
+services:
+  queuearr:
+    volumes:
+      - type: bind
+        source: /mnt/plex/myflix/movies
+        target: /movies
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/plex/myflix/downloads/queuearr-audio
+        target: /data/queuearr-audio
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/plex/myflix/audio-backups
+        target: /audio-backups
+        bind:
+          create_host_path: false
