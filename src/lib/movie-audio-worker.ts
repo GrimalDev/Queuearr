@@ -146,10 +146,6 @@ async function processJob(
       return;
     }
   }
-  if (process.env.AUDIO_MERGE_ENABLED !== 'true') {
-    later(id, 'Waiting for a multi-audio release. Separate audio merging is disabled on this server.');
-    return;
-  }
   languageCodes(wanted);
   const paths = await audioPaths();
   const transmission = createTransmissionClient();

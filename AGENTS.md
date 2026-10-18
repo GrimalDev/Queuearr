@@ -275,8 +275,9 @@ tmux split-window -v -t '=queuarr' -c /Users/grimaldev/code/projects/queuarr fis
   SQLite policies/jobs/leases, and the instrumentation-started worker.
 - Use FFprobe for inspection and FFmpeg stream copy for audio merging. Never
   infer synchronization from duration alone or silently drop existing tracks.
-- `AUDIO_MERGE_ENABLED` defaults to false. Do not enable it or initiate real
-  downloads during development without configured shared media folders.
+- Audio merging is always enabled; there is no environment activation switch.
+  Do not initiate real downloads during development without configured shared
+  media folders. Use mocked services for verification.
 - Audio container paths are fixed at `/movies`, `/data/queuearr-audio`, and
   `/audio-backups`. Set host sources directly in `docker-compose.audio.yml`;
   do not introduce path environment variables.

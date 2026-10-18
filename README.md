@@ -130,12 +130,12 @@ language; the worker then applies the combined language requirements.
 
 The worker checks requests every 30 seconds and searches at most once every 15
 minutes per waiting request. It prefers an eligible release containing every
-required language. With `AUDIO_MERGE_ENABLED=false`, this is the only download
-path. Requests remain pending if no suitable multi-audio release is available.
+required language. If none is available, it automatically falls back to separate
+audio downloads and merging. No environment switch is required.
 
-### Optional separate audio downloads
+### Separate audio downloads and merging
 
-Set `AUDIO_MERGE_ENABLED=true` only after configuring the shared folders below.
+Configure the shared folders below for the automatic merging fallback.
 The Docker image includes FFmpeg and FFprobe. Host development needs both tools
 on PATH. This fallback requires Transmission 4+ and supports torrents only.
 
