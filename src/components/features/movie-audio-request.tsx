@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { Check, ChevronDown, Download, Loader2, RotateCw } from 'lucide-react';
+import { Check, ChevronDown, Download, Loader2, Plus, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { MOVIE_AUDIO_OPTIONS } from '@/lib/movie-audio-policy';
@@ -53,6 +53,8 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
   });
   const selected = options.find((option) => option.value === language)!;
   const hasFile = status.hasFile ?? result.hasFile ?? false;
+  const isRegrab = hasFile && selected.present;
+  const actionLabel = !hasFile ? 'Grab' : selected.present ? 'Regrab' : 'Add language';
   const submit = async (): Promise<void> => {
     setBusy(true); setError('');
     try {
@@ -107,12 +109,13 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
           </DropdownMenuContent>
         </DropdownMenu>
         <Button className="h-12 min-w-0 gap-1.5 px-2 whitespace-normal" disabled={busy}
-          aria-label={`${hasFile ? 'Already available. Regrab' : 'Grab'} ${result.title} with ${selected.label} audio`}
+          aria-label={`${isRegrab ? 'Already available. ' : ''}${actionLabel} ${result.title} with ${selected.label} audio`}
           onClick={() => { void submit(); }}>
           {busy ? <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" /> :
-            hasFile ? <RotateCw className="size-4 shrink-0" aria-hidden="true" /> : <Download className="size-4 shrink-0" aria-hidden="true" />}
+            isRegrab ? <RotateCw className="size-4 shrink-0" aria-hidden="true" /> :
+              hasFile ? <Plus className="size-4 shrink-0" aria-hidden="true" /> : <Download className="size-4 shrink-0" aria-hidden="true" />}
           <span className="min-w-0 leading-tight">
-            {busy ? 'Starting…' : hasFile ? <><span className="block text-[10px] font-normal">Already available</span><span className="block text-sm">Regrab</span></> : 'Grab'}
+            {busy ? 'Starting…' : isRegrab ? <><span className="block text-[10px] font-normal">Already available</span><span className="block text-sm">Regrab</span></> : actionLabel}
           </span>
         </Button>
       </div>
