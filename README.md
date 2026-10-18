@@ -152,9 +152,21 @@ Append `-f docker-compose.audio.yml` to the base/dev command, or add these mount
 to the Swarm service. No path environment variables are needed. Create the host
 folders first; the override refuses to create missing folders. Keep them separate
 and non-nested, with enough space and permissions for Queuearr and Transmission.
-Queuearr runs as UID 1001. In Swarm, use one Queuearr replica on the node with
-these mounts and its SQLite volume; do not share SQLite across hosts over network
-filesystems.
+Queuearr runs as UID/GID 1001:1001. If Radarr and Transmission run as UID/GID
+1000:1000, both identities need access to the shared media folders. Queuearr needs
+read/write/traverse permissions on all three mounts and read access to source
+files. Transmission must also be able to write into donor folders created by
+Queuearr. Use a shared writable group or access and default ACLs so newly created
+files and folders retain access for both services. Existing bind mounts keep
+their host permissions; image ownership does not change them.
+
+An `EACCES` log means permission denied. Filesystem failures include their
+operation and container path in server logs. Check ownership, parent directory
+traversal, and share ACLs on the host or storage server for the corresponding
+mount. The frontend continues to show only **Error**.
+
+In Swarm, use one Queuearr replica on the node with these mounts and its SQLite
+volume; do not share SQLite across hosts over network filesystems.
 
 Queuearr adds donor torrents paused in an isolated folder with a dedicated
 `queuearr-audio-*` label, records them, then starts them. Configure Radarr's

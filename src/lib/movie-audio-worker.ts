@@ -272,7 +272,7 @@ export async function runMovieAudioJobs(): Promise<void> {
         if (!current || !policy) continue;
         if (!shouldProcessJob(current)) continue;
         if (isLegacyConfigurationFailure(current)) {
-          logMovieAudioError(`movie ${job.tmdbId}: rechecking a previous configuration failure`, undefined, current.detail);
+          console.info(`[audio] movie ${job.tmdbId}: rechecking a previous configuration failure`);
           current.state = 'waiting_for_configuration';
           current.detail = 'Error';
           updateMovieAudioJob(job.tmdbId, { state: current.state, detail: current.detail, nextAttemptAt: 0 });
