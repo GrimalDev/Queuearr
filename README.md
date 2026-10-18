@@ -22,6 +22,31 @@ A simple web interface for searching and adding movies/series to Radarr or Sonar
 
 See the full setup guide in [docs/SETUP.md](docs/SETUP.md).
 
+## Container user and database permissions
+
+`PUID` and `PGID` select the application identity at container startup. They default
+to `1001:1001`. In Dokploy, set them under Environment, save, and rebuild/redeploy
+the image. For media services using `1000:1000`, configure:
+
+```dotenv
+PUID=1000
+PGID=1000
+```
+
+Startup briefly runs as root to prepare the dedicated database directory, SQLite
+DB/WAL/SHM files, migration lock, and Next.js output/cache. It then drops to the
+configured UID/GID before starting Node. Media mounts and their ownership are
+left alone. No Patches or Run Command changes are needed. Do not override the
+container user or entrypoint when relying on this setup. IDs must be positive
+integers; running the app as root is rejected.
+
+For an existing SQLite deployment, keep one replica and use the Swarm stop-first
+update order when switching identities. The database must remain on local storage.
+If its filesystem refuses ownership changes, grant the configured user access on
+the storage host. Startup reports the blocked directory or file and stops before
+running the app when permissions cannot be prepared. These variables affect the
+Docker image only; host `npm` commands use the shell user's identity.
+
 ## Invitations
 
 Unaccepted invites expire seven days after sending. Resending starts a new
@@ -152,8 +177,9 @@ Append `-f docker-compose.audio.yml` to the base/dev command, or add these mount
 to the Swarm service. No path environment variables are needed. Create the host
 folders first; the override refuses to create missing folders. Keep them separate
 and non-nested, with enough space and permissions for Queuearr and Transmission.
-Queuearr runs as UID/GID 1001:1001. If Radarr and Transmission run as UID/GID
-1000:1000, both identities need access to the shared media folders. Queuearr needs
+Queuearr defaults to UID/GID 1001:1001. Set `PUID=1000` and `PGID=1000` to match
+Radarr and Transmission running as 1000:1000, or grant both identities access to
+the shared media folders. Queuearr needs
 read/write/traverse permissions on all three mounts and read access to source
 files. Transmission must also be able to write into donor folders created by
 Queuearr. Use a shared writable group or access and default ACLs so newly created

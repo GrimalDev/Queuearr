@@ -269,6 +269,17 @@ tmux split-window -v -t '=queuarr' -c /Users/grimaldev/code/projects/queuarr fis
 | `postcss.config.mjs` | PostCSS — Tailwind CSS plugin |
 | `components.json` | shadcn/ui component registry config |
 
+## Container identity
+
+- The Docker entrypoint reads PUID/PGID, defaults to 1001:1001, prepares Queuearr's
+  dedicated database and Next.js writable files, then drops privileges with su-exec.
+- Keep ownership preparation limited to the database directory, its SQLite files,
+  and Next.js output/cache. Never recursively chown shared media folders.
+- Verify identity changes using isolated containers and temporary DB/WAL files.
+  Preserve the real database and do not run a competing app server during checks.
+- Dokploy identity changes use one replica and stop-first updates. PUID/PGID
+  settings require an image containing the entrypoint, not just an env edit.
+
 ## Movie audio pipeline
 
 - Movie language requests use `/api/radarr/audio`, the movie-audio libraries,

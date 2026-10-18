@@ -11,6 +11,8 @@ services:
     volumes:
       - ${DATA_PATH}:/app/data
     environment:
+      - PUID=${PUID:-1001}
+      - PGID=${PGID:-1001}
       - NEXTAUTH_URL=${NEXTAUTH_URL}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - PLEX_CLIENT_ID=${PLEX_CLIENT_ID}
