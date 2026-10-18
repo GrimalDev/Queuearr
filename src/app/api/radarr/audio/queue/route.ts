@@ -7,6 +7,7 @@ import { getWatchedMediaIds } from '@/lib/db/monitored-downloads';
 import { getMovieAudioQueue } from '@/lib/movie-audio-queue';
 import { movieAudioErrorResponse } from '@/lib/movie-audio-errors';
 import { getCachedRadarrMovies } from '@/lib/queue-cache';
+import { getDownloadRetryTimes } from '@/lib/download-retry';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
@@ -25,8 +26,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const client = createRadarrClient();
     if (!client) return movieAudioErrorResponse('audio queue', 503, 'Radarr is not configured.');
     const items = getMovieAudioQueue(jobs, policies, await getCachedRadarrMovies(client), visible, settled);
-    return NextResponse.json(items.map((item) => item.audio ? { ...item, audio: { ...item.audio,
+    const retryTimes = getDownloadRetryTimes();
+    return NextResponse.json(items.map((item) => ({ ...item,
+      retryAvailableAt: retryTimes.get(`radarr:${item.mediaId}`),
+      canRetrySearch: item.canRetrySearch && (session.user.role === 'admin' || watched.has(item.mediaId!)),
+      ...(item.audio ? { audio: { ...item.audio,
       canRetry: item.audio.canRetry && (session.user.role === 'admin' || watched.has(item.mediaId!)),
-    } } : item));
+      } } : {}),
+    })));
   } catch (cause) { return movieAudioErrorResponse('audio queue', 503, undefined, cause); }
 }

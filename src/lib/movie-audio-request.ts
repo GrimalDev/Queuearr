@@ -4,6 +4,7 @@ import { addUserToDownload, reopenMonitoredDownload } from '@/lib/db/monitored-d
 import { getAvailableAudio, hasRequiredAudio, mergeAudioLanguages, resolveAudioLanguage } from '@/lib/movie-audio-policy';
 import { AUDIO_PROFILE_PREFIX, AudioProfileError, ensureAudioProfile } from '@/lib/radarr-audio-profile';
 import { isMovieRegrab } from '@/lib/movie-audio-releases';
+import { startDownloadRetryCooldown } from '@/lib/download-retry';
 import type { MovieAudioLanguage, RadarrLanguage } from '@/types';
 
 export class MovieAudioRequestError extends Error {
@@ -108,6 +109,7 @@ export async function requestMovieAudio(
       if (leaseLost) throw new MovieAudioRequestError('The request lock expired. Please retry.');
       const monitored = await reopenMonitoredDownload('radarr', movieId, movie.title);
       await addUserToDownload(monitored.id, userId);
+      startDownloadRetryCooldown('radarr', movieId);
       state = 'regrabbing';
       detail = 'Sending a fresh download to Radarr. The existing movie stays available until import.';
       // Persist before submitting: a lost response must not cause duplicate grabs or early completion.
@@ -124,6 +126,7 @@ export async function requestMovieAudio(
     } else if (!satisfied || regrabbing) {
       const monitored = await reopenMonitoredDownload('radarr', movieId, movie.title);
       await addUserToDownload(monitored.id, userId);
+      if (!processingAudio && !regrabbing) startDownloadRetryCooldown('radarr', movieId);
       try {
         if (!processingAudio && !regrabbing &&
             !(await client.getQueue(false)).records.some((item) => item.movieId === movie.id)) {

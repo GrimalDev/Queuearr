@@ -126,7 +126,8 @@ export async function POST(request: NextRequest) {
       searchForMissingEpisodes: searchForMissingEpisodes ?? true,
     });
 
-    if (series.id) {
+    // Adding a series without a search is library setup, not an active download request.
+    if (series.id && searchForMissingEpisodes !== false) {
       const monitored = await upsertMonitoredDownload('sonarr', series.id, series.title);
       await addUserToDownload(monitored.id, session.user.id);
     }

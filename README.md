@@ -178,6 +178,16 @@ preserve the switch request; uncertain ownership and publication still require
 review. The retry does not bypass language, quality, edition, or synchronization
 checks. Ordinary movie retries use Radarr's existing blocklist/retry handling.
 
+Manual retries have a five-minute cooldown after the initial request and each
+retry attempt. The deadline is stored in SQLite and shown as a countdown, so
+refreshing the page does not reset it. Administrators can use **Retry now (admin)**
+to override the timer; media ownership and publication checks still apply.
+Searching cards offer **Retry search** when no release has entered the queue.
+**My downloads** includes only requests the user follows; **All downloads** keeps
+the shared view. Seeing another user's title does not grant retry access. Late
+responses are discarded when the filter, account, or role changes. Adding a
+series with automatic searching disabled does not create an active download.
+
 Configure the shared folders below for the automatic merging fallback.
 The Docker image includes FFmpeg and FFprobe. Host development needs both tools
 on PATH. This fallback requires Transmission 4+ and supports torrents only.

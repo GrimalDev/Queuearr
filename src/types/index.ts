@@ -410,6 +410,9 @@ export interface QueueItem {
   id: string;
   tmdbId?: number;
   isSearching?: boolean;
+  canRetrySearch?: boolean;
+  canRetry?: boolean;
+  retryAvailableAt?: number;
   isRegrab?: boolean;
   sourceId?: number;
   mediaId?: number;

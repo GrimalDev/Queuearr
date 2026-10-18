@@ -230,24 +230,39 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
   useEffect(() => { isAdminRef.current = isAdmin; }, [isAdmin]);
   const hasFetchedRef = useRef(false);
   const currentFilterRef = useRef(filter);
+  const currentUserRef = useRef(session?.user?.id);
+  const currentRoleRef = useRef(session?.user?.role);
+  const fetchSequenceRef = useRef(0);
+  const inFlightRef = useRef<{ filter: 'mine' | 'all'; userId?: string; role?: string; sequence: number } | null>(null);
+  const [queueScope, setQueueScope] = useState<{ filter: 'mine' | 'all'; userId?: string; role?: string } | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const previousProblematicRef = useRef<Set<string>>(new Set());
 
   // Track filter changes to handle stale responses
   useEffect(() => {
-    if (currentFilterRef.current !== filter) {
+    if (currentFilterRef.current !== filter || currentUserRef.current !== session?.user?.id || currentRoleRef.current !== session?.user?.role) {
       currentFilterRef.current = filter;
+      currentUserRef.current = session?.user?.id;
+      currentRoleRef.current = session?.user?.role;
+      fetchSequenceRef.current++;
       hasFetchedRef.current = false;
       previousProblematicRef.current = new Set();
       // Clear items immediately to avoid showing stale data during fetch
       setQueueItems([]);
       setIsLoadingQueue(true);
     }
-  }, [filter, setIsLoadingQueue, setQueueItems]);
+  }, [filter, session?.user?.id, session?.user?.role, setIsLoadingQueue, setQueueItems]);
 
-  const fetchQueue = useCallback(async () => {
+  const fetchQueue = useCallback(async (force = false) => {
     // Capture the filter at the start of this fetch
     const fetchFilter = filter;
+    const fetchUserId = session?.user?.id;
+    const fetchRole = session?.user?.role;
+    if (!force && inFlightRef.current?.filter === fetchFilter && inFlightRef.current?.userId === fetchUserId && inFlightRef.current?.role === fetchRole) return;
+    const fetchSequence = ++fetchSequenceRef.current;
+    inFlightRef.current = { filter: fetchFilter, userId: fetchUserId, role: fetchRole, sequence: fetchSequence };
+    const isCurrent = (): boolean => currentFilterRef.current === fetchFilter && currentUserRef.current === fetchUserId && currentRoleRef.current === fetchRole &&
+      fetchSequenceRef.current === fetchSequence;
     
     if (!hasFetchedRef.current) {
       setIsLoadingQueue(true);
@@ -275,12 +290,12 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
       ]);
 
       // Discard results if filter changed while we were fetching
-      if (currentFilterRef.current !== fetchFilter) {
+      if (!isCurrent()) {
         return;
       }
 
       // Build source+mediaId → DB timestamps map
-      type MonitoredRow = { source: 'radarr' | 'sonarr'; mediaId: number; title: string; lastStatus: string | null; createdAt: number; lastActivityAt: number | null; lastBytesAt: number | null };
+      type MonitoredRow = { source: 'radarr' | 'sonarr'; mediaId: number; title: string; lastStatus: string | null; createdAt: number; lastActivityAt: number | null; lastBytesAt: number | null; retryAvailableAt?: number; userIds: string[] };
       const monitoredMap = new Map<string, MonitoredRow>();
       if (audioRes.status === 'fulfilled' && audioRes.value.ok) {
         audioItems = await audioRes.value.json() as QueueItem[];
@@ -500,10 +515,17 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
       for (const monitored of monitoredMap.values()) {
         if (monitored.lastStatus === null && !items.some((item) => item.source === monitored.source && item.mediaId === monitored.mediaId)) {
           items.push({ id: `search-${monitored.source}-${monitored.mediaId}`, source: monitored.source,
-            mediaId: monitored.mediaId, title: monitored.title, isSearching: true, status: 'pending',
+            mediaId: monitored.mediaId, title: monitored.title, isSearching: true, status: 'pending', canRetrySearch: true,
             progress: 0, size: 0, sizeRemaining: 0, hasError: false, isStalled: false });
         }
       }
+
+      items = items.map((item) => {
+        const monitored = item.mediaId != null ? monitoredMap.get(`${item.source}:${item.mediaId}`) : undefined;
+        const own = isAdminRef.current || !!monitored?.userIds?.includes(session?.user?.id ?? '');
+        return { ...item, retryAvailableAt: monitored?.retryAvailableAt ?? item.retryAvailableAt,
+          canRetry: own, canRetrySearch: item.canRetrySearch && (own || !monitored) };
+      });
 
       // Only add unmatched Transmission torrents for admins when viewing all downloads
       if (isAdminRef.current && fetchFilter === 'all') {
@@ -536,6 +558,8 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
         }
       }
 
+      // Parsing response bodies also awaits work. A filter or account can change during that time.
+      if (!isCurrent()) return;
       const currentProblematic = new Set(
         items.filter((item) => item.hasError || item.isStalled).map((item) => item.id)
       );
@@ -560,6 +584,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
       for (const request of store.pendingQueueRequests) {
         if (request.accepted && items.some((item) => matchesQueueRequest(item, request.item))) store.finishQueueRequest(request.item.id);
       }
+      setQueueScope({ filter: fetchFilter, userId: fetchUserId, role: fetchRole });
       setQueueItems(items);
       setQueueErrors(errors);
       setLastFetch(new Date());
@@ -568,13 +593,16 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
         setIsLoadingQueue(false);
       }
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('Queue fetch error:', error);
       if (!hasFetchedRef.current) {
         hasFetchedRef.current = true;
         setIsLoadingQueue(false);
       }
+    } finally {
+      if (inFlightRef.current?.sequence === fetchSequence) inFlightRef.current = null;
     }
-  }, [setIsLoadingQueue, setQueueItems, setQueueErrors, addAlert, filter, session?.user?.id]);
+  }, [setIsLoadingQueue, setQueueItems, setQueueErrors, addAlert, filter, session?.user?.id, session?.user?.role]);
 
   useEffect(() => {
     const kickoff = setTimeout(() => {
@@ -588,11 +616,12 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
   }, [fetchQueue]);
 
   return {
-    queueItems: mergePendingQueueRequests(queueItems, pendingQueueRequests, session?.user?.id),
+    queueItems: mergePendingQueueRequests(queueScope?.filter === filter && queueScope?.userId === session?.user?.id && queueScope?.role === session?.user?.role
+      ? queueItems : [], pendingQueueRequests, session?.user?.id),
     isLoadingQueue,
     queueErrors,
     lastFetch,
-    refresh: fetchQueue,
+    refresh: () => fetchQueue(true),
   };
 }
 

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { createSonarrClient } from '@/lib/api/sonarr';
 import { authOptions } from '@/lib/auth';
 import { smartGrab } from '@/lib/smart-grab';
+import { DownloadRetryError, downloadRetryErrorResponse, runDownloadRetry } from '@/lib/download-retry';
 import { getMonitoredDownloadBySourceMedia, getLatestMonitoredDownloadBySourceMedia, markDownloadCompleted, getWatchedMediaIds, resetMonitoredDownload } from '@/lib/db/monitored-downloads';
 import { getCachedSonarrQueue, invalidateQueueCache } from '@/lib/queue-cache';
 
@@ -57,19 +58,30 @@ export async function DELETE(request: NextRequest) {
       mediaId?: number;
       episodeId?: number;
     };
-    await sonarr.deleteQueueItemBulk(ids, { blocklist: retry, skipRedownload: retry });
-    if (retry && mediaId) {
-      const monitored = await getLatestMonitoredDownloadBySourceMedia('sonarr', mediaId);
-      if (monitored) await resetMonitoredDownload(monitored.id);
-      await smartGrab({ source: 'sonarr', mediaId, episodeId });
-    } else if (!retry && mediaId) {
-      const monitored = await getMonitoredDownloadBySourceMedia('sonarr', mediaId);
-      if (monitored) await markDownloadCompleted(monitored.id);
+    let retryAvailableAt: number | undefined;
+    if (retry) {
+      if (!Number.isSafeInteger(mediaId) || !mediaId || mediaId <= 0 || !Array.isArray(ids) || !ids.length ||
+          ids.some((id) => !Number.isSafeInteger(id) || id <= 0)) throw new DownloadRetryError('Invalid queue retry.', 400);
+      retryAvailableAt = await runDownloadRetry('sonarr', mediaId, session.user, async () => {
+        const queue = await sonarr.getQueue();
+        if (ids.some((id) => !queue.records.some((item) => item.id === id && item.seriesId === mediaId))) {
+          throw new DownloadRetryError('The queue entries do not belong to this title.');
+        }
+        await sonarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });
+        const monitored = await getLatestMonitoredDownloadBySourceMedia('sonarr', mediaId);
+        if (monitored) await resetMonitoredDownload(monitored.id);
+        await smartGrab({ source: 'sonarr', mediaId, episodeId });
+      });
+    } else {
+      await sonarr.deleteQueueItemBulk(ids, { blocklist: false, skipRedownload: false });
+      if (mediaId) {
+        const monitored = await getMonitoredDownloadBySourceMedia('sonarr', mediaId);
+        if (monitored) await markDownloadCompleted(monitored.id);
+      }
     }
     invalidateQueueCache(['sonarr-queue', 'transmission-state']);
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, ...(retryAvailableAt ? { retryAvailableAt } : {}) });
   } catch (error) {
-    console.error('Sonarr queue delete error:', error);
-    return NextResponse.json({ error: 'Failed to remove from queue' }, { status: 500 });
+    return downloadRetryErrorResponse('sonarr queue retry', error);
   }
 }

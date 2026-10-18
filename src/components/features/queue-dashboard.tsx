@@ -24,6 +24,16 @@ export function QueueDashboard() {
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [passingIds, setPassingIds] = useState<Set<string>>(new Set());
 
+  const updateRetryTime = async (item: QueueItem, response: Response): Promise<void> => {
+    const body = await response.json().catch(() => null) as { retryAvailableAt?: unknown } | null;
+    if (typeof body?.retryAvailableAt === 'number') {
+      const retryAvailableAt = body.retryAvailableAt;
+      const current = useAppStore.getState().queueItems;
+      setQueueItems(current.map((entry) => entry.id === item.id ? { ...entry, retryAvailableAt } : entry));
+    }
+    if (!response.ok) throw new Error('Error');
+  };
+
   const handleForceDelete = async (item: QueueItem) => {
     if (!item.sourceId || (item.source !== 'radarr' && item.source !== 'sonarr')) return;
     setDeletingIds((prev) => new Set(prev).add(item.id));
@@ -55,7 +65,7 @@ export function QueueDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: [item.sourceId], retry: true, mediaId: item.mediaId, episodeId: item.episodeId }),
       });
-      if (!response.ok) throw new Error('Error');
+      await updateRetryTime(item, response);
       await refresh();
     } catch {
       useAppStore.getState().addAlert({ type: 'error', title: 'Error', message: 'Error', source: item.source, relatedItemId: item.id });
@@ -78,10 +88,26 @@ export function QueueDashboard() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tmdbId: item.tmdbId }),
       });
-      if (!response.ok) throw new Error('Error');
+      await updateRetryTime(item, response);
       await refresh();
     } catch {
       useAppStore.getState().addAlert({ type: 'error', title: 'Error', message: 'Error', source: 'radarr', relatedItemId: item.id });
+    } finally {
+      setRetryingItems((previous) => { const next = new Map(previous); next.delete(item.id); return next; });
+    }
+  };
+
+  const handleSearchRetry = async (item: QueueItem): Promise<void> => {
+    if (!item.mediaId || item.source === 'transmission') return;
+    setRetryingItems((previous) => new Map(previous).set(item.id, item));
+    try {
+      const response = await fetch('/api/downloads/retry', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: item.source, mediaId: item.mediaId }),
+      });
+      await updateRetryTime(item, response);
+      await refresh();
+    } catch {
+      useAppStore.getState().addAlert({ type: 'error', title: 'Error', message: 'Error', source: item.source, relatedItemId: item.id });
     } finally {
       setRetryingItems((previous) => { const next = new Map(previous); next.delete(item.id); return next; });
     }
@@ -435,7 +461,8 @@ export function QueueDashboard() {
               isRetrying={retryingItems.has(item.id)}
               isDeleting={deletingIds.has(item.id)}
               isPassing={passingIds.has(item.id)}
-              onRetry={item.audio?.canRetry ? () => handleAudioRetry(item) : !item.audio && item.sourceId && !['importing', 'seeding', 'completed'].includes(item.status) && (item.source === 'radarr' || item.source === 'sonarr') ? () => handleRetry(item) : undefined}
+              onRetry={item.audio?.canRetry ? () => handleAudioRetry(item) : item.canRetrySearch ? () => handleSearchRetry(item) :
+                !item.audio && (isAdmin || item.canRetry) && item.sourceId && !['importing', 'seeding', 'completed'].includes(item.status) && (item.source === 'radarr' || item.source === 'sonarr') ? () => handleRetry(item) : undefined}
               onDelete={!item.audio && item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
               onPassFirst={!item.audio && isAdmin && (item.transmissionId ?? item.transmissionHash) && (item.status === 'queued' || item.status === 'pending')
                 ? () => handlePassFirst(item)

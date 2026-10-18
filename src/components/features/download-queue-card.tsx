@@ -1,7 +1,7 @@
 'use client';
 
 import { AudioLines, ArrowUpToLine, Bug, Check, CircleAlert, Clock, Download, Film, Languages, Loader2, RotateCcw, Trash2, Tv, Users } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,18 @@ function formatBytes(bytes: number): string {
 
 export function DownloadQueueCard({ item, onRetry, onDelete, onPassFirst, isAdmin, isRetrying = false, isDeleting = false, isPassing = false }: DownloadQueueCardProps): React.JSX.Element {
   const [showDebug, setShowDebug] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!onRetry || !item.retryAvailableAt || item.retryAvailableAt <= Date.now()) return;
+    const timer = setInterval(() => {
+      const current = Date.now(); setNow(current);
+      if (current >= item.retryAvailableAt!) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [item.retryAvailableAt, onRetry]);
+  const remaining = Math.max(0, Math.ceil(((item.retryAvailableAt ?? 0) - now) / 1000));
+  const countdown = `${Math.floor(remaining / 60)}:${(remaining % 60).toString().padStart(2, '0')}`;
+  const cooldown = !isAdmin && (remaining > 0 || item.retryAvailableAt == null);
   const audio = !!item.audio;
   const Icon = audio ? AudioLines : item.source === 'radarr' ? Film : item.source === 'sonarr' ? Tv : Download;
   const phase = isRetrying ? 'searching' : item.hasError || item.isStalled || ['failed', 'warning'].includes(item.status) ? 'error' :
@@ -96,9 +108,11 @@ export function DownloadQueueCard({ item, onRetry, onDelete, onPassFirst, isAdmi
           </div>
         )}
         {(onRetry || onDelete || onPassFirst || isAdmin) && <div className="flex flex-wrap items-center gap-2">
-          {onRetry && <Button variant="outline" size="sm" disabled={isRetrying || isDeleting} onClick={onRetry}>
+          {onRetry && <Button variant="outline" size="sm" disabled={isRetrying || isDeleting || cooldown} onClick={onRetry}
+            title={isAdmin && remaining > 0 ? 'Override the five-minute retry cooldown' : undefined}>
             <RotateCcw className={cn('size-3.5', isRetrying && 'motion-safe:animate-spin')} aria-hidden="true" />
-            {isRetrying ? 'Searching…' : 'Try another release'}
+            {isRetrying ? 'Searching…' : isAdmin && remaining > 0 ? 'Retry now (admin)' : remaining > 0 ? `Retry in ${countdown}` :
+              cooldown ? 'Retry unavailable' : item.isSearching || item.audio?.phase === 'searching' ? 'Retry search' : 'Try another release'}
           </Button>}
           {onPassFirst && <Button variant="ghost" size="sm" aria-label={`Download ${item.title} first`} onClick={onPassFirst} disabled={isPassing || isRetrying}>
             {isPassing ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : <ArrowUpToLine className="size-4" aria-hidden="true" />}
@@ -110,6 +124,7 @@ export function DownloadQueueCard({ item, onRetry, onDelete, onPassFirst, isAdmi
             <Bug className="size-4" aria-hidden="true" />
           </Button>}
         </div>}
+        {onRetry && isAdmin && remaining > 0 && !isRetrying && <p className="text-xs text-muted-foreground">Cooldown {countdown}. Admin override is available.</p>}
         {showDebug && <pre className="max-h-64 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify(
           Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'errorMessage')), null, 2)}</pre>}
         <ol aria-label={audio ? 'Audio download stages' : 'Download stages'} className="grid grid-cols-4 gap-2 border-t pt-4">

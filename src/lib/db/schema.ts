@@ -78,6 +78,7 @@ export const monitoredDownloads = sqliteTable(
     createdAt: integer('created_at').notNull(),
     lastActivityAt: integer('last_activity_at'),
     lastBytesAt: integer('last_bytes_at'),
+    retryAfter: integer('retry_after').notNull().default(0),
   },
   (t) => ({
     sourceMediaIdUnique: uniqueIndex('monitored_downloads_source_media_id_unique').on(

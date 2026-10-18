@@ -5,6 +5,7 @@ import { acquireMovieAudioLock, getMovieAudioJobs, getMovieAudioPolicies, releas
 import { getWatchedMediaIds } from '@/lib/db/monitored-downloads';
 import { movieAudioErrorResponse } from '@/lib/movie-audio-errors';
 import { rejectedAudioDonors } from '@/lib/movie-audio-attempts';
+import { downloadRetryErrorResponse, runDownloadRetry } from '@/lib/download-retry';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
@@ -12,11 +13,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const body: unknown = await request.json().catch(() => null);
   if (!body || typeof body !== 'object' || !('tmdbId' in body) || typeof body.tmdbId !== 'number' ||
       !Number.isSafeInteger(body.tmdbId) || body.tmdbId <= 0) return movieAudioErrorResponse('audio alternative', 400, 'Invalid movie ID.');
-  const lock = acquireMovieAudioLock(body.tmdbId + 2);
+  const tmdbId = body.tmdbId;
+  const lock = acquireMovieAudioLock(tmdbId + 2);
   if (!lock) return movieAudioErrorResponse('audio alternative', 409, 'This movie is being processed.');
   try {
-    const policy = getMovieAudioPolicies().get(body.tmdbId);
-    const job = getMovieAudioJobs().find((item) => item.tmdbId === body.tmdbId);
+    const policy = getMovieAudioPolicies().get(tmdbId);
+    const job = getMovieAudioJobs().find((item) => item.tmdbId === tmdbId);
     const watched = await getWatchedMediaIds(session.user.id, 'radarr', true);
     if (!policy || (session.user.role !== 'admin' && !watched.has(policy.radarrMovieId))) {
       return movieAudioErrorResponse('audio alternative', 403, 'Requester or administrator access required.');
@@ -29,9 +31,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     rejected.add(`hash:${job.donorHash.toLowerCase()}`);
     if (job.donorReleaseKey) rejected.add(job.donorReleaseKey);
     // The worker pauses and verifies this exact owned torrent before clearing its tracking.
-    updateMovieAudioJob(body.tmdbId, { rejectedDonors: JSON.stringify([...rejected]), replaceDonor: true,
-      state: 'pending', detail: 'Searching for another audio release.', nextAttemptAt: 0 });
-    return NextResponse.json({ state: 'pending' }, { status: 202 });
-  } catch (cause) { return movieAudioErrorResponse(`movie ${body.tmdbId} alternative`, 503, undefined, cause); }
+    const retryAvailableAt = await runDownloadRetry('radarr', policy.radarrMovieId, session.user, async () => {
+      updateMovieAudioJob(tmdbId, { rejectedDonors: JSON.stringify([...rejected]), replaceDonor: true,
+        state: 'pending', detail: 'Searching for another audio release.', nextAttemptAt: 0 });
+    });
+    return NextResponse.json({ state: 'pending', retryAvailableAt }, { status: 202 });
+  } catch (cause) { return downloadRetryErrorResponse(`movie ${body.tmdbId} alternative`, cause); }
   finally { releaseMovieAudioLock(lock); }
 }

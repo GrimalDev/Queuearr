@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { createSonarrClient } from '@/lib/api/sonarr';
 import { authOptions } from '@/lib/auth';
-import { upsertMonitoredDownload, addUserToDownload } from '@/lib/db/monitored-downloads';
+import { reopenMonitoredDownload, addUserToDownload } from '@/lib/db/monitored-downloads';
+import { startDownloadRetryCooldown } from '@/lib/download-retry';
 import { invalidateQueueCache } from '@/lib/queue-cache';
 
 export async function POST(
@@ -41,8 +42,9 @@ export async function POST(
     // Track the download so the user gets notified on start/complete
     try {
       const series = await sonarr.getSeriesById(seriesId);
-      const monitored = await upsertMonitoredDownload('sonarr', seriesId, series.title);
+      const monitored = await reopenMonitoredDownload('sonarr', seriesId, series.title);
       await addUserToDownload(monitored.id, session.user.id);
+      startDownloadRetryCooldown('sonarr', seriesId);
     } catch (trackErr) {
       console.error('[sonarr grab] failed to track download or notify:', trackErr);
     }

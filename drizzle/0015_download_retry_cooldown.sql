@@ -1,0 +1,1 @@
+ALTER TABLE `monitored_downloads` ADD `retry_after` integer DEFAULT 0 NOT NULL;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { getDownloadRetryTimes } from '@/lib/download-retry';
 import {
   getMonitoredDownloadBySourceMedia,
   getActiveMonitoredDownloads,
@@ -18,7 +19,10 @@ export async function GET(request: NextRequest) {
   const downloads = filter === 'all'
     ? await getActiveMonitoredDownloads()
     : await getActiveMonitoredDownloadsForUser(session.user.id);
-  return NextResponse.json(downloads);
+  const retryTimes = getDownloadRetryTimes();
+  return NextResponse.json(downloads.map((download) => ({ ...download,
+    retryAvailableAt: retryTimes.get(`${download.source}:${download.mediaId}`),
+  })));
 }
 
 async function parseBody(request: NextRequest): Promise<{ source?: string; mediaId?: number } | null> {
