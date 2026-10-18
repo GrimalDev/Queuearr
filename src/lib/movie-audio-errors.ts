@@ -14,6 +14,14 @@ export function logMovieAudioError(context: string, cause?: unknown, detail?: st
     typeof cause.code === 'string' && /^[A-Z0-9_]{1,40}$/.test(cause.code) ? cause.code : undefined;
   const httpError = axios.isAxiosError(cause);
   const status = httpError ? cause.response?.status : undefined;
+  let nested: unknown = cause;
+  let causeCode: string | undefined;
+  for (let depth = 0; depth < 4; depth++) {
+    if (!nested || typeof nested !== 'object' || !('cause' in nested)) break;
+    nested = nested.cause;
+    if (nested && typeof nested === 'object' && 'code' in nested &&
+        typeof nested.code === 'string' && /^[A-Z0-9_]{1,40}$/.test(nested.code)) causeCode = nested.code;
+  }
   // Node filesystem diagnostics identify the failed mount without dumping HTTP errors.
   const filesystem = !httpError && cause && typeof cause === 'object' &&
     ['EACCES', 'EPERM', 'EROFS', 'ENOENT', 'ENOTDIR', 'ENOSPC', 'EDQUOT', 'EIO'].includes(code ?? '')
@@ -23,7 +31,7 @@ export function logMovieAudioError(context: string, cause?: unknown, detail?: st
   const syscall = typeof filesystem?.syscall === 'string' && /^[a-zA-Z_-]{1,40}$/.test(filesystem.syscall)
     ? filesystem.syscall : undefined;
   console.warn(`[audio] ${context}: operation failed`, {
-    code, status,
+    code, status, ...(causeCode ? { causeCode } : {}),
     ...(filesystem ? { syscall, path: localPath(filesystem.path), dest: localPath(filesystem.dest) } : {}),
   });
 }

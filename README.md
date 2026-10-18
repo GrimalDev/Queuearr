@@ -194,6 +194,16 @@ mount. The frontend continues to show only **Error**.
 In Swarm, use one Queuearr replica on the node with these mounts and its SQLite
 volume; do not share SQLite across hosts over network filesystems.
 
+Donor metadata requests follow at most three redirects within a 20-second budget.
+An HTTP redirect to a magnet link is passed to Transmission without trying to
+fetch it as a web page. HTTP(S) redirects and direct torrent files are also
+supported. Unsupported protocols, HTTPS downgrades, missing redirect destinations,
+and non-torrent responses stop the request. Metadata is limited to 2 MiB.
+Indexer HTTPS requests use `SERVICE_CA_CERT_PATH` or an optional
+`INDEXER_CA_CERT_PATH` override while retaining public certificate authorities.
+TLS verification remains enabled. Radarr headers and cookies are not forwarded
+to the indexer or redirect destination; URL tokens stay out of logs.
+
 Queuearr adds donor torrents paused in an isolated folder with a dedicated
 `queuearr-audio-*` label, records them, then starts them. Configure Radarr's
 Transmission download client with a **nonempty category distinct from those

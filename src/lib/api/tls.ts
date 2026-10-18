@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import https from 'node:https';
+import { rootCertificates } from 'node:tls';
 
-type ServiceName = 'radarr' | 'sonarr' | 'transmission';
+type ServiceName = 'radarr' | 'sonarr' | 'transmission' | 'indexer';
 
 const cache = new Map<string, string>();
 
@@ -39,7 +40,8 @@ export function createHttpsAgentForService(service: ServiceName): https.Agent | 
   const ca = resolveCaPem(service);
   if (!ca) return undefined;
   return new https.Agent({
-    ca,
+    // Indexer redirects can lead from a private CA to a public HTTPS tracker.
+    ca: service === 'indexer' ? [...rootCertificates, ca] : ca,
     rejectUnauthorized: true,
   });
 }

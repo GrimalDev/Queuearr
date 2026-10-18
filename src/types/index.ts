@@ -585,3 +585,5 @@ export interface PushNotificationsState {
   unsubscribe: () => Promise<boolean>;
   isSubscribed: boolean;
 }
+
+export type MovieAudioTorrentSource = { filename: string } | { metainfo: string };

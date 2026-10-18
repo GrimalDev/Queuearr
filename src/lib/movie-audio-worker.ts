@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { AudioConfigurationError, logMovieAudioError } from '@/lib/movie-audio-errors';
 import { mkdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -12,6 +11,7 @@ import { AudioProfileError, ensureAudioProfile } from '@/lib/radarr-audio-profil
 import { getAvailableAudio, hasRequiredAudio, mergeAudioLanguages } from '@/lib/movie-audio-policy';
 import { AudioReviewError, confinedFile, isInside, languageCodes, prepareAudioMerge, verifyAudio } from '@/lib/movie-audio-media';
 import { isAudioDonor } from '@/lib/movie-audio-releases';
+import { getMovieAudioTorrentSource } from '@/lib/movie-audio-download';
 import type { Release } from '@/types';
 
 interface AudioPaths { library: string; donors: string; backups: string }
@@ -29,17 +29,6 @@ async function audioPaths(): Promise<AudioPaths> {
 }
 function later(tmdbId: number, detail: string, state = 'pending', delay = 15 * 60_000): void {
   updateMovieAudioJob(tmdbId, { state, detail, nextAttemptAt: Date.now() + delay });
-}
-async function torrentSource(release: Release): Promise<{ filename: string } | { metainfo: string }> {
-  if (release.magnetUrl?.startsWith('magnet:?')) return { filename: release.magnetUrl };
-  if (!release.downloadUrl || !/^https?:\/\//i.test(release.downloadUrl)) throw new AudioReviewError('The donor has no supported torrent download link.');
-  // URLs come from Radarr's release results. Never forward the Radarr API key.
-  const response = await axios.get<ArrayBuffer>(release.downloadUrl, {
-    responseType: 'arraybuffer', timeout: 20_000, maxContentLength: 2 * 1024 * 1024, maxRedirects: 3,
-  });
-  const data = Buffer.from(response.data);
-  if (data[0] !== 100) throw new AudioReviewError('The indexer did not return a torrent file.');
-  return { metainfo: data.toString('base64') };
 }
 async function noImport(client: RadarrClient, movieId: number): Promise<void> {
   if ((await client.getQueue(false)).records.some((item) => item.movieId === movieId)) {
@@ -170,7 +159,7 @@ async function processJob(
     if (job.donorHash) throw new AudioReviewError('The tracked audio torrent is missing or its folder/label changed.');
     const candidate = releases.find((release) => isAudioDonor(release, movie, wanted, base));
     if (!candidate) { later(id, `No eligible ${wanted.name} audio donor is available yet.`); return; }
-    const hash = await transmission.addAudioDonor(await torrentSource(candidate), downloadDir, label);
+    const hash = await transmission.addAudioDonor(await getMovieAudioTorrentSource(candidate, signal), downloadDir, label);
     const added = (await transmission.getAudioDonors()).find((torrent) => torrent.hashString === hash);
     if (added?.downloadDir !== downloadDir || added.labels?.length !== 1 || added.labels[0] !== label) {
       throw new AudioReviewError('Transmission did not retain the isolated donor folder and label. The torrent was left paused.');
