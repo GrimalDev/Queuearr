@@ -4,7 +4,7 @@ import { isAxiosError } from 'axios';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
 import { getMovieAudioPolicies, getMovieAudioJobs } from '@/lib/db/movie-audio';
-import { getAvailableAudio } from '@/lib/movie-audio-policy';
+import { getAvailableAudio, getPublicMovieAudioDetail } from '@/lib/movie-audio-policy';
 import { smartGrab } from '@/lib/smart-grab';
 import { invalidateQueueCache } from '@/lib/queue-cache';
 import {
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
           availableAudioLanguages: libraryMovie ? getAvailableAudio(libraryMovie) : [],
           requestedAudioLanguages: audioPolicies.get(movie.tmdbId)?.requiredLanguages ?? [],
           audioRequestState: audioJobs.get(movie.tmdbId)?.state,
-          audioRequestDetail: audioJobs.get(movie.tmdbId)?.detail,
+          audioRequestDetail: getPublicMovieAudioDetail(audioJobs.get(movie.tmdbId)?.state, audioJobs.get(movie.tmdbId)?.detail),
           inLibrary: existingTmdbIds.has(movie.tmdbId),
           libraryId,
           isDownloading,

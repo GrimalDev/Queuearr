@@ -32,3 +32,11 @@ export function resolveAudioLanguage(choice: MovieAudioLanguage, movie: RadarrMo
   if (choice === 'french') return { id: 2, name: 'French' };
   return movie.originalLanguage && movie.originalLanguage.id > 0 ? movie.originalLanguage : null;
 }
+
+export function getPublicMovieAudioDetail(state?: string, detail?: string): string | undefined {
+  if (state === 'needs_review' || state === 'error' || state === 'failed' ||
+      detail === 'A service or shared folder is unavailable. Queuearr will retry in 15 minutes.') {
+    return 'Error';
+  }
+  return detail;
+}

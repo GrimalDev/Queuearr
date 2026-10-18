@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { logMovieAudioError } from '@/lib/movie-audio-errors';
 import { mkdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createRadarrClient, type RadarrClient } from '@/lib/api/radarr';
@@ -58,7 +59,9 @@ async function processJob(
   // A previous process may have died between disabling monitoring and publishing.
   if (job.restoreMonitored !== null) {
     await restoreMonitoring(client, policy, job.restoreMonitored);
-    later(id, 'A merge was interrupted. Review the library files and backup before retrying.', 'needs_review');
+    const detail = 'A merge was interrupted. Review the library files and backup before retrying.';
+    logMovieAudioError(`movie ${id}`, undefined, detail);
+    later(id, detail, 'needs_review');
     return;
   }
   if (job.state === 'needs_review') return;
@@ -258,7 +261,8 @@ export async function runMovieAudioJobs(): Promise<void> {
         // Do not serialize HTTP errors: they can contain API keys and download URLs.
         if (error instanceof AudioReviewError || error instanceof AudioProfileError) later(job.tmdbId, error.message, 'needs_review');
         else later(job.tmdbId, 'A service or shared folder is unavailable. Queuearr will retry in 15 minutes.');
-        console.warn(`[audio] movie ${job.tmdbId}: ${error instanceof AudioReviewError || error instanceof AudioProfileError ? 'review needed' : 'service operation failed'}`);
+        logMovieAudioError(`movie ${job.tmdbId}`, error,
+          error instanceof AudioReviewError || error instanceof AudioProfileError ? error.message : undefined);
       } finally { releaseMovieAudioLock(movieLock); movieLock = null; }
     }
   } finally { clearInterval(heartbeat); releaseMovieAudioLock(workerLock); }

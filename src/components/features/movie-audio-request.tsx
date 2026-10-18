@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Check, ChevronDown, Download, Loader2, Plus, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MOVIE_AUDIO_OPTIONS } from '@/lib/movie-audio-policy';
+import { getPublicMovieAudioDetail, MOVIE_AUDIO_OPTIONS } from '@/lib/movie-audio-policy';
 import { cn } from '@/lib/utils';
 import type { MovieAudioLanguage, RadarrLanguage, SearchResult } from '@/types';
 
@@ -49,6 +49,7 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
       present: status.availableLanguages.some((item) => item.id === id),
     };
   });
+  const publicDetail = getPublicMovieAudioDetail(status.state, status.detail);
   const selected = options.find((option) => option.value === language)!;
   const hasFile = status.hasFile ?? result.hasFile ?? false;
   const isRegrab = hasFile && selected.present;
@@ -63,7 +64,7 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
       const body = await response.json() as AudioStatus & { error?: string };
       if (!response.ok) throw new Error(body.error ?? 'Could not start the download.');
       setStatus(body);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not start the download.'); }
+    } catch { setError('Error'); }
     finally { setBusy(false); }
   };
   return (
@@ -105,7 +106,7 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
           </span>
         </Button>
       </div>
-      {status.detail && status.state !== 'available' && <p role="status" className="text-xs text-muted-foreground">{status.detail}</p>}
+      {!error && publicDetail && status.state !== 'available' && <p role={publicDetail === 'Error' ? 'alert' : 'status'} className={cn('text-xs', publicDetail === 'Error' ? 'text-destructive' : 'text-muted-foreground')}>{publicDetail}</p>}
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     </div>
   );

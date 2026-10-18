@@ -191,8 +191,10 @@ Plex discovers the result through its normal library scan or your Radarr/Plex
 connection. Enable automatic library scans or scan the library manually. Queuearr
 does not itself trigger a Plex scan. Tagged tracks appear in Plex's audio menu.
 
-A **needs review** message stops automated work for that movie and remains visible
-on its card. There is no retry button on the movie card. After resolving the
+A job that needs review stops automated work for that movie. Its card displays
+only **Error**. Technical error details are kept in server logs, including the
+movie's TMDB ID, and are not returned in audio status or search responses.
+There is no retry button on the movie card. After resolving the
 reported file, metadata or synchronization issue, an authenticated administrator
 can requeue the job through `POST /api/radarr/audio/retry` with its `tmdbId`.
 Retrying retains the existing donor and rechecks the files. Service connection
