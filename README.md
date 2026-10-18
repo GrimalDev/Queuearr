@@ -160,6 +160,24 @@ audio downloads and merging. No environment switch is required.
 
 ### Separate audio downloads and merging
 
+Movies, series, and additional audio share the Downloads card design. Movie
+requests and regrabs appear immediately in **Searching**, with a **View downloads**
+link. Saved jobs keep them visible across reloads and turn into transfer cards
+without duplicates. Movies show search/download/import/ready stages; audio shows
+search/download/check/merge with its requested language. Magnets waiting for peers
+show **Fetching torrent metadata** instead of a zero-byte download. Animations
+respect reduced-motion preferences. Indexer names are saved for newly selected
+releases; older jobs can show **Indexer unavailable**.
+
+**Try another release** switches an unfinished audio donor to a different eligible
+source. Requesters and administrators can use it before validation or publication.
+The worker verifies ownership and pauses the old donor, retains its files, and
+remembers rejected release digests and torrent hashes across restarts. If it
+finishes before the switch, it stays available for audio checks. Transient failures
+preserve the switch request; uncertain ownership and publication still require
+review. The retry does not bypass language, quality, edition, or synchronization
+checks. Ordinary movie retries use Radarr's existing blocklist/retry handling.
+
 Configure the shared folders below for the automatic merging fallback.
 The Docker image includes FFmpeg and FFprobe. Host development needs both tools
 on PATH. This fallback requires Transmission 4+ and supports torrents only.

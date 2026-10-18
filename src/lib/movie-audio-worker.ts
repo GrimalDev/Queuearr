@@ -12,6 +12,7 @@ import { getAvailableAudio, hasRequiredAudio, mergeAudioLanguages } from '@/lib/
 import { AudioReviewError, confinedFile, isInside, languageCodes, prepareAudioMerge, verifyAudio } from '@/lib/movie-audio-media';
 import { isAudioDonor } from '@/lib/movie-audio-releases';
 import { getMovieAudioTorrentSource } from '@/lib/movie-audio-download';
+import { audioReleaseKey, isRejectedAudioRelease, rejectedAudioDonors } from '@/lib/movie-audio-attempts';
 import type { Release } from '@/types';
 
 interface AudioPaths { library: string; donors: string; backups: string }
@@ -54,6 +55,33 @@ async function processJob(
     return;
   }
   if (job.state === 'needs_review') return;
+  if (job.replaceDonor) {
+    if (job.outputPath || job.restoreMonitored !== null || !job.donorHash || !job.donorLanguageId) {
+      throw new AudioReviewError('The audio donor cannot be replaced during publication.');
+    }
+    const transmission = createTransmissionClient();
+    if (!transmission) throw new AudioConfigurationError('Transmission must be configured to switch audio releases.');
+    const donor = (await transmission.getAudioDonors()).find((torrent) => torrent.hashString.toLowerCase() === job.donorHash!.toLowerCase());
+    if (!donor || donor.labels?.length !== 1 || donor.labels[0] !== `queuearr-audio-${id}-${job.donorLanguageId}` ||
+        donor.downloadDir !== join(AUDIO_PATHS.donors, `${id}-${job.donorLanguageId}`)) {
+      throw new AudioReviewError('The previous audio donor is missing or no longer isolated. Review it before switching releases.');
+    }
+    if (donor.percentDone >= 1) {
+      // It may finish between the click and this tick. Keep it for validation instead of discarding it.
+      const rejected = rejectedAudioDonors(job.rejectedDonors);
+      rejected.delete(`hash:${donor.hashString.toLowerCase()}`);
+      if (job.donorReleaseKey) rejected.delete(job.donorReleaseKey);
+      updateMovieAudioJob(id, { replaceDonor: false, rejectedDonors: JSON.stringify([...rejected]),
+        state: 'downloading', detail: 'The audio download completed. Waiting for audio checks.', nextAttemptAt: 0 });
+      return;
+    }
+    await transmission.pauseTorrent(donor.hashString);
+    // Keep the old torrent and its data. A crash before this write safely repeats the pause.
+    const replacement = { donorHash: null, donorLanguageId: null, donorIndexer: null, donorReleaseKey: null,
+      replaceDonor: false, state: 'pending', detail: 'Searching for another audio release.', nextAttemptAt: 0 };
+    updateMovieAudioJob(id, replacement);
+    job = { ...job, ...replacement };
+  }
   let movie = await client.getMovie(policy.radarrMovieId);
   if (movie.tmdbId !== id) throw new AudioReviewError('The Radarr movie no longer matches this request.');
   if (job.regrabFileId !== null) {
@@ -94,7 +122,7 @@ async function processJob(
       const paths = await audioPaths();
       await verifyAudio(await confinedFile(paths.library, job.outputPath), policy.requiredLanguages, signal);
     }
-    updateMovieAudioJob(id, { state: 'available', detail: 'All requested audio languages are available.', outputPath: null, donorHash: null, donorLanguageId: null });
+    updateMovieAudioJob(id, { state: 'available', detail: 'All requested audio languages are available.', outputPath: null, donorHash: null, donorLanguageId: null, donorIndexer: null, donorReleaseKey: null, rejectedDonors: '[]', replaceDonor: false });
     return;
   }
   if (job.outputPath) {
@@ -102,7 +130,7 @@ async function processJob(
     if (movie.movieFile?.path === job.outputPath && mergedLanguage && hasRequiredAudio(movie, [mergedLanguage])) {
       const paths = await audioPaths();
       await verifyAudio(await confinedFile(paths.library, job.outputPath), getAvailableAudio(movie), signal);
-      updateMovieAudioJob(id, { outputPath: null, donorHash: null, donorLanguageId: null, state: 'pending', nextAttemptAt: 0 });
+      updateMovieAudioJob(id, { outputPath: null, donorHash: null, donorLanguageId: null, donorIndexer: null, donorReleaseKey: null, rejectedDonors: '[]', state: 'pending', nextAttemptAt: 0 });
       return;
     }
     const mergedFile = await confinedFile((await audioPaths()).library, job.outputPath);
@@ -123,16 +151,19 @@ async function processJob(
   const missing = policy.requiredLanguages.filter((language) => !getAvailableAudio(movie).some((item) => item.id === language.id));
   const wanted = job.donorLanguageId ? missing.find((language) => language.id === job.donorLanguageId) : missing[0];
   if (!wanted) {
-    updateMovieAudioJob(id, { donorHash: null, donorLanguageId: null, nextAttemptAt: 0 });
+    updateMovieAudioJob(id, { donorHash: null, donorLanguageId: null, donorIndexer: null, nextAttemptAt: 0 });
     return;
   }
   let releases: Release[] = [];
+  const rejected = rejectedAudioDonors(job.rejectedDonors ?? '[]');
   if (!job.donorHash) {
     releases = await client.getReleases(policy.radarrMovieId);
     // Radarr returns decisions in its quality/profile preference order.
-    const complete = releases.find((release) => release.downloadAllowed !== false && !release.rejections?.length &&
+    // After a donor retry, keep alternatives isolated instead of handing a rejected torrent back to Radarr.
+    const complete = !rejected.size && releases.find((release) => release.downloadAllowed !== false && !release.rejections?.length &&
       policy.requiredLanguages.every((language) => release.languages?.some((item) => item.id === language.id)));
     if (complete) {
+      updateMovieAudioJob(id, { donorIndexer: complete.indexer || `Indexer ${complete.indexerId}` });
       await client.grabRelease(complete.guid, complete.indexerId);
       later(id, 'Downloading a release containing all requested languages.', 'downloading');
       return;
@@ -153,19 +184,26 @@ async function processJob(
   if (!isInside(paths.donors, await realpath(downloadDir))) throw new AudioReviewError('The donor directory escapes the configured folder.');
   const label = `queuearr-audio-${id}-${wanted.id}`;
   const torrents = await transmission.getAudioDonors();
-  const donor = torrents.find((torrent) => torrent.labels?.length === 1 && torrent.labels[0] === label && torrent.downloadDir === downloadDir &&
+  const donor = torrents.find((torrent) => !rejected.has(`hash:${torrent.hashString.toLowerCase()}`) &&
+    torrent.labels?.length === 1 && torrent.labels[0] === label && torrent.downloadDir === downloadDir &&
     (!job.donorHash || torrent.hashString.toLowerCase() === job.donorHash.toLowerCase()));
   if (!donor) {
     if (job.donorHash) throw new AudioReviewError('The tracked audio torrent is missing or its folder/label changed.');
-    const candidate = releases.find((release) => isAudioDonor(release, movie, wanted, base));
+    const candidate = releases.find((release) => !isRejectedAudioRelease(release, rejected) && isAudioDonor(release, movie, wanted, base));
     if (!candidate) { later(id, `No eligible ${wanted.name} audio donor is available yet.`); return; }
     const hash = await transmission.addAudioDonor(await getMovieAudioTorrentSource(candidate, signal), downloadDir, label);
+    if (rejected.has(`hash:${hash.toLowerCase()}`)) {
+      rejected.add(audioReleaseKey(candidate));
+      updateMovieAudioJob(id, { rejectedDonors: JSON.stringify([...rejected]) });
+      later(id, 'Searching for another audio release.', 'pending', 30_000);
+      return;
+    }
     const added = (await transmission.getAudioDonors()).find((torrent) => torrent.hashString === hash);
     if (added?.downloadDir !== downloadDir || added.labels?.length !== 1 || added.labels[0] !== label) {
       throw new AudioReviewError('Transmission did not retain the isolated donor folder and label. The torrent was left paused.');
     }
     // Persist before starting, so a restart can recover this exact owned torrent.
-    updateMovieAudioJob(id, { donorHash: hash, donorLanguageId: wanted.id, state: 'downloading', detail: `Downloading additional ${wanted.name} audio.`, nextAttemptAt: Date.now() + 30_000 });
+    updateMovieAudioJob(id, { donorHash: hash, donorLanguageId: wanted.id, donorIndexer: candidate.indexer || `Indexer ${candidate.indexerId}`, donorReleaseKey: audioReleaseKey(candidate), state: 'downloading', detail: `Downloading additional ${wanted.name} audio.`, nextAttemptAt: Date.now() + 30_000 });
     await transmission.resumeTorrent(hash);
     return;
   }

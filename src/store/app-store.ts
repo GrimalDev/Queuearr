@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import { SearchResult, QueueItem, Alert } from '@/types';
+import { SearchResult, QueueItem, Alert, PendingQueueRequest } from '@/types';
 
 export interface QueueServiceError {
-  service: 'radarr' | 'sonarr' | 'transmission';
+  service: 'radarr' | 'sonarr' | 'transmission' | 'audio';
   message: string;
 }
 
@@ -20,6 +20,7 @@ interface AppState {
   queueItems: QueueItem[];
   isLoadingQueue: boolean;
   queueErrors: QueueServiceError[];
+  pendingQueueRequests: PendingQueueRequest[];
 
   alerts: Alert[];
 
@@ -32,6 +33,8 @@ interface AppState {
   setQueueItems: (items: QueueItem[]) => void;
   setIsLoadingQueue: (isLoading: boolean) => void;
   setQueueErrors: (errors: QueueServiceError[]) => void;
+  startQueueRequest: (request: PendingQueueRequest) => void;
+  finishQueueRequest: (id: string) => void;
 
   addAlert: (alert: Omit<Alert, 'id' | 'timestamp' | 'dismissed'>) => void;
   dismissAlert: (id: string) => void;
@@ -49,6 +52,7 @@ export const useAppStore = create<AppState>((set) => ({
   queueItems: [],
   isLoadingQueue: false,
   queueErrors: [],
+  pendingQueueRequests: [],
 
   alerts: [],
 
@@ -61,6 +65,12 @@ export const useAppStore = create<AppState>((set) => ({
   setQueueItems: (items) => set({ queueItems: items }),
   setIsLoadingQueue: (isLoading) => set({ isLoadingQueue: isLoading }),
   setQueueErrors: (errors) => set({ queueErrors: errors }),
+  startQueueRequest: (request) => set((state) => ({
+    pendingQueueRequests: [...state.pendingQueueRequests.filter((entry) => entry.item.id !== request.item.id), request],
+  })),
+  finishQueueRequest: (id) => set((state) => ({
+    pendingQueueRequests: state.pendingQueueRequests.filter((entry) => entry.item.id !== id),
+  })),
 
   addAlert: (alert) =>
     set((state) => ({

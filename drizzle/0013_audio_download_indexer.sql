@@ -1,0 +1,1 @@
+ALTER TABLE `movie_audio_jobs` ADD `donor_indexer` text;

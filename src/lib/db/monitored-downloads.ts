@@ -103,7 +103,7 @@ export async function getActiveMonitoredDownloadsForUser(userId: string): Promis
   return Array.from(map.values());
 }
 
-export async function getWatchedMediaIds(userId: string, source: 'radarr' | 'sonarr'): Promise<Set<number>> {
+export async function getWatchedMediaIds(userId: string, source: 'radarr' | 'sonarr', includeCompleted = false): Promise<Set<number>> {
   const rows = await db
     .select({ mediaId: monitoredDownloads.mediaId })
     .from(monitoredDownloads)
@@ -115,7 +115,7 @@ export async function getWatchedMediaIds(userId: string, source: 'radarr' | 'son
       and(
         eq(monitoredDownloads.source, source),
         eq(monitoredDownloadUsers.userId, userId),
-        isNull(monitoredDownloads.completedAt)
+        includeCompleted ? undefined : isNull(monitoredDownloads.completedAt)
       )
     );
 

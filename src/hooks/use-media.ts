@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useAppStore, QueueServiceError, SearchSortKey, SearchSortDir } from '@/store/app-store';
 import { SearchResult, QueueItem, RadarrMovie, SonarrSeries, RadarrQueueItem, SonarrQueueItem, TransmissionTorrent, TransmissionStatus } from '@/types';
+import { mergeMovieAudioQueue } from '@/lib/movie-audio-queue';
+import { matchesQueueRequest, mergePendingQueueRequests } from '@/lib/queue-requests';
 
 const STALL_GRACE_PERIOD_SECONDS = 5 * 60;
 
@@ -222,6 +224,7 @@ export function useSearch() {
 export function useQueue(filter: 'mine' | 'all' = 'mine') {
   const { queueItems, isLoadingQueue, queueErrors, setQueueItems, setIsLoadingQueue, setQueueErrors, addAlert } = useAppStore();
   const { data: session } = useSession();
+  const pendingQueueRequests = useAppStore((state) => state.pendingQueueRequests);
   const isAdmin = session?.user?.role === 'admin';
   const isAdminRef = useRef(isAdmin);
   useEffect(() => { isAdminRef.current = isAdmin; }, [isAdmin]);
@@ -252,18 +255,23 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
 
     try {
       const errors: QueueServiceError[] = [];
-      const items: QueueItem[] = [];
+      let items: QueueItem[] = [];
+      let audioItems: QueueItem[] = [];
       const transmissionHashMap = new Map<string, TransmissionTorrent & {
         statusString: string;
         isProblematic: boolean;
         problemReason?: string;
       }>();
+      const acceptedIds = useAppStore.getState().pendingQueueRequests
+        .filter((request) => request.accepted && request.userId === session?.user?.id)
+        .map((request) => request.item.tmdbId).filter((id) => id != null).slice(0, 20).join(',');
 
-      const [radarrRes, sonarrRes, transmissionRes, monitoredRes] = await Promise.allSettled([
+      const [radarrRes, sonarrRes, transmissionRes, monitoredRes, audioRes] = await Promise.allSettled([
         fetch(`/api/radarr/queue?filter=${fetchFilter}`),
         fetch(`/api/sonarr/queue?filter=${fetchFilter}`),
         fetch(`/api/transmission?filter=${fetchFilter}`),
         fetch(`/api/downloads/watch?filter=${fetchFilter}`),
+        fetch(`/api/radarr/audio/queue?filter=${fetchFilter}&settled=${acceptedIds}`),
       ]);
 
       // Discard results if filter changed while we were fetching
@@ -272,8 +280,13 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
       }
 
       // Build source+mediaId → DB timestamps map
-      type MonitoredRow = { source: string; mediaId: number; createdAt: number; lastActivityAt: number | null; lastBytesAt: number | null };
+      type MonitoredRow = { source: 'radarr' | 'sonarr'; mediaId: number; title: string; lastStatus: string | null; createdAt: number; lastActivityAt: number | null; lastBytesAt: number | null };
       const monitoredMap = new Map<string, MonitoredRow>();
+      if (audioRes.status === 'fulfilled' && audioRes.value.ok) {
+        audioItems = await audioRes.value.json() as QueueItem[];
+      } else {
+        errors.push({ service: 'audio', message: 'Error' });
+      }
       if (monitoredRes.status === 'fulfilled' && monitoredRes.value.ok) {
         const rows: MonitoredRow[] = await monitoredRes.value.json();
         for (const row of rows) {
@@ -344,6 +357,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
               progress: matchedTorrent
                 ? matchedTorrent.percentDone * 100
                 : item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0,
+              metadataPercentComplete: matchedTorrent?.metadataPercentComplete,
               size: matchedTorrent?.sizeWhenDone || item.size,
               sizeRemaining: matchedTorrent?.leftUntilDone || item.sizeleft,
               downloadSpeed: matchedTorrent?.rateDownload,
@@ -482,6 +496,15 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
       } else if (sonarrRes.status === 'rejected') {
         errors.push({ service: 'sonarr', message: sonarrRes.reason?.message || 'Connection failed' });
       }
+      items = mergeMovieAudioQueue(items, audioItems, transmissionHashMap);
+      for (const monitored of monitoredMap.values()) {
+        if (monitored.lastStatus === null && !items.some((item) => item.source === monitored.source && item.mediaId === monitored.mediaId)) {
+          items.push({ id: `search-${monitored.source}-${monitored.mediaId}`, source: monitored.source,
+            mediaId: monitored.mediaId, title: monitored.title, isSearching: true, status: 'pending',
+            progress: 0, size: 0, sizeRemaining: 0, hasError: false, isStalled: false });
+        }
+      }
+
       // Only add unmatched Transmission torrents for admins when viewing all downloads
       if (isAdminRef.current && fetchFilter === 'all') {
         const unmatchedCount = transmissionHashMap.size;
@@ -495,6 +518,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
             title: torrent.name,
             status: mapTransmissionStatus(torrent.status, torrent.isFinished),
             progress: torrent.percentDone * 100,
+            metadataPercentComplete: torrent.metadataPercentComplete,
             size: torrent.sizeWhenDone,
             sizeRemaining: torrent.leftUntilDone,
             downloadSpeed: torrent.rateDownload,
@@ -532,6 +556,10 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
       });
 
       previousProblematicRef.current = currentProblematic;
+      const store = useAppStore.getState();
+      for (const request of store.pendingQueueRequests) {
+        if (request.accepted && items.some((item) => matchesQueueRequest(item, request.item))) store.finishQueueRequest(request.item.id);
+      }
       setQueueItems(items);
       setQueueErrors(errors);
       setLastFetch(new Date());
@@ -546,7 +574,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
         setIsLoadingQueue(false);
       }
     }
-  }, [setIsLoadingQueue, setQueueItems, setQueueErrors, addAlert, filter]);
+  }, [setIsLoadingQueue, setQueueItems, setQueueErrors, addAlert, filter, session?.user?.id]);
 
   useEffect(() => {
     const kickoff = setTimeout(() => {
@@ -560,7 +588,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
   }, [fetchQueue]);
 
   return {
-    queueItems,
+    queueItems: mergePendingQueueRequests(queueItems, pendingQueueRequests, session?.user?.id),
     isLoadingQueue,
     queueErrors,
     lastFetch,

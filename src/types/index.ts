@@ -270,6 +270,7 @@ export interface TransmissionTorrent {
   status: TransmissionStatus;
   percentDone: number;
   percentComplete?: number;
+  metadataPercentComplete?: number;
   rateDownload: number;
   rateUpload: number;
   eta: number;
@@ -407,6 +408,9 @@ export interface SearchResult {
 
 export interface QueueItem {
   id: string;
+  tmdbId?: number;
+  isSearching?: boolean;
+  isRegrab?: boolean;
   sourceId?: number;
   mediaId?: number;
   episodeId?: number;
@@ -415,8 +419,14 @@ export interface QueueItem {
   transmissionHash?: string;
   title: string;
   subtitle?: string;
+  audio?: {
+    phase: 'searching' | 'metadata' | 'downloading' | 'validating' | 'merging' | 'verifying' | 'error';
+    languages: RadarrLanguage[];
+    canRetry?: boolean;
+  };
   status: QueueItemStatus;
   progress: number;
+  metadataPercentComplete?: number;
   size: number;
   sizeRemaining: number;
   downloadSpeed?: number;
@@ -439,9 +449,16 @@ export interface QueueItem {
   dbLastBytesAt?: number | null;
 }
 
+export interface PendingQueueRequest {
+  item: QueueItem;
+  userId: string;
+  accepted?: boolean;
+}
+
 export interface Release {
   guid: string;
   indexerId: number;
+  indexer?: string;
   title: string;
   seeders?: number;
   leechers?: number;

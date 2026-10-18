@@ -112,6 +112,7 @@ export async function requestMovieAudio(
       detail = 'Sending a fresh download to Radarr. The existing movie stays available until import.';
       // Persist before submitting: a lost response must not cause duplicate grabs or early completion.
       updateMovieAudioJob(tmdbId, { state, detail, regrabFileId: movie.movieFile.id,
+        donorIndexer: candidate.indexer || `Indexer ${candidate.indexerId}`,
         regrabRequestedAt: Date.now(), nextAttemptAt: Date.now() + 30_000 });
       try {
         await client.grabRelease(candidate.guid, candidate.indexerId);

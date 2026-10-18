@@ -44,6 +44,7 @@ interface TorrentFields {
   name: string;
   status: number;
   percentDone: number;
+  metadataPercentComplete?: number;
   rateDownload: number;
   rateUpload: number;
   eta: number;
@@ -85,6 +86,7 @@ function toTransmissionTorrent(t: TorrentFields): TransmissionTorrent {
     name: t.name,
     status: t.status as TransmissionStatus,
     percentDone: t.percentDone,
+    metadataPercentComplete: t.metadataPercentComplete,
     rateDownload: t.rateDownload,
     rateUpload: t.rateUpload,
     eta: t.eta,
@@ -211,6 +213,7 @@ export class TransmissionClient {
       'name',
       'status',
       'percentDone',
+      'metadataPercentComplete',
       'rateDownload',
       'rateUpload',
       'eta',

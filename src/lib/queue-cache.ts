@@ -1,9 +1,9 @@
 import { RadarrClient, createRadarrClient } from '@/lib/api/radarr';
 import { SonarrClient, createSonarrClient } from '@/lib/api/sonarr';
 import { TransmissionClient, createTransmissionClient } from '@/lib/api/transmission';
-import { RadarrQueueItem, SonarrQueueItem, TransmissionTorrent } from '@/types';
+import { RadarrMovie, RadarrQueueItem, SonarrQueueItem, TransmissionTorrent } from '@/types';
 
-type QueueCacheKey = 'radarr-queue' | 'sonarr-queue' | 'transmission-state';
+type QueueCacheKey = 'radarr-queue' | 'radarr-movies' | 'sonarr-queue' | 'transmission-state';
 
 type TransmissionState = {
   torrents: TransmissionTorrent[];
@@ -11,6 +11,7 @@ type TransmissionState = {
 };
 
 type QueueCacheValue = {
+  'radarr-movies': RadarrMovie[];
   'radarr-queue': { records: RadarrQueueItem[] };
   'sonarr-queue': { records: SonarrQueueItem[] };
   'transmission-state': TransmissionState;
@@ -127,6 +128,10 @@ export function getCachedRadarrQueue(
   options?: { forceRefresh?: boolean }
 ): Promise<{ records: RadarrQueueItem[] }> {
   return getOrLoad('radarr-queue', () => radarr.getQueue(true), options);
+}
+
+export function getCachedRadarrMovies(radarr: RadarrClient): Promise<RadarrMovie[]> {
+  return getOrLoad('radarr-movies', () => radarr.getMovies());
 }
 
 export function getCachedSonarrQueue(
