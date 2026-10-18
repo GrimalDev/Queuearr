@@ -45,6 +45,7 @@ export async function requestMovieAudio(
       throw new MovieAudioRequestError('An interrupted merge needs recovery. Please wait for the audio worker.');
     }
     if (previousJob?.state === 'needs_review') throw new MovieAudioRequestError(previousJob.detail);
+    if (previousJob?.state === 'grab_pending') throw new MovieAudioRequestError('A release has already been sent to Radarr. Wait for its download client before submitting another request.');
     const [movies, profiles] = await Promise.all([client.getMovies(), client.getQualityProfiles()]);
     let movie = movies.find((item) => item.tmdbId === tmdbId);
     if (movie?.id) movie = await client.getMovie(movie.id);
@@ -130,8 +131,12 @@ export async function requestMovieAudio(
       try {
         if (!processingAudio && !regrabbing &&
             !(await client.getQueue(false)).records.some((item) => item.movieId === movie.id)) {
-          await client.triggerSearch([movieId]);
-          searchStarted = true;
+          if (movie.hasFile) {
+            await client.triggerSearch([movieId]);
+            searchStarted = true;
+          }
+          // Initial movies are searched and explicitly grabbed by the worker.
+          // Sending a fire-and-forget search here used to leave an endless search card.
         }
       } catch {
         console.warn('[audio] Request saved but Radarr could not start the movie search');

@@ -30,9 +30,10 @@ export function getMovieAudioQueue(
     return [{
       id: `${additionalAudio ? 'audio' : 'movie'}-${job.tmdbId}`, tmdbId: job.tmdbId,
       source: 'radarr', mediaId: policy.radarrMovieId, isRegrab,
-      isSearching: (job.replaceDonor || !additionalAudio) && !hasError,
+      isSearching: (job.replaceDonor || !additionalAudio) && !hasError && job.state !== 'grab_pending',
+      isAwaitingDownload: job.state === 'grab_pending',
       canRetrySearch: !job.donorHash && !job.outputPath && job.restoreMonitored == null && !job.replaceDonor &&
-        ['pending', 'downloading', 'regrabbing', 'waiting_for_configuration'].includes(job.state),
+        ['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed'].includes(job.state),
       title: movie.title, subtitle: movie.year?.toString(), transmissionHash: job.donorHash ?? undefined,
       audio: additionalAudio ? { phase, languages,
         canRetry: !!job.donorHash && !job.outputPath && job.restoreMonitored == null && !job.replaceDonor &&

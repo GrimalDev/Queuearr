@@ -158,6 +158,15 @@ minutes per waiting request. It prefers an eligible release containing every
 required language. If none is available, it automatically falls back to separate
 audio downloads and merging. No environment switch is required.
 
+For an initial movie download, the worker reads Radarr's release decisions and
+explicitly grabs an accepted release, preserving quality and language rules.
+It waits for any active Radarr movie search instead of starting a competing grab.
+No accepted result produces **Error** on the card and a summary in server logs;
+the worker checks again after 15 minutes. A submitted release shows its indexer
+and **Waiting for the download client**. Queuearr does not resubmit an uncertain
+grab. If no download appears within five minutes, it logs the problem and pauses
+the request for review.
+
 ### Separate audio downloads and merging
 
 Movies, series, and additional audio share the Downloads card design. Movie

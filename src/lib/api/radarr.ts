@@ -164,6 +164,14 @@ export class RadarrClient {
     await this.client.post('/api/v3/command', { name: 'MoviesSearch', movieIds });
   }
 
+  async hasActiveMovieSearch(movieId: number): Promise<boolean> {
+    const response = await this.client.get<{
+      name: string; status: string; body?: { movieIds?: number[] };
+    }[]>('/api/v3/command');
+    return response.data.some((command) => command.name === 'MoviesSearch' &&
+      ['queued', 'started'].includes(command.status) && command.body?.movieIds?.includes(movieId));
+  }
+
   async rescanMovie(movieId: number): Promise<void> {
     await this.client.post('/api/v3/command', { name: 'RescanMovie', movieId });
   }

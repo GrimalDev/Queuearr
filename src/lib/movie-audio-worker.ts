@@ -13,6 +13,7 @@ import { AudioReviewError, confinedFile, isInside, languageCodes, prepareAudioMe
 import { isAudioDonor } from '@/lib/movie-audio-releases';
 import { getMovieAudioTorrentSource } from '@/lib/movie-audio-download';
 import { audioReleaseKey, isRejectedAudioRelease, rejectedAudioDonors } from '@/lib/movie-audio-attempts';
+import { pickBestRelease } from '@/lib/smart-grab';
 import type { Release } from '@/types';
 
 interface AudioPaths { library: string; donors: string; backups: string }
@@ -144,8 +145,40 @@ async function processJob(
     return;
   }
   if (!movie.hasFile) {
-    await client.triggerSearch([policy.radarrMovieId]);
-    later(id, 'Searching for the initial movie release. Additional audio is processed after import.');
+    if (job.state === 'grab_pending') {
+      // A lost grab response must not submit the same or another release again.
+      if (Date.now() - job.updatedAt < 5 * 60_000) return;
+      throw new AudioReviewError('Radarr did not expose a download within five minutes of the grab. Review its download client and history before retrying.');
+    }
+    if (await client.hasActiveMovieSearch(policy.radarrMovieId)) {
+      later(id, 'Radarr is searching for the initial movie release.', 'pending', 30_000);
+      return;
+    }
+    const releases = await client.getReleases(policy.radarrMovieId);
+    const candidate = pickBestRelease(releases);
+    if (!candidate) {
+      // Log decisions without titles, signed URLs, or raw rejection strings.
+      const reasons = releases.flatMap((release) => release.rejections ?? []);
+      console.warn(`[audio] movie ${id}: initial release search found no eligible release`, {
+        returned: releases.length,
+        rejected: releases.filter((release) => release.downloadAllowed === false || release.rejections?.length).length,
+        quality: reasons.filter((reason) => /quality|profile|wanted/i.test(reason)).length,
+        language: reasons.filter((reason) => /language|audio/i.test(reason)).length,
+        customFormat: reasons.filter((reason) => /custom format|score/i.test(reason)).length,
+        blocklisted: reasons.filter((reason) => /blocklist/i.test(reason)).length,
+      });
+      later(id, 'No eligible initial movie release was returned by Radarr.', 'search_failed');
+      return;
+    }
+    const indexer = candidate.indexer || `Indexer ${candidate.indexerId}`;
+    console.info(`[audio] movie ${id}: submitting an accepted initial release`, {
+      returned: releases.length, indexerId: candidate.indexerId, seeders: candidate.seeders ?? 0,
+    });
+    // Reserve before the external call. Keep this state even if its response is lost.
+    updateMovieAudioJob(id, { state: 'grab_pending', donorIndexer: indexer,
+      detail: 'Release sent to Radarr. Waiting for the download client.', nextAttemptAt: Date.now() + 30_000 });
+    try { await client.grabRelease(candidate.guid, candidate.indexerId); }
+    catch (error) { logMovieAudioError(`movie ${id} initial release submission`, error); }
     return;
   }
   const missing = policy.requiredLanguages.filter((language) => !getAvailableAudio(movie).some((item) => item.id === language.id));

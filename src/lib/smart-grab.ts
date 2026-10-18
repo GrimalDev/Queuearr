@@ -50,7 +50,7 @@ export async function smartGrab({ source, mediaId, episodeId }: SmartGrabOptions
       throw new TeleSyncOnlyError();
     }
 
-    const best = pickBest(releases);
+    const best = pickBestRelease(releases);
 
     if (best) {
       console.log(`[smart-grab] radarr movieId=${mediaId} → "${best.title}" (${best.seeders ?? 0} seeders)`);
@@ -68,7 +68,7 @@ export async function smartGrab({ source, mediaId, episodeId }: SmartGrabOptions
 
   if (episodeId) {
     const releases = await client.getReleases(episodeId);
-    const best = pickBest(releases);
+    const best = pickBestRelease(releases);
 
     if (best) {
       console.log(`[smart-grab] sonarr episodeId=${episodeId} → "${best.title}" (${best.seeders ?? 0} seeders)`);
@@ -84,7 +84,7 @@ export async function smartGrab({ source, mediaId, episodeId }: SmartGrabOptions
   }
 }
 
-function pickBest(releases: Release[]): Release | null {
+export function pickBestRelease(releases: Release[]): Release | null {
   const eligible = releases.filter((r) => !r.rejections?.length && r.downloadAllowed !== false);
 
   // Sort by Radarr/Sonarr's own quality score (qualityWeight + customFormatScore),

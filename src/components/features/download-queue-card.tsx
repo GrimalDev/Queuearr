@@ -45,12 +45,13 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
   const audio = !!item.audio;
   const Icon = audio ? AudioLines : item.source === 'radarr' ? Film : item.source === 'sonarr' ? Tv : Download;
   const phase = isRetrying ? 'searching' : item.hasError || item.isStalled || ['failed', 'warning'].includes(item.status) ? 'error' :
-    item.isSearching ? 'searching' : item.audio?.phase ??
+    item.isSearching ? 'searching' : item.isAwaitingDownload ? 'submitting' : item.audio?.phase ??
     (item.metadataPercentComplete != null && item.metadataPercentComplete < 1 ? 'metadata' :
       item.status === 'completed' || item.status === 'seeding' ? 'ready' : item.status === 'importing' ? 'importing' :
         item.status === 'pending' ? 'validating' : 'downloading');
   const labels = {
     searching: audio ? 'Searching for audio' : item.isRegrab || isRetrying ? 'Searching for a replacement release' : 'Searching for a release',
+    submitting: 'Waiting for the download client',
     metadata: 'Fetching torrent metadata', downloading: audio ? 'Downloading audio' : 'Downloading',
     validating: audio ? 'Checking audio and synchronization' : 'Checking download', merging: 'Merging audio', verifying: 'Verifying merged audio',
     importing: 'Importing into the library', ready: item.status === 'seeding' ? 'Seeding' : 'Ready', error: 'Error',
@@ -58,7 +59,7 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
   const waiting = !isRetrying && !item.isSearching && (item.status === 'paused' || item.status === 'queued');
   const label = phase === 'error' ? 'Error' : waiting ? item.status === 'paused' ? 'Paused' : 'Queued'
     : phase === 'downloading' && item.progress >= 100 ? audio ? 'Waiting for audio checks' : 'Waiting for import' : labels[phase];
-  const step = phase === 'searching' ? 0 : phase === 'metadata' || phase === 'downloading' ? 1 :
+  const step = phase === 'searching' ? 0 : phase === 'submitting' || phase === 'metadata' || phase === 'downloading' ? 1 :
     phase === 'validating' || phase === 'importing' ? 2 : 3;
   const steps = audio ? ['Search', 'Download', 'Check', 'Merge'] : ['Search', 'Download', 'Import', 'Ready'];
   const indeterminate = !waiting && (phase === 'searching' || phase === 'metadata');

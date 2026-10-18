@@ -411,6 +411,7 @@ export interface QueueItem {
   id: string;
   tmdbId?: number;
   isSearching?: boolean;
+  isAwaitingDownload?: boolean;
   canRetrySearch?: boolean;
   canRetry?: boolean;
   retryAvailableAt?: number;

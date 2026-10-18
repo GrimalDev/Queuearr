@@ -28,7 +28,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     const job = policy ? getMovieAudioJobs().find((item) => item.tmdbId === policy.tmdbId) : undefined;
     if (job && (job.donorHash || job.outputPath || job.restoreMonitored !== null || job.replaceDonor ||
-        ['needs_review', 'validating', 'merging', 'verifying', 'available', 'cancelled'].includes(job.state))) {
+        ['needs_review', 'validating', 'merging', 'verifying', 'available', 'cancelled', 'grab_pending'].includes(job.state))) {
       throw new DownloadRetryError('This audio job cannot restart its search.');
     }
     const retryAvailableAt = await runDownloadRetry(source, mediaId, session.user, async () => {
@@ -60,8 +60,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           // The worker chooses an isolated audio donor and retains every media safety check.
           updateMovieAudioJob(policy.tmdbId, { state: 'pending', detail: 'Searching for the requested audio.', nextAttemptAt: 0 });
         } else {
-          await client.triggerSearch([mediaId]);
-          if (policy) updateMovieAudioJob(policy.tmdbId, { state: 'pending', detail: 'Searching for a movie release.', nextAttemptAt: Date.now() + 60_000 });
+          if (policy) updateMovieAudioJob(policy.tmdbId, { state: 'pending', detail: 'Searching for a movie release.', nextAttemptAt: 0 });
+          else await client.triggerSearch([mediaId]);
         }
       }
       const monitored = await getLatestMonitoredDownloadBySourceMedia(source, mediaId);

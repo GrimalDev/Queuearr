@@ -39,7 +39,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     const job = policy ? getMovieAudioJobs().find((item) => item.tmdbId === policy.tmdbId) : undefined;
     if (job ? job.donorHash || job.outputPath || job.restoreMonitored !== null || job.replaceDonor ||
-        !['pending', 'downloading', 'regrabbing', 'waiting_for_configuration'].includes(job.state)
+        !['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed'].includes(job.state)
       : download.completedAt !== null || download.lastStatus !== null) {
       throw new DownloadRetryError('Only a pending search can be cancelled.');
     }

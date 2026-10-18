@@ -64,7 +64,7 @@ export async function DELETE(request: NextRequest) {
         if (!movieLock) throw new DownloadRetryError('This movie is being processed.');
         const job = getMovieAudioJobs().find((item) => item.tmdbId === policy.tmdbId);
         if (job && (job.donorHash || job.outputPath || job.restoreMonitored !== null ||
-            ['needs_review', 'validating', 'merging', 'verifying'].includes(job.state))) {
+            ['needs_review', 'validating', 'merging', 'verifying', 'grab_pending'].includes(job.state))) {
           throw new DownloadRetryError('The audio job cannot retry its movie download during processing.');
         }
       }
