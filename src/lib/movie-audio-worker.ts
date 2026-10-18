@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { logMovieAudioError } from '@/lib/movie-audio-errors';
+import { AudioConfigurationError, logMovieAudioError } from '@/lib/movie-audio-errors';
 import { mkdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createRadarrClient, type RadarrClient } from '@/lib/api/radarr';
@@ -152,10 +152,12 @@ async function processJob(
   languageCodes(wanted);
   const paths = await audioPaths();
   const transmission = createTransmissionClient();
-  if (!transmission) throw new AudioReviewError('Transmission must be configured to download additional audio.');
-  if (!await transmission.supportsAudioDonors() || !await client.hasIsolatedAudioCategory()) {
-    throw new AudioReviewError('Audio donors require Transmission 4+ and a nonempty Radarr Transmission category separate from queuearr-audio labels, with no directory override.');
+  if (!transmission) throw new AudioConfigurationError('Transmission must be configured to download additional audio.');
+  if (!await transmission.supportsAudioDonors()) {
+    throw new AudioConfigurationError('The configured Transmission endpoint did not report version 4 or newer. Check TRANSMISSION_URL and the daemon version.');
   }
+  const isolationIssue = await client.getAudioDonorIsolationIssue();
+  if (isolationIssue) throw new AudioConfigurationError(isolationIssue);
   // Must be the same absolute path in Queuearr and Transmission, without symlink aliases.
   const downloadDir = join(AUDIO_PATHS.donors, `${id}-${wanted.id}`);
   await mkdir(downloadDir, { recursive: true });
@@ -230,6 +232,21 @@ async function processJob(
   }
 }
 
+// Older versions paused configuration failures permanently under needs_review.
+// Recheck only these known setup failures; never reopen uncertain file publication.
+const LEGACY_AUDIO_CONFIGURATION_ERRORS = new Set([
+  'Transmission must be configured to download additional audio.',
+  'Audio donors require Transmission 4+ and a nonempty Radarr Transmission category separate from queuearr-audio labels, with no directory override.',
+]);
+function isLegacyConfigurationFailure(job: MovieAudioJob): boolean {
+  return job.state === 'needs_review' && job.restoreMonitored === null && !job.outputPath &&
+    LEGACY_AUDIO_CONFIGURATION_ERRORS.has(job.detail);
+}
+function shouldProcessJob(job: MovieAudioJob): boolean {
+  return job.restoreMonitored !== null || isLegacyConfigurationFailure(job) ||
+    (job.nextAttemptAt <= Date.now() && !['available', 'needs_review'].includes(job.state));
+}
+
 export async function runMovieAudioJobs(): Promise<void> {
   const client = createRadarrClient();
   if (!client) return;
@@ -245,7 +262,7 @@ export async function runMovieAudioJobs(): Promise<void> {
   try {
     for (const job of getMovieAudioJobs()) {
       if (abort.signal.aborted) break;
-      if (job.restoreMonitored === null && (job.nextAttemptAt > Date.now() || ['available', 'needs_review'].includes(job.state))) continue;
+      if (!shouldProcessJob(job)) continue;
       movieLock = acquireMovieAudioLock(job.tmdbId + 2);
       if (!movieLock) continue;
       try {
@@ -253,16 +270,22 @@ export async function runMovieAudioJobs(): Promise<void> {
         const current = getMovieAudioJobs().find((item) => item.tmdbId === job.tmdbId);
         const policy = getMovieAudioPolicies().get(job.tmdbId);
         if (!current || !policy) continue;
-        if (current.restoreMonitored === null &&
-            (current.nextAttemptAt > Date.now() || ['available', 'needs_review'].includes(current.state))) continue;
+        if (!shouldProcessJob(current)) continue;
+        if (isLegacyConfigurationFailure(current)) {
+          logMovieAudioError(`movie ${job.tmdbId}: rechecking a previous configuration failure`, undefined, current.detail);
+          current.state = 'waiting_for_configuration';
+          current.detail = 'Error';
+          updateMovieAudioJob(job.tmdbId, { state: current.state, detail: current.detail, nextAttemptAt: 0 });
+        }
         await processJob(client, policy, current, abort.signal);
       }
       catch (error) {
         // Do not serialize HTTP errors: they can contain API keys and download URLs.
-        if (error instanceof AudioReviewError || error instanceof AudioProfileError) later(job.tmdbId, error.message, 'needs_review');
+        if (error instanceof AudioConfigurationError) later(job.tmdbId, 'Error', 'waiting_for_configuration');
+        else if (error instanceof AudioReviewError || error instanceof AudioProfileError) later(job.tmdbId, error.message, 'needs_review');
         else later(job.tmdbId, 'A service or shared folder is unavailable. Queuearr will retry in 15 minutes.');
         logMovieAudioError(`movie ${job.tmdbId}`, error,
-          error instanceof AudioReviewError || error instanceof AudioProfileError ? error.message : undefined);
+          error instanceof AudioConfigurationError || error instanceof AudioReviewError || error instanceof AudioProfileError ? error.message : undefined);
       } finally { releaseMovieAudioLock(movieLock); movieLock = null; }
     }
   } finally { clearInterval(heartbeat); releaseMovieAudioLock(workerLock); }

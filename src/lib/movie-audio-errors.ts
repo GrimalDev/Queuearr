@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { NextResponse } from 'next/server';
 
+export class AudioConfigurationError extends Error {}
+
 export function logMovieAudioError(context: string, cause?: unknown, detail?: string): void {
   if (detail) {
     console.warn(`[audio] ${context}: ${detail}`);

@@ -251,9 +251,13 @@ export class TransmissionClient {
     return response.arguments?.torrents ?? [];
   }
 
-  async supportsAudioDonors(): Promise<boolean> {
+  async getVersion(): Promise<string> {
     const response = await this.rpcRequest<{ arguments?: { version?: string } }>('session-get', {});
-    return Number.parseInt(response.arguments?.version ?? '', 10) >= 4;
+    return response.arguments?.version ?? '';
+  }
+
+  async supportsAudioDonors(): Promise<boolean> {
+    return Number.parseInt(await this.getVersion(), 10) >= 4;
   }
 
   async addAudioDonor(source: { filename: string } | { metainfo: string }, downloadDir: string, label: string): Promise<string> {

@@ -64,14 +64,25 @@ export class RadarrClient {
     return response.data;
   }
 
-  async hasIsolatedAudioCategory(): Promise<boolean> {
-    const response = await this.client.get<{ enable: boolean; implementation: string; fields: { name: string; value?: unknown }[] }[]>('/api/v3/downloadclient');
-    return response.data.filter((client) => client.enable && client.implementation === 'Transmission').every((client) => {
+  async getAudioDonorIsolationIssue(): Promise<string | null> {
+    const response = await this.client.get<{ id: number; enable: boolean; implementation: string; fields: { name: string; value?: unknown }[] }[]>('/api/v3/downloadclient');
+    const clients = response.data.filter((client) => client.enable && client.implementation === 'Transmission');
+    if (!clients.length) return 'Radarr has no enabled Transmission download client. Configure one before requesting additional audio.';
+    for (const client of clients) {
       const category = client.fields.find((field) => field.name === 'movieCategory')?.value;
       const directory = client.fields.find((field) => field.name === 'movieDirectory')?.value;
-      return typeof category === 'string' && category.trim().length > 0 &&
-        !category.toLowerCase().startsWith('queuearr-audio') && !directory;
-    });
+      const context = `Radarr Transmission client ${client.id}`;
+      if (typeof category !== 'string' || !category.trim()) {
+        return `${context} has an empty Category. Set Category to radarr and leave Directory empty.`;
+      }
+      if (category.trim().toLowerCase().startsWith('queuearr-audio')) {
+        return `${context} uses the reserved queuearr-audio category. Set a separate Category such as radarr.`;
+      }
+      if (directory !== undefined && directory !== null && (typeof directory !== 'string' || directory.trim())) {
+        return `${context} has a Directory override. Clear Directory and use Category instead so Radarr cannot import Queuearr audio donors.`;
+      }
+    }
+    return null;
   }
 
   async createCustomFormat(format: Omit<RadarrCustomFormat, 'id'>): Promise<RadarrCustomFormat> {

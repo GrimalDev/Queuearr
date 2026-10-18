@@ -191,6 +191,12 @@ Plex discovers the result through its normal library scan or your Radarr/Plex
 connection. Enable automatic library scans or scan the library manually. Queuearr
 does not itself trigger a Plex scan. Tagged tracks appear in Plex's audio menu.
 
+Transmission version and Radarr isolation checks report separate failure reasons
+in server logs, identifying the Radarr client when applicable. Configuration
+failures retry every 15 minutes and show only **Error** on the movie card.
+Requests paused by the older combined configuration error are rechecked
+automatically, without resuming file or synchronization failures.
+
 A job that needs review stops automated work for that movie. Its card displays
 only **Error**. Technical error details are kept in server logs, including the
 movie's TMDB ID, and are not returned in audio status or search responses.
