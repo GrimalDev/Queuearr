@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSession } from 'next-auth/react';
 import { Check, ChevronDown, Download, Loader2, Plus, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -18,7 +17,6 @@ interface AudioStatus {
 }
 
 export function MovieAudioRequest({ result }: { result: SearchResult }): React.JSX.Element {
-  const { data: session } = useSession();
   const [language, setLanguage] = useState<MovieAudioLanguage>('original');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -68,18 +66,6 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not start the download.'); }
     finally { setBusy(false); }
   };
-  const retry = async (): Promise<void> => {
-    setBusy(true); setError('');
-    try {
-      const response = await fetch('/api/radarr/audio/retry', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tmdbId: result.tmdbId }),
-      });
-      const body = await response.json() as { state: string; detail: string; error?: string };
-      if (!response.ok) throw new Error(body.error ?? 'Could not retry.');
-      setStatus((previous) => ({ ...previous, state: body.state, detail: body.detail }));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not retry.'); }
-    finally { setBusy(false); }
-  };
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-stretch gap-2">
@@ -120,9 +106,6 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
         </Button>
       </div>
       {status.detail && status.state !== 'available' && <p role="status" className="text-xs text-muted-foreground">{status.detail}</p>}
-      {status.state === 'needs_review' && session?.user.role === 'admin' && (
-        <Button className="w-full" variant="outline" disabled={busy} onClick={() => { void retry(); }}>Retry after review</Button>
-      )}
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     </div>
   );
