@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { Check, Languages, Loader2 } from 'lucide-react';
+import { Check, ChevronDown, Download, Loader2, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { MOVIE_AUDIO_OPTIONS, isMovieAudioLanguage } from '@/lib/movie-audio-policy';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { MOVIE_AUDIO_OPTIONS } from '@/lib/movie-audio-policy';
+import { cn } from '@/lib/utils';
 import type { MovieAudioLanguage, RadarrLanguage, SearchResult } from '@/types';
 
 interface AudioStatus {
@@ -12,14 +14,16 @@ interface AudioStatus {
   detail?: string;
   requiredLanguages: RadarrLanguage[];
   availableLanguages: RadarrLanguage[];
+  hasFile?: boolean;
 }
+
 export function MovieAudioRequest({ result }: { result: SearchResult }): React.JSX.Element {
   const { data: session } = useSession();
   const [language, setLanguage] = useState<MovieAudioLanguage>('original');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState<AudioStatus>({
-    state: result.audioRequestState, detail: result.audioRequestDetail,
+    state: result.audioRequestState, detail: result.audioRequestDetail, hasFile: result.hasFile,
     requiredLanguages: result.requestedAudioLanguages ?? [], availableLanguages: result.availableAudioLanguages ?? [],
   });
   useEffect(() => {
@@ -28,26 +32,38 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
     const refresh = async (): Promise<void> => {
       try {
         const response = await fetch(`/api/radarr/audio?tmdbId=${result.tmdbId}`);
-        if (response.ok && !disposed) setStatus(await response.json() as AudioStatus);
+        if (response.ok) {
+          const body = await response.json() as AudioStatus;
+          if (!disposed) setStatus(body);
+        }
       } catch { /* Preserve the last status until the next poll. */ }
     };
     const timer = setInterval(() => { void refresh(); }, 30_000);
     return () => { disposed = true; clearInterval(timer); };
   }, [result.tmdbId, status.state]);
-  const languageId = language === 'english' ? 1 : language === 'french' ? 2 : result.originalLanguage?.id;
-  const available = status.availableLanguages.some((item) => item.id === languageId);
-  const requested = status.requiredLanguages.some((item) => item.id === languageId);
+
+  const options = MOVIE_AUDIO_OPTIONS.map((option) => {
+    const id = option.value === 'english' ? 1 : option.value === 'french' ? 2 : result.originalLanguage?.id;
+    return {
+      ...option,
+      label: option.value === 'original' && result.originalLanguage
+        ? `Original (${result.originalLanguage.name})` : option.label,
+      present: status.availableLanguages.some((item) => item.id === id),
+    };
+  });
+  const selected = options.find((option) => option.value === language)!;
+  const hasFile = status.hasFile ?? result.hasFile ?? false;
   const submit = async (): Promise<void> => {
     setBusy(true); setError('');
     try {
       const response = await fetch('/api/radarr/audio', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tmdbId: result.tmdbId, audioLanguage: language }),
+        body: JSON.stringify({ tmdbId: result.tmdbId, audioLanguage: language, forceDownload: hasFile }),
       });
       const body = await response.json() as AudioStatus & { error?: string };
-      if (!response.ok) throw new Error(body.error ?? 'Could not request audio.');
+      if (!response.ok) throw new Error(body.error ?? 'Could not start the download.');
       setStatus(body);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not request audio.'); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not start the download.'); }
     finally { setBusy(false); }
   };
   const retry = async (): Promise<void> => {
@@ -64,23 +80,43 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
   };
   return (
     <div className="space-y-2">
-      <label className="flex items-center gap-2 text-sm">
-        <Languages className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span className="sr-only">Audio language for {result.title}</span>
-        <select className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={language}
-          onChange={(event) => { if (isMovieAudioLanguage(event.target.value)) setLanguage(event.target.value); }} disabled={busy}>
-          {MOVIE_AUDIO_OPTIONS.map((option) => <option key={option.value} value={option.value}>
-            {option.label}{option.value === 'original' && result.originalLanguage ? ` (${result.originalLanguage.name})` : ''}
-          </option>)}
-        </select>
-      </label>
-      <Button className="w-full" disabled={busy || available || status.state === 'needs_review'} onClick={() => { void submit(); }}>
-        {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : available ? <Check className="mr-2 h-4 w-4" /> : <Languages className="mr-2 h-4 w-4" />}
-        {busy ? 'Saving request…' : available ? 'Audio available' : requested ? 'Follow audio request' : 'Request audio'}
-      </Button>
-      {status.availableLanguages.length > 0 && <p className="text-xs text-muted-foreground">Available: {status.availableLanguages.map((item) => item.name).join(', ')}</p>}
-      {status.requiredLanguages.length > 0 && <p className="text-xs text-muted-foreground">Requested: {status.requiredLanguages.map((item) => item.name).join(', ')}</p>}
-      {status.detail && <p role="status" className="text-xs text-muted-foreground">{status.detail}</p>}
+      <div className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-stretch gap-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" disabled={busy}
+              aria-label={`Audio language for ${result.title}: ${selected.label}${selected.present ? ', already present' : ''}`}
+              className={cn('h-12 min-w-0 justify-between gap-1 px-2 text-xs whitespace-normal',
+                selected.present && 'border-emerald-500/70 bg-emerald-500/5 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:border-emerald-500/70 dark:bg-emerald-500/5 dark:text-emerald-400 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-400')}>
+              <span className="flex min-w-0 items-center gap-1.5 text-left leading-tight">
+                {selected.present && <Check className="size-4 shrink-0 text-foreground" aria-hidden="true" />}
+                <span>{selected.label}</span>
+              </span>
+              <ChevronDown className="size-3.5 shrink-0 text-foreground" aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-[var(--radix-dropdown-menu-trigger-width)]">
+            {options.map((option) => (
+              <DropdownMenuItem key={option.value} onSelect={() => setLanguage(option.value)}
+                aria-label={`${option.label}${option.present ? ', already present' : ''}`}
+                className={cn(language === option.value && 'bg-accent',
+                  option.present && 'text-emerald-700 focus:text-emerald-700 dark:text-emerald-400 dark:focus:text-emerald-400')}>
+                <span aria-hidden="true" className="w-4 shrink-0">{option.present && <Check className="size-4 text-foreground" />}</span>
+                {option.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button className="h-12 min-w-0 gap-1.5 px-2 whitespace-normal" disabled={busy}
+          aria-label={`${hasFile ? 'Already available. Regrab' : 'Grab'} ${result.title} with ${selected.label} audio`}
+          onClick={() => { void submit(); }}>
+          {busy ? <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" /> :
+            hasFile ? <RotateCw className="size-4 shrink-0" aria-hidden="true" /> : <Download className="size-4 shrink-0" aria-hidden="true" />}
+          <span className="min-w-0 leading-tight">
+            {busy ? 'Starting…' : hasFile ? <><span className="block text-[10px] font-normal">Already available</span><span className="block text-sm">Regrab</span></> : 'Grab'}
+          </span>
+        </Button>
+      </div>
+      {status.detail && status.state !== 'available' && <p role="status" className="text-xs text-muted-foreground">{status.detail}</p>}
       {status.state === 'needs_review' && session?.user.role === 'admin' && (
         <Button className="w-full" variant="outline" disabled={busy} onClick={() => { void retry(); }}>Retry after review</Button>
       )}

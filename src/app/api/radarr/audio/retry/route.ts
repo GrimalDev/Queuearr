@@ -19,8 +19,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'This request is not ready for a review retry.' }, { status: 409 });
     }
     // Keep donor ownership and pending output: retry must revalidate, never redownload blindly.
-    updateMovieAudioJob(body.tmdbId, { state: 'pending', detail: 'Review acknowledged. Checking the request again.', nextAttemptAt: 0 });
-    return NextResponse.json({ state: 'pending', detail: 'Review acknowledged. Checking the request again.' });
+    updateMovieAudioJob(body.tmdbId, { state: job.regrabFileId !== null ? 'regrabbing' : 'pending', detail: 'Review acknowledged. Checking the request again.', nextAttemptAt: 0 });
+    return NextResponse.json({ state: job.regrabFileId !== null ? 'regrabbing' : 'pending', detail: 'Review acknowledged. Checking the request again.' });
   } catch { return NextResponse.json({ error: 'Could not retry this request.' }, { status: 503 }); }
   finally { releaseMovieAudioLock(lock); }
 }

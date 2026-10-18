@@ -64,6 +64,21 @@ async function processJob(
   if (job.state === 'needs_review') return;
   let movie = await client.getMovie(policy.radarrMovieId);
   if (movie.tmdbId !== id) throw new AudioReviewError('The Radarr movie no longer matches this request.');
+  if (job.regrabFileId !== null) {
+    const downloading = (await client.getQueue(false)).records.some((item) => item.movieId === movie.id);
+    if (downloading) {
+      later(id, 'Radarr is downloading or importing the replacement movie.', 'regrabbing', 30_000);
+      return;
+    }
+    if (!movie.hasFile || !movie.movieFile?.id || movie.movieFile.id === job.regrabFileId) {
+      if (job.regrabRequestedAt !== null && Date.now() - job.regrabRequestedAt > 45 * 60_000) {
+        throw new AudioReviewError('Radarr has not imported a replacement movie. Review its download history before retrying.');
+      }
+      later(id, 'Waiting for Radarr to import the regrab. The previous file does not complete this request.', 'regrabbing', 30_000);
+      return;
+    }
+    updateMovieAudioJob(id, { regrabFileId: null, regrabRequestedAt: null });
+  }
   if (movie.hasFile && (getAvailableAudio(movie).length === 0 || movie.movieFile?.languages?.some((language) => language.id <= 0))) {
     throw new AudioReviewError('Analyze the existing movie in Radarr to identify every audio language first.');
   }

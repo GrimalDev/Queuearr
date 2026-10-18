@@ -45,6 +45,8 @@ export const movieAudioJobs = sqliteTable('movie_audio_jobs', {
   donorLanguageId: integer('donor_language_id'),
   restoreMonitored: integer('restore_monitored', { mode: 'boolean' }),
   outputPath: text('output_path'),
+  regrabFileId: integer('regrab_file_id'),
+  regrabRequestedAt: integer('regrab_requested_at'),
   updatedAt: integer('updated_at').notNull(),
   nextAttemptAt: integer('next_attempt_at').notNull().default(0),
 });

@@ -18,6 +18,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       state: job?.state, detail: job?.detail, requiredLanguages: policy?.requiredLanguages ?? [],
       availableLanguages: movie ? getAvailableAudio(movie) : [],
+      hasFile: !!movie?.hasFile,
     });
   } catch { return NextResponse.json({ error: 'Could not refresh audio status.' }, { status: 503 }); }
 }
@@ -30,11 +31,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const body: unknown = await request.json().catch(() => null);
   if (!body || typeof body !== 'object' || !('tmdbId' in body) || !('audioLanguage' in body) ||
       typeof body.tmdbId !== 'number' || !Number.isSafeInteger(body.tmdbId) || body.tmdbId <= 0 ||
-      !isMovieAudioLanguage(body.audioLanguage)) {
+      !isMovieAudioLanguage(body.audioLanguage) ||
+      ('forceDownload' in body && typeof body.forceDownload !== 'boolean')) {
     return NextResponse.json({ error: 'Choose a movie and Original, English or French audio.' }, { status: 400 });
   }
   try {
-    const result = await requestMovieAudio(client, body.tmdbId, body.audioLanguage, session.user.id);
+    const result = await requestMovieAudio(client, body.tmdbId, body.audioLanguage, session.user.id,
+      'forceDownload' in body && body.forceDownload === true);
     return NextResponse.json(result, { status: result.state === 'available' ? 200 : 202 });
   } catch (error) {
     if (error instanceof MovieAudioRequestError) return NextResponse.json({ error: error.message }, { status: error.status });

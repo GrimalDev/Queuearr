@@ -3,6 +3,7 @@ import { acquireMovieAudioLock, getMovieAudioPolicies, releaseMovieAudioLock, sa
 import { addUserToDownload, reopenMonitoredDownload } from '@/lib/db/monitored-downloads';
 import { getAvailableAudio, hasRequiredAudio, mergeAudioLanguages, resolveAudioLanguage } from '@/lib/movie-audio-policy';
 import { AUDIO_PROFILE_PREFIX, AudioProfileError, ensureAudioProfile } from '@/lib/radarr-audio-profile';
+import { isMovieRegrab } from '@/lib/movie-audio-releases';
 import type { MovieAudioLanguage, RadarrLanguage } from '@/types';
 
 export class MovieAudioRequestError extends Error {
@@ -19,10 +20,11 @@ export interface MovieAudioRequestResult {
   requiredLanguages: RadarrLanguage[];
   availableLanguages: RadarrLanguage[];
   searchStarted: boolean;
+  hasFile: boolean;
 }
 
 export async function requestMovieAudio(
-  client: RadarrClient, tmdbId: number, choice: MovieAudioLanguage, userId: string,
+  client: RadarrClient, tmdbId: number, choice: MovieAudioLanguage, userId: string, forceDownload = false,
 ): Promise<MovieAudioRequestResult> {
   const movieLock = acquireMovieAudioLock(tmdbId + 2);
   if (!movieLock) throw new MovieAudioRequestError('This movie’s audio is being processed. Please try again shortly.');
@@ -82,30 +84,58 @@ export async function requestMovieAudio(
     saveMovieAudioPolicy({ tmdbId, radarrMovieId: movie.id, baseProfileId: base.id, requiredLanguages: required });
     updateMovieAudioJob(tmdbId, { state: previousJob?.state ?? 'pending', detail: previousJob?.detail ?? 'Applying the requested audio profile.', nextAttemptAt: 0 });
     movie = await client.updateMovie({ ...movie, qualityProfileId: profile.id, monitored: true });
+    if (!movie.id) throw new Error('Radarr returned a movie without an ID');
+    const movieId = movie.id;
     const satisfied = hasRequiredAudio(movie, required);
-    const detail = satisfied ? 'All requested audio languages are available.' :
-      previousJob?.donorHash || previousJob?.outputPath ? previousJob.detail : 'Searching for a release with the requested audio.';
-    const state = satisfied ? 'available' : previousJob?.donorHash || previousJob?.outputPath ? previousJob.state : 'pending';
+    const regrabbing = previousJob?.regrabFileId !== null && previousJob?.regrabFileId !== undefined;
+    const processingAudio = !!previousJob?.donorHash || !!previousJob?.outputPath;
+    let detail = regrabbing || processingAudio ? previousJob!.detail :
+      satisfied ? 'All requested audio languages are available.' : 'Searching for a release with the requested audio.';
+    let state = regrabbing || processingAudio ? previousJob!.state : satisfied ? 'available' : 'pending';
     updateMovieAudioJob(tmdbId, { state, detail, nextAttemptAt: 0 });
     let searchStarted = false;
-    if (!satisfied) {
-      const monitored = await reopenMonitoredDownload('radarr', movie.id!, movie.title);
+    if (forceDownload && satisfied && !regrabbing && !processingAudio) {
+      const queue = await client.getQueue(false);
+      if (queue.records.some((item) => item.movieId === movie.id)) {
+        throw new MovieAudioRequestError('Radarr already has a download or import in progress for this movie.');
+      }
+      if (!movie.movieFile?.id) throw new MovieAudioRequestError('Radarr has not identified the existing movie file yet.');
+      const releases = await client.getReleases(movieId);
+      const candidate = releases.find((release) => isMovieRegrab(release, movie, required, profile));
+      if (!candidate) {
+        throw new MovieAudioRequestError('No release can be regrabbed with all requested languages at the current quality or better. The existing movie is still available.');
+      }
+      if (leaseLost) throw new MovieAudioRequestError('The request lock expired. Please retry.');
+      const monitored = await reopenMonitoredDownload('radarr', movieId, movie.title);
+      await addUserToDownload(monitored.id, userId);
+      state = 'regrabbing';
+      detail = 'Sending a fresh download to Radarr. The existing movie stays available until import.';
+      // Persist before submitting: a lost response must not cause duplicate grabs or early completion.
+      updateMovieAudioJob(tmdbId, { state, detail, regrabFileId: movie.movieFile.id,
+        regrabRequestedAt: Date.now(), nextAttemptAt: Date.now() + 30_000 });
+      try {
+        await client.grabRelease(candidate.guid, candidate.indexerId);
+        searchStarted = true;
+      } catch {
+        detail = 'Radarr has not confirmed the regrab yet. Checking its download queue.';
+        updateMovieAudioJob(tmdbId, { detail });
+      }
+    } else if (!satisfied || regrabbing) {
+      const monitored = await reopenMonitoredDownload('radarr', movieId, movie.title);
       await addUserToDownload(monitored.id, userId);
       try {
-        // Radarr manages the initial video; the worker handles additional audio.
-        if (!previousJob?.donorHash && !previousJob?.outputPath &&
+        if (!processingAudio && !regrabbing &&
             !(await client.getQueue(false)).records.some((item) => item.movieId === movie.id)) {
-          await client.triggerSearch([movie.id!]);
+          await client.triggerSearch([movieId]);
           searchStarted = true;
         }
       } catch {
-        // Keep the request/profile so a retry or Radarr RSS can satisfy it later.
         console.warn('[audio] Request saved but Radarr could not start the movie search');
       }
     }
     return {
       movieId: movie.id!, state, detail,
-      requiredLanguages: required, availableLanguages: getAvailableAudio(movie), searchStarted,
+      requiredLanguages: required, availableLanguages: getAvailableAudio(movie), searchStarted, hasFile: !!movie.hasFile,
     };
   } catch (error) {
     if (error instanceof AudioProfileError) throw new MovieAudioRequestError(error.message);

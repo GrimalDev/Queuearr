@@ -91,8 +91,19 @@ MIT
 Movie search includes **Original**, **English**, and **French** audio choices.
 Original uses the movie's language from Radarr/TMDB. Requests accumulate across
 users: asking for French does not remove an earlier English request or a known
-language in the current file. Search cards show available languages and request
-progress, and completion notifications wait for all requested audio.
+language in the current file. The language dropdown sits beside **Grab** for a
+first download or **Already available · Regrab** for an existing movie. Green
+check marks identify audio already present. Both actions remain enabled when
+that language exists; the old available-language list is removed.
+
+Regrab manually submits a matching release through Radarr even when the current
+file meets its cutoff. It retains all required languages and requires the same
+quality or better. Blocklisted, wrong-movie, wrong-edition and unrelated rejected
+releases are not accepted. If no suitable release exists, the card shows an
+error and the current file remains in place. An active download is not duplicated.
+Completion notifications wait for a replacement to be imported, rather than
+counting the previous file as a finished regrab. Other audio requests still wait
+for every requested language.
 
 Queuearr copies the movie's base quality profile into a managed Radarr profile.
 It preserves allowed qualities and existing custom-format scores, sets profile
