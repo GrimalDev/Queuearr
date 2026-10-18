@@ -259,10 +259,10 @@ export function SearchResults() {
               ) : (
                 <div className="space-y-2">
                   <MovieAudioRequest key={result.id} result={result} />
-                  {result.libraryId && (result.isDownloading || (result.audioRequestState && result.audioRequestState !== 'available')) && (
+                  {!isWatching && result.libraryId && (result.isDownloading || (result.audioRequestState && result.audioRequestState !== 'available')) && (
                     <Button className="w-full" variant="outline" onClick={() => handleToggleWatch(result)}>
-                      {isWatching ? <Bell className="mr-2 h-4 w-4" /> : <BellOff className="mr-2 h-4 w-4" />}
-                      {isWatching ? 'Stop notifications' : 'Notify me when ready'}
+                      <BellOff className="mr-2 h-4 w-4" />
+                      Notify me when ready
                     </Button>
                   )}
                 </div>
