@@ -10,7 +10,7 @@ export function getMovieAudioQueue(
   const library = new Map(movies.map((movie) => [movie.id, movie]));
   return jobs.flatMap((job): QueueItem[] => {
     const policy = policies.get(job.tmdbId);
-    if (!policy || (job.state === 'available' && !settledIds.has(job.tmdbId)) ||
+    if (!policy || job.state === 'cancelled' || (job.state === 'available' && !settledIds.has(job.tmdbId)) ||
         (visibleMovieIds && !visibleMovieIds.has(policy.radarrMovieId))) return [];
     const movie = library.get(policy.radarrMovieId);
     if (!movie || movie.tmdbId !== job.tmdbId) return [];
@@ -68,6 +68,8 @@ export function mergeMovieAudioQueue(
     const hasError = item.hasError || !!torrent?.error || !!movieDownload?.hasError;
     const enriched = torrent ? {
       transmissionId: torrent.id, transmissionHash: torrent.hashString,
+      addedDate: torrent.addedDate,
+      startDate: torrent.startDate,
       progress: Math.min(100, Math.max(0, torrent.percentDone * 100)),
       size: torrent.sizeWhenDone, sizeRemaining: torrent.leftUntilDone,
       downloadSpeed: torrent.rateDownload, peersConnected: torrent.peersConnected,
@@ -75,6 +77,8 @@ export function mergeMovieAudioQueue(
       eta: torrent.eta > 0 ? `${Math.floor(torrent.eta / 3600).toString().padStart(2, '0')}:${Math.floor(torrent.eta % 3600 / 60).toString().padStart(2, '0')}:${Math.floor(torrent.eta % 60).toString().padStart(2, '0')}` : undefined,
     } : movieDownload ? {
       transmissionId: movieDownload.transmissionId, transmissionHash: movieDownload.transmissionHash,
+      addedDate: movieDownload.addedDate,
+      startDate: movieDownload.startDate,
       progress: movieDownload.progress, size: movieDownload.size, sizeRemaining: movieDownload.sizeRemaining,
       downloadSpeed: movieDownload.downloadSpeed, eta: movieDownload.eta,
       peersConnected: movieDownload.peersConnected, peersSendingToUs: movieDownload.peersSendingToUs,

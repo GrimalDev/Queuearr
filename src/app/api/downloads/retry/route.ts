@@ -28,7 +28,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     const job = policy ? getMovieAudioJobs().find((item) => item.tmdbId === policy.tmdbId) : undefined;
     if (job && (job.donorHash || job.outputPath || job.restoreMonitored !== null || job.replaceDonor ||
-        ['needs_review', 'validating', 'merging', 'verifying', 'available'].includes(job.state))) {
+        ['needs_review', 'validating', 'merging', 'verifying', 'available', 'cancelled'].includes(job.state))) {
       throw new DownloadRetryError('This audio job cannot restart its search.');
     }
     const retryAvailableAt = await runDownloadRetry(source, mediaId, session.user, async () => {

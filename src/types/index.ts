@@ -289,6 +289,7 @@ export interface TransmissionTorrent {
   peersSendingToUs: number;
   peersGettingFromUs: number;
   addedDate: number;
+  startDate?: number;
   doneDate: number;
   activityDate: number;
   queuePosition: number;
@@ -445,6 +446,7 @@ export interface QueueItem {
   peersConnected?: number;
   peersSendingToUs?: number;
   addedDate?: number;
+  startDate?: number;
   doneDate?: number;
   activityDate?: number;
   dbCreatedAt?: number;

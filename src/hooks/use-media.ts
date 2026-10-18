@@ -392,6 +392,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
               peersConnected: matchedTorrent?.peersConnected,
               peersSendingToUs: matchedTorrent?.peersSendingToUs,
               addedDate: matchedTorrent?.addedDate,
+              startDate: matchedTorrent?.startDate,
               doneDate: matchedTorrent?.doneDate,
               activityDate: matchedTorrent?.activityDate,
               ...(() => { const m = item.movieId ? monitoredMap.get(`radarr:${item.movieId}`) : undefined; return m ? { dbCreatedAt: m.createdAt, dbLastActivityAt: m.lastActivityAt, dbLastBytesAt: m.lastBytesAt } : {}; })(),
@@ -499,6 +500,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
               peersConnected: matchedTorrent?.peersConnected,
               peersSendingToUs: matchedTorrent?.peersSendingToUs,
               addedDate: matchedTorrent?.addedDate,
+              startDate: matchedTorrent?.startDate,
               doneDate: matchedTorrent?.doneDate,
               activityDate: matchedTorrent?.activityDate,
               ...(() => { const m = item.seriesId ? monitoredMap.get(`sonarr:${item.seriesId}`) : undefined; return m ? { dbCreatedAt: m.createdAt, dbLastActivityAt: m.lastActivityAt, dbLastBytesAt: m.lastBytesAt } : {}; })(),
@@ -524,6 +526,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
         const monitored = item.mediaId != null ? monitoredMap.get(`${item.source}:${item.mediaId}`) : undefined;
         const own = isAdminRef.current || !!monitored?.userIds?.includes(session?.user?.id ?? '');
         return { ...item, retryAvailableAt: monitored?.retryAvailableAt ?? item.retryAvailableAt,
+          dbCreatedAt: monitored?.createdAt ?? item.dbCreatedAt,
           canRetry: own, canRetrySearch: item.canRetrySearch && (own || !monitored) };
       });
 
@@ -552,6 +555,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
             peersConnected: torrent.peersConnected,
             peersSendingToUs: torrent.peersSendingToUs,
             addedDate: torrent.addedDate,
+            startDate: torrent.startDate,
             doneDate: torrent.doneDate,
             activityDate: torrent.activityDate,
           });

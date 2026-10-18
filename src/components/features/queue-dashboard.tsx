@@ -11,6 +11,8 @@ import { useQueue } from '@/hooks/use-media';
 import { useAppStore } from '@/store/app-store';
 import { QueueItem } from '@/types';
 import { cn } from '@/lib/utils';
+import { matchesQueueRequest } from '@/lib/queue-requests';
+import { orderDownloadQueue } from '@/lib/download-queue-order';
 
 export function QueueDashboard() {
   const [queueFilter, setQueueFilter] = useState<'mine' | 'all'>('mine');
@@ -53,6 +55,28 @@ export function QueueDashboard() {
         next.delete(item.id);
         return next;
       });
+    }
+  };
+
+  const handleCancelSearch = async (item: QueueItem): Promise<void> => {
+    if (!item.mediaId || item.source === 'transmission') return;
+    setDeletingIds((previous) => new Set(previous).add(item.id));
+    try {
+      const response = await fetch('/api/downloads/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: item.source, mediaId: item.mediaId }),
+      });
+      if (!response.ok) throw new Error('Error');
+      const store = useAppStore.getState();
+      for (const pending of store.pendingQueueRequests) {
+        if (matchesQueueRequest(item, pending.item)) store.finishQueueRequest(pending.item.id);
+      }
+      setQueueItems(store.queueItems.filter((entry) => !matchesQueueRequest(entry, item)));
+      await refresh();
+    } catch {
+      useAppStore.getState().addAlert({ type: 'error', title: 'Error', message: 'Error', source: item.source, relatedItemId: item.id });
+      await refresh();
+    } finally {
+      setDeletingIds((previous) => { const next = new Set(previous); next.delete(item.id); return next; });
     }
   };
 
@@ -214,12 +238,7 @@ export function QueueDashboard() {
     ...problemItems,
     ...retryingOnlyItems,
   ];
-  const isProblemItem = (item: QueueItem) => item.hasError || item.isStalled || retryingItems.has(item.id);
-  const orderedItems = [
-    ...retryingOnlyItems,
-    ...visibleQueueItems.filter(isProblemItem),
-    ...visibleQueueItems.filter((item) => !isProblemItem(item)),
-  ];
+  const orderedItems = orderDownloadQueue([...retryingOnlyItems, ...visibleQueueItems], new Set(retryingItems.keys()));
 
   // Show error state when services fail to connect
   const hasConnectionErrors = queueErrors.length > 0;
@@ -463,6 +482,7 @@ export function QueueDashboard() {
               isPassing={passingIds.has(item.id)}
               onRetry={item.audio?.canRetry ? () => handleAudioRetry(item) : item.canRetrySearch ? () => handleSearchRetry(item) :
                 !item.audio && (isAdmin || item.canRetry) && item.sourceId && !['importing', 'seeding', 'completed'].includes(item.status) && (item.source === 'radarr' || item.source === 'sonarr') ? () => handleRetry(item) : undefined}
+              onCancelSearch={item.canRetrySearch ? () => handleCancelSearch(item) : undefined}
               onDelete={!item.audio && item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
               onPassFirst={!item.audio && isAdmin && (item.transmissionId ?? item.transmissionHash) && (item.status === 'queued' || item.status === 'pending')
                 ? () => handlePassFirst(item)

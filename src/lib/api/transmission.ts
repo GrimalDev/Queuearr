@@ -62,6 +62,7 @@ interface TorrentFields {
   peersSendingToUs: number;
   peersGettingFromUs: number;
   addedDate: number;
+  startDate?: number;
   doneDate: number;
   activityDate: number;
   queuePosition: number;
@@ -104,6 +105,7 @@ function toTransmissionTorrent(t: TorrentFields): TransmissionTorrent {
     peersSendingToUs: t.peersSendingToUs,
     peersGettingFromUs: t.peersGettingFromUs,
     addedDate: t.addedDate,
+    startDate: t.startDate,
     doneDate: t.doneDate,
     activityDate: t.activityDate,
     queuePosition: t.queuePosition,
@@ -231,6 +233,7 @@ export class TransmissionClient {
       'peersSendingToUs',
       'peersGettingFromUs',
       'addedDate',
+      'startDate',
       'doneDate',
       'activityDate',
       'queuePosition',

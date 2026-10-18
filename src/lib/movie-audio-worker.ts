@@ -271,7 +271,7 @@ function isLegacyConfigurationFailure(job: MovieAudioJob): boolean {
 }
 function shouldProcessJob(job: MovieAudioJob): boolean {
   return job.restoreMonitored !== null || isLegacyConfigurationFailure(job) ||
-    (job.nextAttemptAt <= Date.now() && !['available', 'needs_review'].includes(job.state));
+    (job.nextAttemptAt <= Date.now() && !['available', 'needs_review', 'cancelled'].includes(job.state));
 }
 
 export async function runMovieAudioJobs(): Promise<void> {

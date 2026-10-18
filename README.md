@@ -178,6 +178,17 @@ preserve the switch request; uncertain ownership and publication still require
 review. The retry does not bypass language, quality, edition, or synchronization
 checks. Ordinary movie retries use Radarr's existing blocklist/retry handling.
 
+Searching cards also offer **Cancel search**, including during the retry cooldown.
+The requester or an administrator can remove the pending Queuearr request and
+stop its audio worker job. Existing library files and saved language preferences
+are kept, and a new request can start the search again. Cancellation checks the
+live service queue and refuses if a download or audio publication has started.
+It does not abort a search command already running inside Radarr or Sonarr.
+
+Active downloads appear first, earliest start first. Importing, problem, and
+waiting/searching cards follow. Ordering uses Transmission's start time, falling
+back to its added time and then the Queuearr request time when unavailable.
+
 Manual retries have a five-minute cooldown after the initial request and each
 retry attempt. The deadline is stored in SQLite and shown as a countdown, so
 refreshing the page does not reset it. Administrators can use **Retry now (admin)**

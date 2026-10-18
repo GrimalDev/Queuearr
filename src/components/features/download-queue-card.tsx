@@ -13,6 +13,7 @@ import type { QueueItem } from '@/types';
 interface DownloadQueueCardProps {
   item: QueueItem;
   onRetry?: () => void;
+  onCancelSearch?: () => void;
   onDelete?: () => void;
   onPassFirst?: () => void;
   isAdmin?: boolean;
@@ -27,7 +28,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** unit).toFixed(1)} ${['B', 'KB', 'MB', 'GB', 'TB'][unit]}`;
 }
 
-export function DownloadQueueCard({ item, onRetry, onDelete, onPassFirst, isAdmin, isRetrying = false, isDeleting = false, isPassing = false }: DownloadQueueCardProps): React.JSX.Element {
+export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onPassFirst, isAdmin, isRetrying = false, isDeleting = false, isPassing = false }: DownloadQueueCardProps): React.JSX.Element {
   const [showDebug, setShowDebug] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -107,12 +108,16 @@ export function DownloadQueueCard({ item, onRetry, onDelete, onPassFirst, isAdmi
             </div>
           </div>
         )}
-        {(onRetry || onDelete || onPassFirst || isAdmin) && <div className="flex flex-wrap items-center gap-2">
+        {(onRetry || onCancelSearch || onDelete || onPassFirst || isAdmin) && <div className="flex flex-wrap items-center gap-2">
           {onRetry && <Button variant="outline" size="sm" disabled={isRetrying || isDeleting || cooldown} onClick={onRetry}
             title={isAdmin && remaining > 0 ? 'Override the five-minute retry cooldown' : undefined}>
             <RotateCcw className={cn('size-3.5', isRetrying && 'motion-safe:animate-spin')} aria-hidden="true" />
             {isRetrying ? 'Searching…' : isAdmin && remaining > 0 ? 'Retry now (admin)' : remaining > 0 ? `Retry in ${countdown}` :
               cooldown ? 'Retry unavailable' : item.isSearching || item.audio?.phase === 'searching' ? 'Retry search' : 'Try another release'}
+          </Button>}
+          {onCancelSearch && <Button variant="ghost" size="sm" aria-label={`Cancel ${item.title} search`} onClick={onCancelSearch} disabled={isDeleting || isRetrying}>
+            {isDeleting ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
+            {isDeleting ? 'Cancelling…' : 'Cancel search'}
           </Button>}
           {onPassFirst && <Button variant="ghost" size="sm" aria-label={`Download ${item.title} first`} onClick={onPassFirst} disabled={isPassing || isRetrying}>
             {isPassing ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : <ArrowUpToLine className="size-4" aria-hidden="true" />}

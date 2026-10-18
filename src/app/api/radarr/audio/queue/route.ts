@@ -20,7 +20,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const settled = new Set((request.nextUrl.searchParams.get('settled') ?? '').split(',').slice(0, 20)
       .map(Number).filter((id) => Number.isSafeInteger(id) && id > 0));
     const policies = getMovieAudioPolicies();
-    const jobs = getMovieAudioJobs().filter((job) => (job.state !== 'available' || settled.has(job.tmdbId)) &&
+    const jobs = getMovieAudioJobs().filter((job) => job.state !== 'cancelled' && (job.state !== 'available' || settled.has(job.tmdbId)) &&
       (!visible || visible.has(policies.get(job.tmdbId)?.radarrMovieId ?? -1)));
     if (!jobs.length) return NextResponse.json([]);
     const client = createRadarrClient();

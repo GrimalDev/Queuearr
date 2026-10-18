@@ -33,7 +33,7 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
     requiredLanguages: result.requestedAudioLanguages ?? [], availableLanguages: result.availableAudioLanguages ?? [],
   });
   useEffect(() => {
-    if (!status.state || status.state === 'available' || status.state === 'needs_review') return;
+    if (!status.state || status.state === 'available' || status.state === 'needs_review' || status.state === 'cancelled') return;
     let disposed = false;
     const refresh = async (): Promise<void> => {
       try {
@@ -136,7 +136,7 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
       {searchingAudio && <AudioSearchIndicator />}
       {searchingMovie && <AudioSearchIndicator audio={false} label={isRegrab ? 'Searching for a replacement release…' : 'Searching for a movie release…'} />}
       {!searchingAudio && !searchingMovie && !error && publicDetail && status.state !== 'available' && <p role={publicDetail === 'Error' ? 'alert' : 'status'} className={cn('text-xs', publicDetail === 'Error' ? 'text-destructive' : 'text-muted-foreground')}>{publicDetail}</p>}
-      {(busy || (status.state && status.state !== 'available')) && !error && <Button asChild variant="ghost" size="sm" className="w-full gap-2">
+      {(busy || (status.state && status.state !== 'available' && status.state !== 'cancelled')) && !error && <Button asChild variant="ghost" size="sm" className="w-full gap-2">
         <Link href="/queue">View downloads<ArrowRight className="size-4" aria-hidden="true" /></Link>
       </Button>}
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}

@@ -37,6 +37,7 @@ export async function runDownloadRetry(
     if (!admin && (!download || !await isUserWatching(download.id, actor.id))) {
       throw new DownloadRetryError('Requester or administrator access required.', 403);
     }
+    if (download?.lastStatus === 'cancelled') throw new DownloadRetryError('This search was cancelled. Submit a new request to start again.');
     if (!download) download = await upsertMonitoredDownload(source, mediaId, `${source} ${mediaId}`);
     const now = Date.now();
     const retryAvailableAt = now + DOWNLOAD_RETRY_COOLDOWN_MS;
