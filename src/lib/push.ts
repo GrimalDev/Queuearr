@@ -8,12 +8,18 @@ import {
 import type { PushSubscription } from '@/lib/db/schema';
 
 // --- VAPID Configuration ---
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+// Read the container environment at startup instead of inlining a build-time key.
+const runtimeEnv = process.env;
+const VAPID_PUBLIC_KEY = runtimeEnv.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@queuearr.local';
 
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
+
+export function getVapidPublicKey(): string | null {
+  return isVapidConfigured() ? VAPID_PUBLIC_KEY! : null;
 }
 
 export function isVapidConfigured(): boolean {

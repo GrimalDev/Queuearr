@@ -15,7 +15,7 @@ import { usePushNotifications } from '@/hooks/use-push-notifications';
 const NEVER_REMIND_KEY = 'push-notification-reminder-never';
 
 export function NotificationReminder() {
-  const { isSupported, isSubscribed, permissionState, isLoading, subscribe } = usePushNotifications();
+  const { isSupported, isReady, isSubscribed, permissionState, isLoading, error, subscribe } = usePushNotifications();
   const [neverSelected, setNeverSelected] = useState(false);
   const [dismissedForSession, setDismissedForSession] = useState(false);
   const [neverRemind, setNeverRemind] = useState<boolean>(
@@ -24,16 +24,17 @@ export function NotificationReminder() {
 
   const shouldShowReminder = useMemo(
     () =>
+      isReady &&
       isSupported &&
       !neverRemind &&
       !dismissedForSession &&
       permissionState !== 'denied' &&
       !isSubscribed,
-    [isSupported, neverRemind, dismissedForSession, permissionState, isSubscribed]
+    [isReady, isSupported, neverRemind, dismissedForSession, permissionState, isSubscribed]
   );
 
   const handleEnable = async () => {
-    await subscribe();
+    if (await subscribe()) setDismissedForSession(true);
   };
 
   const handleNever = () => {
@@ -65,13 +66,14 @@ export function NotificationReminder() {
             </DialogDescription>
           )}
         </DialogHeader>
+        {error && !neverSelected && <p role="alert" className="text-sm text-destructive">{error}</p>}
         {!neverSelected ? (
           <DialogFooter>
             <Button variant="outline" onClick={handleNever}>
               Never
             </Button>
             <Button onClick={handleEnable} disabled={isLoading}>
-              Enable Notifications
+              {isLoading ? 'Enabling...' : 'Enable Notifications'}
             </Button>
           </DialogFooter>
         ) : (

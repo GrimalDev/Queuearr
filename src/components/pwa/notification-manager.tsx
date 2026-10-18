@@ -11,6 +11,8 @@ export function NotificationManager() {
     isSubscribed,
     permissionState,
     isLoading,
+    isReady,
+    error,
     subscribe,
     unsubscribe,
   } = usePushNotifications();
@@ -61,9 +63,10 @@ export function NotificationManager() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {error && <p role="alert" className="mb-3 text-sm text-destructive">{error}</p>}
         <Button
           onClick={isSubscribed ? unsubscribe : subscribe}
-          disabled={isLoading}
+          disabled={isLoading || !isReady}
           variant={isSubscribed ? 'destructive' : 'default'}
         >
           {isLoading

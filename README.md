@@ -40,6 +40,22 @@ after downtime it runs on startup. No database migration is needed.
 
 ## Notifications
 
+Push notifications require a browser-trusted HTTPS certificate and both
+`NEXT_PUBLIC_VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` in the running container.
+Generate a pair once with `npx web-push generate-vapid-keys`, then store it in
+Dokploy's environment settings. Keep the private key secret and preserve the pair
+across deployments. Set `VAPID_SUBJECT` to a contact email such as
+`mailto:admin@example.com`, then redeploy the container.
+
+The browser loads the public key from the authenticated `/api/push/subscribe`
+endpoint at runtime, so Docker images do not need a key embedded during build.
+A certificate error on `/sw.js` blocks push registration even if the page opens.
+Install a trusted certificate or trust the issuing local CA on the client device.
+Queuearr reports setup errors and closes the reminder only after the server
+confirms the subscription. Existing browser subscriptions are registered again
+on login, including after a database restore.
+
+
 Admin Settings supports multiline notification messages, including blank lines
 and indentation. Formatting is preserved in storage, notification history, and
 the Service Notifications page. Messages are limited to 1,000 characters.

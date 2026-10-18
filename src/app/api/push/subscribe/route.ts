@@ -1,10 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { addSubscription, removeSubscription, isVapidConfigured } from '@/lib/push';
+import { addSubscription, removeSubscription, isVapidConfigured, getVapidPublicKey } from '@/lib/push';
 import { upsertUser } from '@/lib/db/users';
 
 export const dynamic = 'force-dynamic';
+
+// Only the public key is sent to the browser. Private signing credentials stay server-side.
+export async function GET(): Promise<NextResponse> {
+  const session = await getServerSession(authOptions);
+  const headers = { 'Cache-Control': 'no-store' };
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers });
+  }
+
+  const publicKey = getVapidPublicKey();
+  if (!publicKey) {
+    return NextResponse.json(
+      { error: 'Push notifications are not configured. Ask the administrator to set both VAPID keys and restart Queuearr.' },
+      { status: 503, headers }
+    );
+  }
+  return NextResponse.json({ publicKey }, { headers });
+}
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);

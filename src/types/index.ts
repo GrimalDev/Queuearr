@@ -573,3 +573,15 @@ export interface PaymentStatus {
 export interface PaymentReminderStatus extends PaymentStatus, PaymentSettings {
   shouldRemind: boolean;
 }
+
+export interface PushNotificationsState {
+  isSupported: boolean;
+  isReady: boolean;
+  subscription: PushSubscription | null;
+  permissionState: NotificationPermission;
+  isLoading: boolean;
+  error: string | null;
+  subscribe: () => Promise<boolean>;
+  unsubscribe: () => Promise<boolean>;
+  isSubscribed: boolean;
+}

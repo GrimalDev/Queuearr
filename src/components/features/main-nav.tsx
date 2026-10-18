@@ -41,7 +41,7 @@ export function MainNav({ initialSession }: { initialSession: Session }) {
   const pathname = usePathname();
   const session = initialSession;
   const isAdmin = session?.user?.role === 'admin';
-  const { isSupported, isSubscribed, permissionState, isLoading, subscribe, unsubscribe } = usePushNotifications();
+  const { isSupported, isSubscribed, permissionState, isLoading, isReady, subscribe, unsubscribe } = usePushNotifications();
   const { unreadCount } = useUnreadNotifications(Boolean(session?.user));
   const navItems = allNavItems.filter((item) => !item.adminOnly || isAdmin);
 
@@ -145,7 +145,7 @@ export function MainNav({ initialSession }: { initialSession: Session }) {
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={isSubscribed ? unsubscribe : subscribe}
-                        disabled={isLoading}
+                        disabled={isLoading || !isReady}
                       >
                         {isLoading ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
