@@ -50,6 +50,11 @@ npm run lint         # Run ESLint (eslint-config-next/core-web-vitals + typescri
 
 ## Database Commands (Drizzle + SQLite)
 
+Keep the bundled SQLite engine at 3.51.3 or a later patched release.
+SQLite 3.51.2 has a known WAL-reset corruption bug. The project pins
+`better-sqlite3` 12.8.0 to include the fix. Updating the dependency does not
+repair existing database corruption; preserve the DB/WAL files before recovery.
+
 ```bash
 npm run db:generate  # Generate migration files from schema changes
 npm run db:migrate   # Apply pending migrations
