@@ -39,6 +39,7 @@ export const movieAudioLocks = sqliteTable('movie_audio_locks', {
 });
 
 export const movieAudioJobs = sqliteTable('movie_audio_jobs', {
+  searchFailures: integer('search_failures').notNull().default(0),
   donorMetadata: text('donor_metadata'),
   estimatedLanguages: text('estimated_languages').notNull().default('[]'),
   tmdbId: integer('tmdb_id').primaryKey(),
@@ -111,6 +112,7 @@ export const monitoredDownloadUsers = sqliteTable(
 );
 
 export const downloadSearchJobs = sqliteTable('download_search_jobs', {
+  searchFailures: integer('search_failures').notNull().default(0),
   estimatedLanguages: text('estimated_languages').notNull().default('[]'),
   downloadId: integer('download_id').primaryKey().references(() => monitoredDownloads.id, { onDelete: 'cascade' }),
   scopes: text('scopes').notNull().default('[]'),

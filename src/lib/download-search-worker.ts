@@ -7,6 +7,7 @@ import { logMovieAudioError } from '@/lib/movie-audio-errors';
 import { pickBestRelease } from '@/lib/smart-grab';
 import { invalidateQueueCache } from '@/lib/queue-cache';
 import { isMovieInCinemas } from '@/lib/movie-release-status';
+import { releaseSearchRetry, summarizeReleaseSearch } from '@/lib/release-search-retry';
 
 function later(job: DownloadSearchJob, state: string, delay = 30_000): void {
   updateDownloadSearchJob(job.downloadId, { state, nextAttemptAt: Date.now() + delay });
@@ -69,13 +70,16 @@ export async function runDownloadSearchJobs(): Promise<void> {
           const releases = await client.getReleases(download.mediaId);
           const candidate = pickBestRelease(releases);
           if (!candidate) {
-            console.warn(`[downloads] radarr ${download.mediaId}: no accepted release`, { returned: releases.length });
-            later(job, isMovieInCinemas(movie) ? 'in_cinemas' : 'search_failed', 15 * 60_000); continue;
+            const retry = releaseSearchRetry(job.searchFailures);
+            const inCinemas = isMovieInCinemas(movie);
+            console.warn(`[downloads] radarr ${download.mediaId}: no accepted release`, { ...summarizeReleaseSearch(releases), attempt: retry.failures });
+            updateDownloadSearchJob(job.downloadId, { searchFailures: retry.failures });
+            later(job, inCinemas ? 'in_cinemas' : retry.confirming ? 'searching' : 'search_failed', inCinemas ? 15 * 60_000 : retry.delay); continue;
           }
           if (lostLease) break;
           if ((await client.getQueue(false)).records.some((item) => item.movieId === download.mediaId)) { later(job, 'downloading'); continue; }
           if ((await client.getMovie(download.mediaId)).hasFile) { later(job, 'complete'); continue; }
-          updateDownloadSearchJob(job.downloadId, { state: 'grab_pending', indexer: candidate.indexer || `Indexer ${candidate.indexerId}`, estimatedLanguages: JSON.stringify(candidate.languages ?? []),
+          updateDownloadSearchJob(job.downloadId, { state: 'grab_pending', searchFailures: 0, indexer: candidate.indexer || `Indexer ${candidate.indexerId}`, estimatedLanguages: JSON.stringify(candidate.languages ?? []),
             submittedAt: Date.now(), nextAttemptAt: Date.now() + 30_000 });
           try { await client.grabRelease(candidate.guid, candidate.indexerId); }
           catch (cause) { logMovieAudioError(`radarr ${download.mediaId} submission`, cause); }

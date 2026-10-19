@@ -44,7 +44,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         // An explicit retry of a legacy request uses Sonarr's current monitoring.
         const scopes = parseDownloadScopes(saved.scopes);
         updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes.length ? scopes : [{ type: 'series' }]),
-          state: 'pending', indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
+          state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
       } else {
         const client = createRadarrClient();
         if (!client) throw new DownloadRetryError('Radarr is not configured.', 503);
@@ -64,16 +64,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         } else if (movie.hasFile) {
           if (!job || !policy) throw new DownloadRetryError('The movie is already available.');
           // The worker chooses an isolated audio donor and retains every media safety check.
-          updateMovieAudioJob(policy.tmdbId, { state: 'pending', detail: 'Searching for the requested audio.', nextAttemptAt: 0 });
+          updateMovieAudioJob(policy.tmdbId, { state: 'pending', searchFailures: 0, detail: 'Searching for the requested audio.', nextAttemptAt: 0 });
         } else {
-          if (policy) updateMovieAudioJob(policy.tmdbId, { state: 'pending', detail: 'Searching for a movie release.', nextAttemptAt: 0 });
+          if (policy) updateMovieAudioJob(policy.tmdbId, { state: 'pending', searchFailures: 0, detail: 'Searching for a movie release.', nextAttemptAt: 0 });
           else {
             const monitored = await getLatestMonitoredDownloadBySourceMedia(source, mediaId);
             const saved = ensureDownloadSearchJob(monitored!.id, source);
             if (saved.state === 'grab_pending' || saved.state === 'needs_review' && saved.submittedAt !== null) {
               throw new DownloadRetryError('The previous release submission needs review.');
             }
-            updateDownloadSearchJob(saved.downloadId, { state: 'pending', indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
+            updateDownloadSearchJob(saved.downloadId, { state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
           }
         }
       }

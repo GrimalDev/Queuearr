@@ -289,6 +289,9 @@ tmux split-window -v -t '=queuarr' -c /Users/grimaldev/code/projects/queuarr fis
 - Replacement eligibility requires only explicitly requested languages. Bundled
   tracks must not become requirements. A full replacement may omit incidental
   languages; donor audio merging still preserves all existing streams.
+- Confirm no-eligible-release movie searches with bounded retries after one and
+  five minutes before reporting failure or using donors. Persist retry counters;
+  never bypass release rules or infer indexer failure from zero results alone.
 - Audio merging is always enabled; there is no environment activation switch.
   Do not initiate real downloads during development without configured shared
   media folders. Use mocked services for verification.

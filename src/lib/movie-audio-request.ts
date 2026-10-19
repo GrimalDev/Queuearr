@@ -90,7 +90,7 @@ export async function requestMovieAudio(
     const searchReplacement = !!movie.hasFile && !!previousJob?.donorHash && !previousJob.outputPath &&
       previousJob.regrabFileId == null && !previousJob.replaceDonor &&
       required.some((language) => !policy?.requiredLanguages.some((saved) => saved.id === language.id));
-    const pendingJob = { state: searchReplacement ? 'pending' : continuing ? previousJob!.state : hasRequiredAudio(movie, required) && !forceDownload ? 'available' : 'pending',
+    const pendingJob = { searchFailures: 0, state: searchReplacement ? 'pending' : continuing ? previousJob!.state : hasRequiredAudio(movie, required) && !forceDownload ? 'available' : 'pending',
       detail: searchReplacement ? 'Searching for a complete movie with all requested audio.' : continuing ? previousJob!.detail : 'Applying the requested audio profile.', nextAttemptAt: 0,
       ...(!continuing ? { estimatedLanguages: '[]' } : {}) };
     if (forceDownload || !hasRequiredAudio(movie, required)) {

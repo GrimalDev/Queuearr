@@ -32,7 +32,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (job.donorReleaseKey) rejected.add(job.donorReleaseKey);
     // The worker pauses and verifies this exact owned torrent before clearing its tracking.
     const retryAvailableAt = await runDownloadRetry('radarr', policy.radarrMovieId, session.user, async () => {
-      updateMovieAudioJob(tmdbId, { rejectedDonors: JSON.stringify([...rejected]), replaceDonor: true,
+      updateMovieAudioJob(tmdbId, { rejectedDonors: JSON.stringify([...rejected]), replaceDonor: true, searchFailures: 0,
         state: 'pending', detail: 'Searching for another audio release.', nextAttemptAt: 0 });
     });
     return NextResponse.json({ state: 'pending', retryAvailableAt }, { status: 202 });

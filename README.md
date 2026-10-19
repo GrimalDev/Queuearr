@@ -162,7 +162,15 @@ collections. Shared custom formats are retained. Failed or busy cleanup runs
 retry after five minutes; results are recorded in the server logs.
 
 The worker checks requests every 30 seconds and searches at most once every 15
-minutes per waiting request. Adding a language first queues an explicit search
+minutes per waiting request after confirmation retries. An initial movie search
+with no accepted release is checked again after one minute and then five minutes
+before showing Error and using the normal 15-minute retry interval. Replacement
+searches use the same confirmation attempts before choosing an audio donor.
+These counters survive restarts and reset on a new request, manual retry, or
+accepted release. Indexer IDs, per-indexer result counts and rejection categories
+are logged; a missing indexer result is not assumed to prove an indexer failure.
+Quality, language and blocklist rules remain enforced during retries.
+Adding a language first queues an explicit search
 for a complete movie containing every explicitly requested language. An eligible
 release at equal or better quality replaces the whole movie through Radarr;
 the old file cannot complete the request before the replacement is imported.

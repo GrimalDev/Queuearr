@@ -508,6 +508,22 @@ export interface PendingQueueRequest {
   accepted?: boolean;
 }
 
+export interface ReleaseSearchSummary {
+  returned: number;
+  rejected: number;
+  quality: number;
+  language: number;
+  customFormat: number;
+  blocklisted: number;
+  indexers: { indexerId: number | null; returned: number; rejected: number }[];
+}
+
+export interface ReleaseSearchRetry {
+  failures: number;
+  confirming: boolean;
+  delay: number;
+}
+
 export interface Release {
   guid: string;
   indexerId: number;

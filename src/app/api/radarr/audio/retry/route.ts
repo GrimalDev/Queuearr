@@ -20,7 +20,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return movieAudioErrorResponse('audio retry', 409, 'This request is not ready for a review retry.');
     }
     // Keep donor ownership and pending output: retry must revalidate, never redownload blindly.
-    updateMovieAudioJob(body.tmdbId, { state: job.regrabFileId !== null ? 'regrabbing' : 'pending', detail: 'Review acknowledged. Checking the request again.', nextAttemptAt: 0 });
+    updateMovieAudioJob(body.tmdbId, { state: job.regrabFileId !== null ? 'regrabbing' : 'pending', searchFailures: 0, detail: 'Review acknowledged. Checking the request again.', nextAttemptAt: 0 });
     return NextResponse.json({ state: job.regrabFileId !== null ? 'regrabbing' : 'pending', detail: 'Review acknowledged. Checking the request again.' });
   } catch (cause) { return movieAudioErrorResponse(`movie ${body.tmdbId} retry`, 503, undefined, cause); }
   finally { releaseMovieAudioLock(lock); }

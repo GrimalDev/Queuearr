@@ -16,6 +16,7 @@ import { getMovieAudioTorrentSource } from '@/lib/movie-audio-download';
 import { audioReleaseKey, isRejectedAudioRelease, rejectedAudioDonors } from '@/lib/movie-audio-attempts';
 import { pickBestRelease } from '@/lib/smart-grab';
 import { isMovieInCinemas, IN_CINEMAS_SEARCH_MESSAGE } from '@/lib/movie-release-status';
+import { releaseSearchRetry, summarizeReleaseSearch } from '@/lib/release-search-retry';
 import type { Release } from '@/types';
 
 interface AudioPaths { library: string; donors: string; backups: string }
@@ -132,7 +133,7 @@ async function processJob(
         }
       }
     }
-    updateMovieAudioJob(id, { state: 'available', detail: 'All requested audio languages are available.', outputPath: null, donorHash: null, donorLanguageId: null, donorReleaseKey: null, replaceDonor: false });
+    updateMovieAudioJob(id, { state: 'available', searchFailures: 0, detail: 'All requested audio languages are available.', outputPath: null, donorHash: null, donorLanguageId: null, donorReleaseKey: null, replaceDonor: false });
     return;
   }
   if (job.outputPath) {
@@ -166,19 +167,14 @@ async function processJob(
     const releases = await client.getReleases(policy.radarrMovieId);
     const candidate = pickBestRelease(releases);
     if (!candidate) {
-      // Log decisions without titles, signed URLs, or raw rejection strings.
-      const reasons = releases.flatMap((release) => release.rejections ?? []);
+      const retry = releaseSearchRetry(job.searchFailures);
       console.warn(`[audio] movie ${id}: initial release search found no eligible release`, {
-        returned: releases.length,
-        rejected: releases.filter((release) => release.downloadAllowed === false || release.rejections?.length).length,
-        quality: reasons.filter((reason) => /quality|profile|wanted/i.test(reason)).length,
-        language: reasons.filter((reason) => /language|audio/i.test(reason)).length,
-        customFormat: reasons.filter((reason) => /custom format|score/i.test(reason)).length,
-        blocklisted: reasons.filter((reason) => /blocklist/i.test(reason)).length,
+        ...summarizeReleaseSearch(releases), attempt: retry.failures,
       });
       const inCinemas = isMovieInCinemas(movie);
-      later(id, inCinemas ? IN_CINEMAS_SEARCH_MESSAGE : 'No eligible initial movie release was returned by Radarr.',
-        inCinemas ? 'in_cinemas' : 'search_failed');
+      updateMovieAudioJob(id, { searchFailures: retry.failures });
+      later(id, inCinemas ? IN_CINEMAS_SEARCH_MESSAGE : retry.confirming ? 'Confirming release availability. Searching again shortly.' : 'No eligible initial movie release was returned by Radarr.',
+        inCinemas ? 'in_cinemas' : retry.confirming ? 'pending' : 'search_failed', inCinemas ? 15 * 60_000 : retry.delay);
       return;
     }
     const indexer = candidate.indexer || `Indexer ${candidate.indexerId}`;
@@ -186,7 +182,7 @@ async function processJob(
       returned: releases.length, indexerId: candidate.indexerId, seeders: candidate.seeders ?? 0,
     });
     // Reserve before the external call. Keep this state even if its response is lost.
-    updateMovieAudioJob(id, { state: 'grab_pending', donorIndexer: indexer, estimatedLanguages: JSON.stringify(candidate.languages ?? []),
+    updateMovieAudioJob(id, { state: 'grab_pending', searchFailures: 0, donorIndexer: indexer, estimatedLanguages: JSON.stringify(candidate.languages ?? []),
       detail: 'Release sent to Radarr. Waiting for the download client.', nextAttemptAt: Date.now() + 30_000 });
     try { await client.grabRelease(candidate.guid, candidate.indexerId); }
     catch (error) { logMovieAudioError(`movie ${id} initial release submission`, error); }
@@ -241,7 +237,7 @@ async function processJob(
         if (donor.percentDone < 1) await transmission!.pauseTorrent(donor.hashString);
         rememberDownloadTransfer('radarr', policy.radarrMovieId, donor.hashString);
       }
-      updateMovieAudioJob(id, { state: 'regrabbing', regrabFileId: movie.movieFile!.id, regrabRequestedAt: Date.now(),
+      updateMovieAudioJob(id, { state: 'regrabbing', searchFailures: 0, regrabFileId: movie.movieFile!.id, regrabRequestedAt: Date.now(),
         donorHash: null, donorLanguageId: null, donorReleaseKey: null, donorMetadata: null, replaceDonor: false,
         donorIndexer: complete.indexer || `Indexer ${complete.indexerId}`, estimatedLanguages: JSON.stringify(complete.languages ?? []),
         detail: 'Downloading a complete movie with all requested audio.', nextAttemptAt: Date.now() + 30_000 });
@@ -250,7 +246,14 @@ async function processJob(
       catch (cause) { logMovieAudioError(`movie ${id} multilingual replacement submission`, cause); }
       return;
     }
-    console.info(`[audio] movie ${id}: no eligible full replacement; using the audio donor fallback`, { returned: releases.length });
+    const retry = releaseSearchRetry(job.searchFailures);
+    updateMovieAudioJob(id, { searchFailures: retry.failures });
+    console.info(`[audio] movie ${id}: no eligible full replacement`, { ...summarizeReleaseSearch(releases), attempt: retry.failures });
+    if (retry.confirming) {
+      later(id, 'Confirming complete movie availability before using an audio donor.', 'pending', retry.delay);
+      return;
+    }
+    console.info(`[audio] movie ${id}: full replacement rechecks exhausted; using the audio donor fallback`);
   }
   if (!job.donorHash) updateMovieAudioJob(id, { donorLanguageId: wanted.id, detail: `Searching for compatible ${wanted.name} audio as a fallback.` });
   languageCodes(wanted);
@@ -289,7 +292,7 @@ async function processJob(
       throw new AudioReviewError('Transmission did not retain the isolated donor folder and label. The torrent was left paused.');
     }
     // Persist before starting, so a restart can recover this exact owned torrent.
-    updateMovieAudioJob(id, { donorHash: hash, donorLanguageId: wanted.id, donorMetadata: donorMetadata(candidate), donorIndexer: candidate.indexer || `Indexer ${candidate.indexerId}`, estimatedLanguages: JSON.stringify(candidate.languages ?? []), donorReleaseKey: audioReleaseKey(candidate), state: 'downloading', detail: `Downloading additional ${wanted.name} audio.`, nextAttemptAt: Date.now() + 30_000 });
+    updateMovieAudioJob(id, { donorHash: hash, donorLanguageId: wanted.id, searchFailures: 0, donorMetadata: donorMetadata(candidate), donorIndexer: candidate.indexer || `Indexer ${candidate.indexerId}`, estimatedLanguages: JSON.stringify(candidate.languages ?? []), donorReleaseKey: audioReleaseKey(candidate), state: 'downloading', detail: `Downloading additional ${wanted.name} audio.`, nextAttemptAt: Date.now() + 30_000 });
     rememberDownloadTransfer('radarr', policy.radarrMovieId, hash);
     await transmission.resumeTorrent(hash);
     return;
