@@ -8,6 +8,7 @@ import { getLatestMonitoredDownloadBySourceMedia, resetMonitoredDownload } from 
 import { DownloadRetryError, downloadRetryErrorResponse, runDownloadRetry } from '@/lib/download-retry';
 import { isMovieRegrab } from '@/lib/movie-audio-releases';
 import { invalidateQueueCache } from '@/lib/queue-cache';
+import { ensureDownloadSearchJob, parseDownloadScopes, updateDownloadSearchJob } from '@/lib/db/download-search-jobs';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
@@ -38,7 +39,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if ((await client.getQueue()).records.some((item) => item.seriesId === mediaId)) {
           throw new DownloadRetryError('A series download already exists. Refresh its queue entry.');
         }
-        await client.triggerSearch(mediaId);
+        const monitored = await getLatestMonitoredDownloadBySourceMedia(source, mediaId);
+        const saved = ensureDownloadSearchJob(monitored!.id, source);
+        if (!parseDownloadScopes(saved.scopes).length) throw new DownloadRetryError('Select the seasons or episodes again before retrying.');
+        updateDownloadSearchJob(saved.downloadId, { state: 'pending', indexer: null, submittedAt: null, nextAttemptAt: 0 });
       } else {
         const client = createRadarrClient();
         if (!client) throw new DownloadRetryError('Radarr is not configured.', 503);
@@ -61,7 +65,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           updateMovieAudioJob(policy.tmdbId, { state: 'pending', detail: 'Searching for the requested audio.', nextAttemptAt: 0 });
         } else {
           if (policy) updateMovieAudioJob(policy.tmdbId, { state: 'pending', detail: 'Searching for a movie release.', nextAttemptAt: 0 });
-          else await client.triggerSearch([mediaId]);
+          else {
+            const monitored = await getLatestMonitoredDownloadBySourceMedia(source, mediaId);
+            const saved = ensureDownloadSearchJob(monitored!.id, source);
+            if (saved.state === 'grab_pending' || saved.state === 'needs_review' && saved.submittedAt !== null) {
+              throw new DownloadRetryError('The previous release submission needs review.');
+            }
+            updateDownloadSearchJob(saved.downloadId, { state: 'pending', indexer: null, submittedAt: null, nextAttemptAt: 0 });
+          }
         }
       }
       const monitored = await getLatestMonitoredDownloadBySourceMedia(source, mediaId);

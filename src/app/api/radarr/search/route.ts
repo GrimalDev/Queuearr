@@ -5,12 +5,10 @@ import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
 import { getMovieAudioPolicies, getMovieAudioJobs } from '@/lib/db/movie-audio';
 import { getAvailableAudio, getPublicMovieAudioDetail } from '@/lib/movie-audio-policy';
-import { smartGrab } from '@/lib/smart-grab';
+import { queueDownloadSearch } from '@/lib/db/download-search-jobs';
 import { invalidateQueueCache } from '@/lib/queue-cache';
 import {
   getActiveMediaIds,
-  upsertMonitoredDownload,
-  addUserToDownload,
   isUserWatching,
 } from '@/lib/db/monitored-downloads';
 
@@ -129,12 +127,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (movie.id) {
-      const monitored = await upsertMonitoredDownload('radarr', movie.id, movie.title);
-      await addUserToDownload(monitored.id, session.user.id);
-      // Smart grab in background — don't await so the response stays fast
-      void smartGrab({ source: 'radarr', mediaId: movie.id }).catch((err) =>
-        console.error('[smart-grab] radarr initial grab failed:', err)
-      );
+      queueDownloadSearch('radarr', movie.id, movie.title, session.user.id, { type: 'movie' });
     }
     invalidateQueueCache(['radarr-queue', 'transmission-state']);
 

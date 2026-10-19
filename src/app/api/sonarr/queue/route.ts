@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { createSonarrClient } from '@/lib/api/sonarr';
 import { authOptions } from '@/lib/auth';
-import { smartGrab } from '@/lib/smart-grab';
 import { DownloadRetryError, downloadRetryErrorResponse, runDownloadRetry } from '@/lib/download-retry';
 import { getMonitoredDownloadBySourceMedia, getLatestMonitoredDownloadBySourceMedia, markDownloadCompleted, getWatchedMediaIds, resetMonitoredDownload } from '@/lib/db/monitored-downloads';
 import { getCachedSonarrQueue, invalidateQueueCache } from '@/lib/queue-cache';
+import { ensureDownloadSearchJob, parseDownloadScopes, updateDownloadSearchJob } from '@/lib/db/download-search-jobs';
+import { isImportInProgress } from '@/lib/queue-retry-safety';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -52,11 +53,10 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const { ids, retry, mediaId, episodeId } = await request.json() as {
+    const { ids, retry, mediaId } = await request.json() as {
       ids: number[];
       retry?: boolean;
       mediaId?: number;
-      episodeId?: number;
     };
     let retryAvailableAt: number | undefined;
     if (retry) {
@@ -67,10 +67,18 @@ export async function DELETE(request: NextRequest) {
         if (ids.some((id) => !queue.records.some((item) => item.id === id && item.seriesId === mediaId))) {
           throw new DownloadRetryError('The queue entries do not belong to this title.');
         }
-        await sonarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });
         const monitored = await getLatestMonitoredDownloadBySourceMedia('sonarr', mediaId);
+        if (queue.records.some((item) => ids.includes(item.id) && isImportInProgress(item))) throw new DownloadRetryError('Import is in progress.');
+        const saved = ensureDownloadSearchJob(monitored!.id, 'sonarr');
+        let scopes = parseDownloadScopes(saved.scopes);
+        if (!scopes.length) {
+          const episodes = queue.records.filter((item) => ids.includes(item.id)).map((item) => item.episodeId ?? item.episode?.id);
+          if (episodes.some((id) => !id)) throw new DownloadRetryError('Select the seasons or episodes again before retrying.');
+          scopes = episodes.map((episodeId) => ({ type: 'episode' as const, episodeId: episodeId! }));
+        }
+        updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes), state: 'pending', indexer: null, submittedAt: null, nextAttemptAt: 0 });
+        await sonarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });
         if (monitored) await resetMonitoredDownload(monitored.id);
-        await smartGrab({ source: 'sonarr', mediaId, episodeId });
       });
     } else {
       await sonarr.deleteQueueItemBulk(ids, { blocklist: false, skipRedownload: false });

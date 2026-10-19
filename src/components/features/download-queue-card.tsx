@@ -2,6 +2,7 @@
 
 import { AudioLines, ArrowUpToLine, Bug, Check, CircleAlert, Clock, Download, Film, Languages, Loader2, RotateCcw, Trash2, Tv, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -109,7 +110,9 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
             </div>
           </div>
         )}
-        {(onRetry || onCancelSearch || onDelete || onPassFirst || isAdmin) && <div className="flex flex-wrap items-center gap-2">
+        {(onRetry || onCancelSearch || onDelete || onPassFirst || isAdmin || item.requiresSelection || item.hasError && item.canRetry) && <div className="flex flex-wrap items-center gap-2">
+          {item.requiresSelection && <Button variant="outline" size="sm" asChild><Link href="/">Choose seasons or episodes</Link></Button>}
+          {!onRetry && !item.requiresSelection && item.hasError && (isAdmin || item.canRetry) && <Button variant="outline" size="sm" disabled title="Review is required before retrying.">Retry unavailable</Button>}
           {onRetry && <Button variant="outline" size="sm" disabled={isRetrying || isDeleting || cooldown} onClick={onRetry}
             title={isAdmin && remaining > 0 ? 'Override the five-minute retry cooldown' : undefined}>
             <RotateCcw className={cn('size-3.5', isRetrying && 'motion-safe:animate-spin')} aria-hidden="true" />

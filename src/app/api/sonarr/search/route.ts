@@ -5,10 +5,9 @@ import { createSonarrClient } from '@/lib/api/sonarr';
 import { authOptions } from '@/lib/auth';
 import {
   getActiveMediaIds,
-  upsertMonitoredDownload,
-  addUserToDownload,
   isUserWatching,
 } from '@/lib/db/monitored-downloads';
+import { queueDownloadSearch } from '@/lib/db/download-search-jobs';
 import { invalidateQueueCache } from '@/lib/queue-cache';
 
 export async function GET(request: NextRequest) {
@@ -123,13 +122,12 @@ export async function POST(request: NextRequest) {
       qualityProfileId: qpId,
       languageProfileId: lpId,
       rootFolderPath: rfPath,
-      searchForMissingEpisodes: searchForMissingEpisodes ?? true,
+      searchForMissingEpisodes: false,
     });
 
     // Adding a series without a search is library setup, not an active download request.
     if (series.id && searchForMissingEpisodes !== false) {
-      const monitored = await upsertMonitoredDownload('sonarr', series.id, series.title);
-      await addUserToDownload(monitored.id, session.user.id);
+      queueDownloadSearch('sonarr', series.id, series.title, session.user.id, { type: 'series' });
     }
     invalidateQueueCache(['sonarr-queue', 'transmission-state']);
 

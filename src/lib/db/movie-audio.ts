@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { eq, lt } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { movieAudioJobs, movieAudioLocks, movieAudioPolicies } from '@/lib/db/schema';
+import { movieAudioJobs, movieAudioLocks, movieAudioPolicies, downloadSearchJobs } from '@/lib/db/schema';
 import type { RadarrLanguage } from '@/types';
+import { saveTrackedRequest } from '@/lib/db/monitored-downloads';
 
 export interface MovieAudioPolicy {
   tmdbId: number;
@@ -57,4 +58,14 @@ export function updateMovieAudioJob(tmdbId: number, changes: Partial<Omit<MovieA
   db.insert(movieAudioJobs).values({ tmdbId, ...values }).onConflictDoUpdate({
     target: movieAudioJobs.tmdbId, set: values,
   }).run();
+}
+
+export function saveTrackedMovieAudioRequest(policy: MovieAudioPolicy, changes: Partial<Omit<MovieAudioJob, 'tmdbId'>>,
+  title: string, userId: string): void {
+  db.transaction(() => {
+    const tracked = saveTrackedRequest('radarr', policy.radarrMovieId, title, userId);
+    db.update(downloadSearchJobs).set({ state: 'cancelled', updatedAt: Date.now() }).where(eq(downloadSearchJobs.downloadId, tracked.id)).run();
+    saveMovieAudioPolicy(policy);
+    updateMovieAudioJob(policy.tmdbId, changes);
+  });
 }

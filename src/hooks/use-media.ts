@@ -295,7 +295,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
       }
 
       // Build source+mediaId → DB timestamps map
-      type MonitoredRow = { source: 'radarr' | 'sonarr'; mediaId: number; title: string; lastStatus: string | null; createdAt: number; lastActivityAt: number | null; lastBytesAt: number | null; retryAvailableAt?: number; userIds: string[] };
+      type MonitoredRow = { source: 'radarr' | 'sonarr'; mediaId: number; title: string; lastStatus: string | null; createdAt: number; lastActivityAt: number | null; lastBytesAt: number | null; retryAvailableAt?: number; userIds: string[]; searchState?: string; searchIndexer?: string | null; requiresSelection?: boolean; retryRequiresReview?: boolean };
       const monitoredMap = new Map<string, MonitoredRow>();
       if (audioRes.status === 'fulfilled' && audioRes.value.ok) {
         audioItems = await audioRes.value.json() as QueueItem[];
@@ -515,10 +515,16 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
       }
       items = mergeMovieAudioQueue(items, audioItems, transmissionHashMap);
       for (const monitored of monitoredMap.values()) {
-        if (monitored.lastStatus === null && !items.some((item) => item.source === monitored.source && item.mediaId === monitored.mediaId)) {
+        if ((monitored.lastStatus === null || monitored.searchState) && !['complete', 'cancelled'].includes(monitored.searchState ?? '') &&
+            !items.some((item) => item.source === monitored.source && item.mediaId === monitored.mediaId)) {
+          const hasError = monitored.requiresSelection || ['search_failed', 'needs_review', 'needs_selection'].includes(monitored.searchState ?? '');
           items.push({ id: `search-${monitored.source}-${monitored.mediaId}`, source: monitored.source,
-            mediaId: monitored.mediaId, title: monitored.title, isSearching: true, status: 'pending', canRetrySearch: true,
-            progress: 0, size: 0, sizeRemaining: 0, hasError: false, isStalled: false });
+            mediaId: monitored.mediaId, title: monitored.title, isSearching: !hasError && monitored.searchState !== 'grab_pending',
+            isAwaitingDownload: monitored.searchState === 'grab_pending', requiresSelection: monitored.requiresSelection,
+            indexer: monitored.searchIndexer ?? undefined,
+            status: hasError ? 'failed' : 'pending', canRetrySearch: !monitored.requiresSelection && !monitored.retryRequiresReview && monitored.searchState !== 'grab_pending',
+            canCancelSearch: monitored.searchState !== 'grab_pending',
+            progress: 0, size: 0, sizeRemaining: 0, hasError: !!hasError, isStalled: false });
         }
       }
 
@@ -527,7 +533,9 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
         const own = isAdminRef.current || !!monitored?.userIds?.includes(session?.user?.id ?? '');
         return { ...item, retryAvailableAt: monitored?.retryAvailableAt ?? item.retryAvailableAt,
           dbCreatedAt: monitored?.createdAt ?? item.dbCreatedAt,
-          canRetry: own, canRetrySearch: item.canRetrySearch && (own || !monitored) };
+          requiresSelection: item.requiresSelection || (item.source === 'sonarr' && !item.episodeId && monitored?.requiresSelection),
+          canRetry: own, canRetrySearch: item.canRetrySearch && (own || !monitored),
+          canCancelSearch: (item.canCancelSearch ?? item.canRetrySearch) && (own || !monitored) };
       });
 
       // Only add unmatched Transmission torrents for admins when viewing all downloads

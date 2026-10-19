@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
-import { smartGrab } from '@/lib/smart-grab';
 import { DownloadRetryError, downloadRetryErrorResponse, runDownloadRetry } from '@/lib/download-retry';
-import { acquireMovieAudioLock, getMovieAudioJobs, getMovieAudioPolicies, releaseMovieAudioLock } from '@/lib/db/movie-audio';
+import { acquireMovieAudioLock, getMovieAudioJobs, getMovieAudioPolicies, releaseMovieAudioLock, updateMovieAudioJob } from '@/lib/db/movie-audio';
 import { getMonitoredDownloadBySourceMedia, getLatestMonitoredDownloadBySourceMedia, markDownloadCompleted, getWatchedMediaIds, resetMonitoredDownload } from '@/lib/db/monitored-downloads';
 import { getCachedRadarrQueue, invalidateQueueCache } from '@/lib/queue-cache';
+import { ensureDownloadSearchJob, updateDownloadSearchJob } from '@/lib/db/download-search-jobs';
+import { isImportInProgress } from '@/lib/queue-retry-safety';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -73,10 +74,15 @@ export async function DELETE(request: NextRequest) {
         if (ids.some((id) => !queue.records.some((item) => item.id === id && item.movieId === mediaId))) {
           throw new DownloadRetryError('The queue entries do not belong to this title.');
         }
-        await radarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });
+        if (queue.records.some((item) => ids.includes(item.id) && isImportInProgress(item))) throw new DownloadRetryError('Import is in progress.');
         const monitored = await getLatestMonitoredDownloadBySourceMedia('radarr', mediaId);
+        if (policy) updateMovieAudioJob(policy.tmdbId, { state: 'pending', detail: 'Searching for another movie release.', nextAttemptAt: 0 });
+        else if (monitored) {
+          ensureDownloadSearchJob(monitored.id, 'radarr');
+          updateDownloadSearchJob(monitored.id, { state: 'pending', indexer: null, submittedAt: null, nextAttemptAt: 0 });
+        }
+        await radarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });
         if (monitored) await resetMonitoredDownload(monitored.id);
-        await smartGrab({ source: 'radarr', mediaId });
       });
     } else {
       await radarr.deleteQueueItemBulk(ids, { blocklist: false, skipRedownload: false });

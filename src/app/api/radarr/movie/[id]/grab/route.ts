@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { authOptions } from '@/lib/auth';
-import { smartGrab, TeleSyncOnlyError } from '@/lib/smart-grab';
-import {
-  getMonitoredDownloadBySourceMedia,
-  upsertMonitoredDownload,
-  addUserToDownload,
-} from '@/lib/db/monitored-downloads';
+import { queueDownloadSearch } from '@/lib/db/download-search-jobs';
 import { invalidateQueueCache } from '@/lib/queue-cache';
 
 
@@ -26,27 +21,18 @@ export async function POST(
   }
 
   const { id } = await params;
-  const movieId = parseInt(id, 10);
-  if (isNaN(movieId)) {
+  const movieId = Number(id);
+  if (!Number.isSafeInteger(movieId) || movieId <= 0) {
     return NextResponse.json({ error: 'Invalid movie ID' }, { status: 400 });
   }
 
   try {
-    let monitored = await getMonitoredDownloadBySourceMedia('radarr', movieId);
-    if (!monitored) {
-      const movie = await radarr.getMovie(movieId);
-      monitored = await upsertMonitoredDownload('radarr', movieId, movie.title);
-    }
-    await addUserToDownload(monitored.id, session.user.id);
-
-    await smartGrab({ source: 'radarr', mediaId: movieId });
+    const movie = await radarr.getMovie(movieId);
+    queueDownloadSearch('radarr', movieId, movie.title, session.user.id, { type: 'movie' });
     invalidateQueueCache(['radarr-queue', 'transmission-state']);
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    if (error instanceof TeleSyncOnlyError) {
-      return NextResponse.json({ error: 'telesync_only' }, { status: 422 });
-    }
     console.error('Radarr movie grab error:', error);
     return NextResponse.json({ error: 'Failed to trigger grab' }, { status: 500 });
   }

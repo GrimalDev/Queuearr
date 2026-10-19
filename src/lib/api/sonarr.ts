@@ -134,6 +134,14 @@ export class SonarrClient {
     await this.client.post('/api/v3/command', { name: 'SeriesSearch', seriesId });
   }
 
+  async hasActiveSeriesSearch(seriesId: number, episodeIds: number[]): Promise<boolean> {
+    const response = await this.client.get<{ name: string; status: string; body?: { seriesId?: number; episodeIds?: number[] } }[]>('/api/v3/command');
+    const selected = new Set(episodeIds);
+    return response.data.some((command) => ['queued', 'started'].includes(command.status) &&
+      ((command.name === 'SeriesSearch' || command.name === 'SeasonSearch') && command.body?.seriesId === seriesId ||
+       command.name === 'EpisodeSearch' && command.body?.episodeIds?.some((id) => selected.has(id))));
+  }
+
   async triggerSeasonSearch(seriesId: number, seasonNumber: number): Promise<void> {
     await this.client.post('/api/v3/command', { name: 'SeasonSearch', seriesId, seasonNumber });
   }

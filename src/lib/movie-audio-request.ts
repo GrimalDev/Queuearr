@@ -1,6 +1,5 @@
 import type { RadarrClient } from '@/lib/api/radarr';
-import { acquireMovieAudioLock, getMovieAudioPolicies, releaseMovieAudioLock, saveMovieAudioPolicy, getMovieAudioJobs, renewMovieAudioLock, updateMovieAudioJob } from '@/lib/db/movie-audio';
-import { addUserToDownload, reopenMonitoredDownload } from '@/lib/db/monitored-downloads';
+import { acquireMovieAudioLock, getMovieAudioPolicies, releaseMovieAudioLock, saveMovieAudioPolicy, getMovieAudioJobs, renewMovieAudioLock, updateMovieAudioJob, saveTrackedMovieAudioRequest } from '@/lib/db/movie-audio';
 import { getAvailableAudio, hasRequiredAudio, mergeAudioLanguages, resolveAudioLanguage } from '@/lib/movie-audio-policy';
 import { AUDIO_PROFILE_PREFIX, AudioProfileError, ensureAudioProfile } from '@/lib/radarr-audio-profile';
 import { isMovieRegrab } from '@/lib/movie-audio-releases';
@@ -83,8 +82,16 @@ export async function requestMovieAudio(
       });
     }
     if (!movie.id) throw new Error('Radarr returned a movie without an ID');
-    saveMovieAudioPolicy({ tmdbId, radarrMovieId: movie.id, baseProfileId: base.id, requiredLanguages: required });
-    updateMovieAudioJob(tmdbId, { state: previousJob?.state ?? 'pending', detail: previousJob?.detail ?? 'Applying the requested audio profile.', nextAttemptAt: 0 });
+    const savedPolicy = { tmdbId, radarrMovieId: movie.id, baseProfileId: base.id, requiredLanguages: required };
+    const continuing = !!previousJob?.donorHash || !!previousJob?.outputPath || previousJob?.regrabFileId != null;
+    const pendingJob = { state: continuing ? previousJob!.state : hasRequiredAudio(movie, required) && !forceDownload ? 'available' : 'pending',
+      detail: continuing ? previousJob!.detail : 'Applying the requested audio profile.', nextAttemptAt: 0 };
+    if (forceDownload || !hasRequiredAudio(movie, required)) {
+      saveTrackedMovieAudioRequest(savedPolicy, pendingJob, movie.title, userId);
+    } else {
+      saveMovieAudioPolicy(savedPolicy);
+      updateMovieAudioJob(tmdbId, pendingJob);
+    }
     movie = await client.updateMovie({ ...movie, qualityProfileId: profile.id, monitored: true });
     if (!movie.id) throw new Error('Radarr returned a movie without an ID');
     const movieId = movie.id;
@@ -108,8 +115,6 @@ export async function requestMovieAudio(
         throw new MovieAudioRequestError('No release can be regrabbed with all requested languages at the current quality or better. The existing movie is still available.');
       }
       if (leaseLost) throw new MovieAudioRequestError('The request lock expired. Please retry.');
-      const monitored = await reopenMonitoredDownload('radarr', movieId, movie.title);
-      await addUserToDownload(monitored.id, userId);
       startDownloadRetryCooldown('radarr', movieId);
       state = 'regrabbing';
       detail = 'Sending a fresh download to Radarr. The existing movie stays available until import.';
@@ -125,8 +130,6 @@ export async function requestMovieAudio(
         updateMovieAudioJob(tmdbId, { detail });
       }
     } else if (!satisfied || regrabbing) {
-      const monitored = await reopenMonitoredDownload('radarr', movieId, movie.title);
-      await addUserToDownload(monitored.id, userId);
       if (!processingAudio && !regrabbing) startDownloadRetryCooldown('radarr', movieId);
       try {
         if (!processingAudio && !regrabbing &&

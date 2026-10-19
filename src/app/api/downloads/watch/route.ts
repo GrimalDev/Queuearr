@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getDownloadRetryTimes } from '@/lib/download-retry';
+import { getDownloadSearchJobs } from '@/lib/db/download-search-jobs';
 import {
   getMonitoredDownloadBySourceMedia,
   getActiveMonitoredDownloads,
@@ -20,8 +21,13 @@ export async function GET(request: NextRequest) {
     ? await getActiveMonitoredDownloads()
     : await getActiveMonitoredDownloadsForUser(session.user.id);
   const retryTimes = getDownloadRetryTimes();
+  const searchJobs = new Map(getDownloadSearchJobs().map((job) => [job.downloadId, job]));
   return NextResponse.json(downloads.map((download) => ({ ...download,
     retryAvailableAt: retryTimes.get(`${download.source}:${download.mediaId}`),
+    searchState: searchJobs.get(download.id)?.state,
+    searchIndexer: searchJobs.get(download.id)?.indexer,
+    retryRequiresReview: searchJobs.get(download.id)?.state === 'needs_review' && searchJobs.get(download.id)?.submittedAt !== null,
+    requiresSelection: download.source === 'sonarr' && (!searchJobs.has(download.id) || searchJobs.get(download.id)?.state === 'needs_selection'),
   })));
 }
 

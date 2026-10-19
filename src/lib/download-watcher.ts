@@ -9,8 +9,10 @@ import {
   markDownloadCompleted,
   updateDownloadActivity,
   upsertMonitoredDownload,
+  getLatestMonitoredDownloadBySourceMedia,
 } from '@/lib/db/monitored-downloads';
 import type { RadarrQueueItem, SonarrQueueItem, TransmissionTorrent } from '@/types';
+import { getDownloadSearchJobs } from '@/lib/db/download-search-jobs';
 
 type DownloadStatus = 'downloading' | 'queued' | 'importing' | 'warning' | 'failed' | 'stalled' | 'error';
 
@@ -155,6 +157,7 @@ async function checkDownloads(): Promise<void> {
 
     const audioPolicies = new Map([...getMovieAudioPolicies().values()].map((policy) => [policy.radarrMovieId, policy]));
     const audioJobs = new Map(getMovieAudioJobs().map((job) => [job.tmdbId, job]));
+    const searchJobs = new Map(getDownloadSearchJobs().map((job) => [job.downloadId, job]));
     for (const download of monitored) {
       const queueItems =
         download.source === 'radarr'
@@ -180,10 +183,17 @@ async function checkDownloads(): Promise<void> {
 
       const audioPolicy = download.source === 'radarr' ? audioPolicies.get(download.mediaId) : undefined;
       const audioReady = audioPolicy ? audioJobs.get(audioPolicy.tmdbId)?.state === 'available' : undefined;
-      if (queueItems.length === 0 && (audioPolicy ? audioReady : download.lastStatus !== null)) {
+      const searchJob = searchJobs.get(download.id);
+      if (queueItems.length === 0 && (audioPolicy ? audioReady : searchJob ? searchJob.state === 'complete' : download.lastStatus !== null)) {
+        const requestLock = acquireMovieAudioLock(-(download.mediaId * 2 + (download.source === 'sonarr' ? 1 : 0)));
+        if (!requestLock) continue;
         const audioLock = audioPolicy ? acquireMovieAudioLock(audioPolicy.tmdbId + 2) : null;
-        if (audioPolicy && !audioLock) continue;
+        if (audioPolicy && !audioLock) { releaseMovieAudioLock(requestLock); continue; }
         try {
+          const fresh = await getLatestMonitoredDownloadBySourceMedia(download.source as 'radarr' | 'sonarr', download.mediaId);
+          if (!fresh || fresh.completedAt !== null) continue;
+          const currentSearch = getDownloadSearchJobs().find((job) => job.downloadId === download.id);
+          if (!audioPolicy && currentSearch && currentSearch.state !== 'complete') continue;
           // A new language request may have arrived since the initial status read.
           if (audioPolicy && getMovieAudioJobs().find((job) => job.tmdbId === audioPolicy.tmdbId)?.state !== 'available') continue;
           await Promise.all(
@@ -196,7 +206,10 @@ async function checkDownloads(): Promise<void> {
             )
           );
           await markDownloadCompleted(download.id);
-        } finally { if (audioLock) releaseMovieAudioLock(audioLock); }
+        } finally {
+          if (audioLock) releaseMovieAudioLock(audioLock);
+          releaseMovieAudioLock(requestLock);
+        }
         continue;
       }
 

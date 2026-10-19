@@ -10,6 +10,7 @@ import { acquireMovieAudioLock, getMovieAudioJobs, getMovieAudioPolicies, releas
 import { getLatestMonitoredDownloadBySourceMedia, isUserWatching } from '@/lib/db/monitored-downloads';
 import { DownloadRetryError, downloadRetryErrorResponse } from '@/lib/download-retry';
 import { invalidateQueueCache } from '@/lib/queue-cache';
+import { getDownloadSearchJobs, updateDownloadSearchJob } from '@/lib/db/download-search-jobs';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
@@ -38,9 +39,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!movieLock) throw new DownloadRetryError('This movie is being processed.');
     }
     const job = policy ? getMovieAudioJobs().find((item) => item.tmdbId === policy.tmdbId) : undefined;
+    const searchJob = getDownloadSearchJobs().find((item) => item.downloadId === download.id);
+    if (searchJob?.state === 'grab_pending') throw new DownloadRetryError('A release submission is already pending.');
     if (job ? job.donorHash || job.outputPath || job.restoreMonitored !== null || job.replaceDonor ||
         !['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed'].includes(job.state)
-      : download.completedAt !== null || download.lastStatus !== null) {
+      : download.completedAt !== null || (!searchJob && download.lastStatus !== null)) {
       throw new DownloadRetryError('Only a pending search can be cancelled.');
     }
     const client = source === 'radarr' ? createRadarrClient() : createSonarrClient();
@@ -54,6 +57,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .where(eq(monitoredDownloads.id, download.id)).run();
       if (job) updateMovieAudioJob(job.tmdbId, { state: 'cancelled', detail: 'Search cancelled.', nextAttemptAt: 0,
         regrabFileId: null, regrabRequestedAt: null, donorIndexer: null });
+      if (searchJob) updateDownloadSearchJob(download.id, { state: 'cancelled' });
     });
     invalidateQueueCache([source === 'radarr' ? 'radarr-queue' : 'sonarr-queue']);
     return NextResponse.json({ state: 'cancelled' });

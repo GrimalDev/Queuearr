@@ -2,6 +2,7 @@ import { eq, and, isNull, desc } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { monitoredDownloads, monitoredDownloadUsers } from '@/lib/db/schema';
 import type { MonitoredDownload } from '@/lib/db/schema';
+import { DOWNLOAD_RETRY_COOLDOWN_MS } from '@/lib/download-retry-policy';
 
 export async function upsertMonitoredDownload(
   source: 'radarr' | 'sonarr',
@@ -30,6 +31,21 @@ export async function addUserToDownload(downloadId: number, userId: string): Pro
     .insert(monitoredDownloadUsers)
     .values({ downloadId, userId })
     .onConflictDoNothing();
+}
+
+/** Use inside a transaction with its worker job, before submitting external work. */
+export function saveTrackedRequest(source: 'radarr' | 'sonarr', mediaId: number, title: string, userId: string): MonitoredDownload {
+  const now = Date.now();
+  const prior = db.select().from(monitoredDownloads).where(and(eq(monitoredDownloads.source, source), eq(monitoredDownloads.mediaId, mediaId))).get();
+  const row = db.insert(monitoredDownloads).values({ source, mediaId, title, createdAt: now, lastActivityAt: now, lastBytesAt: now,
+    retryAfter: now + DOWNLOAD_RETRY_COOLDOWN_MS })
+    .onConflictDoUpdate({ target: [monitoredDownloads.source, monitoredDownloads.mediaId], set: {
+      title, completedAt: null, lastStatus: null, lastActivityAt: now, lastBytesAt: now,
+      retryAfter: Math.max(prior?.retryAfter ?? 0, now + DOWNLOAD_RETRY_COOLDOWN_MS),
+      ...(prior?.completedAt != null ? { createdAt: now } : {}),
+    } }).returning().get();
+  db.insert(monitoredDownloadUsers).values({ downloadId: row.id, userId }).onConflictDoNothing().run();
+  return row;
 }
 
 export async function reopenMonitoredDownload(
@@ -229,7 +245,7 @@ export async function updateDownloadStatus(id: number, status: string): Promise<
   await db
     .update(monitoredDownloads)
     .set({ lastStatus: status })
-    .where(eq(monitoredDownloads.id, id));
+    .where(and(eq(monitoredDownloads.id, id), isNull(monitoredDownloads.completedAt)));
 }
 
 export async function markDownloadCompleted(id: number): Promise<void> {

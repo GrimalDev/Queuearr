@@ -167,6 +167,25 @@ and **Waiting for the download client**. Queuearr does not resubmit an uncertain
 grab. If no download appears within five minutes, it logs the problem and pauses
 the request for review.
 
+Older tracked movie requests without worker jobs are recovered on startup and
+subsequent worker ticks. Recovery keeps their current Radarr quality/language
+profile and requester associations. It does not start work for cancelled or
+completed requests, active transfers, or tracking rows without a requester.
+Existing audio policies retain their audio worker; ordinary movies use a durable
+search job without changing Radarr configuration. Movies already present are
+completed without another grab.
+
+New ordinary movie and series requests save tracking, requesters, and a search
+job in one SQLite transaction before external search/grab calls. Season and
+episode selections are persisted and reused on retries. Legacy series requests
+without a saved selection show **Error** with **Choose seasons or episodes**;
+Queuearr never guesses a whole-series search. Recovered requests also retain the
+existing five-minute manual retry cooldown and admin override.
+
+Error cards for blocked/failed imports offer retry even if the service reports
+an import-related status. The server rechecks ownership, queue IDs, active imports,
+and audio publication safeguards before changing a download.
+
 ### Separate audio downloads and merging
 
 Movies, series, and additional audio share the Downloads card design. Movie

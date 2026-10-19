@@ -412,7 +412,9 @@ export interface QueueItem {
   tmdbId?: number;
   isSearching?: boolean;
   isAwaitingDownload?: boolean;
+  requiresSelection?: boolean;
   canRetrySearch?: boolean;
+  canCancelSearch?: boolean;
   canRetry?: boolean;
   retryAvailableAt?: number;
   isRegrab?: boolean;
@@ -454,6 +456,9 @@ export interface QueueItem {
   dbLastActivityAt?: number | null;
   dbLastBytesAt?: number | null;
 }
+
+export type DownloadSearchScope = { type: 'movie' } | { type: 'series' } |
+  { type: 'season'; seasonNumber: number } | { type: 'episode'; episodeId: number };
 
 export interface PendingQueueRequest {
   item: QueueItem;
