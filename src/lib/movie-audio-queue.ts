@@ -33,6 +33,7 @@ export function getMovieAudioQueue(
       isSearching: (job.replaceDonor || !additionalAudio) && !hasError && job.state !== 'grab_pending',
       isAwaitingDownload: job.state === 'grab_pending',
       searchError: job.state === 'in_cinemas' ? 'in_cinemas' : undefined,
+      requestedAudioLanguages: additionalAudio ? languages : policy.requiredLanguages,
       canRetrySearch: !job.donorHash && !job.outputPath && job.restoreMonitored == null && !job.replaceDonor &&
         ['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed', 'in_cinemas'].includes(job.state),
       title: movie.title, subtitle: movie.year?.toString(), transmissionHash: job.donorHash ?? undefined,
@@ -60,6 +61,7 @@ export function mergeMovieAudioQueue(
     if (hash) torrents.delete(hash);
     if (!item.audio) return movieDownload ? {
       ...movieDownload, id: item.id, tmdbId: item.tmdbId, isRegrab: item.isRegrab, isSearching: false,
+      requestedAudioLanguages: item.requestedAudioLanguages,
       indexer: movieDownload.indexer ?? item.indexer,
     } : item;
     if (item.isSearching) return item;

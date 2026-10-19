@@ -76,6 +76,7 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
     const queueItem = {
       id: requestId, tmdbId: result.tmdbId, mediaId: result.libraryId, source: 'radarr' as const,
       title: result.title, subtitle: result.year.toString(), isSearching: true, isRegrab,
+      requestedAudioLanguages: selected.id ? [{ id: selected.id, name: selected.label }] : [],
       audio: hasFile && !selected.present ? { phase: 'searching' as const,
         languages: selected.id ? [{ id: selected.id, name: selected.label }] : [] } : undefined,
       status: 'pending' as const, progress: 0, size: 0, sizeRemaining: 0, isStalled: false, hasError: false,

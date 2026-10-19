@@ -81,8 +81,8 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
         </div>
         <div className="flex flex-wrap gap-2">
           {item.quality && <Badge variant="outline" className="font-normal">{item.quality}</Badge>}
-          {(item.audio?.languages ?? []).map((language) => <Badge key={language.id} variant="secondary" className="gap-1.5">
-            <Languages className="size-3" aria-hidden="true" />{language.name}
+          {(item.requestedAudioLanguages ?? item.audio?.languages ?? []).map((language) => <Badge key={language.id} variant="secondary" className="gap-1.5">
+            <Languages className="size-3" aria-hidden="true" />Audio: {language.name}
           </Badge>)}
           <Badge variant="outline" className="font-normal text-muted-foreground">
             {item.indexer || (phase === 'searching' ? 'Choosing an indexer' : 'Indexer unavailable')}

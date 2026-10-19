@@ -413,6 +413,7 @@ export interface QueueItem {
   isSearching?: boolean;
   isAwaitingDownload?: boolean;
   searchError?: 'in_cinemas';
+  requestedAudioLanguages?: RadarrLanguage[];
   canRetrySearch?: boolean;
   canCancelSearch?: boolean;
   canRetry?: boolean;
