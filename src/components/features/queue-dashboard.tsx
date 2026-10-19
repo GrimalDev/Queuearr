@@ -58,6 +58,23 @@ export function QueueDashboard() {
     }
   };
 
+  const handleCancelTorrent = async (item: QueueItem): Promise<void> => {
+    if (!isAdmin || item.source !== 'transmission' || !item.transmissionHash) return;
+    setDeletingIds((previous) => new Set(previous).add(item.id));
+    try {
+      const response = await fetch('/api/transmission', { method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hash: item.transmissionHash }),
+      });
+      if (!response.ok) throw new Error('Error');
+      setQueueItems(useAppStore.getState().queueItems.filter((entry) => entry.id !== item.id));
+    } catch {
+      useAppStore.getState().addAlert({ type: 'error', title: 'Error', message: 'Error', source: item.source, relatedItemId: item.id });
+    } finally {
+      await refresh();
+      setDeletingIds((previous) => { const next = new Set(previous); next.delete(item.id); return next; });
+    }
+  };
+
   const handleRetry = async (item: QueueItem) => {
     if (!item.sourceId || (item.source !== 'radarr' && item.source !== 'sonarr')) return;
     setRetryingItems((prev) => new Map(prev).set(item.id, item));
@@ -461,7 +478,8 @@ export function QueueDashboard() {
               onRetry={item.audio?.canRetry ? () => handleAudioRetry(item) : item.canRetrySearch ? () => handleSearchRetry(item) :
                 !item.audio && (isAdmin || item.canRetry) && item.sourceId && (item.hasError || item.isStalled || !['importing', 'seeding', 'completed'].includes(item.status)) && (item.source === 'radarr' || item.source === 'sonarr') ? () => handleRetry(item) : undefined}
               onCancelSearch={(item.canCancelSearch ?? item.canRetrySearch) && !item.transmissionId && !item.transmissionHash && !item.sourceId && !item.canCancelDownload ? () => handleCancelSearch(item) : undefined}
-              onCancelDownload={!item.libraryReady && (isAdmin || item.canRetry) &&
+              onCancelDownload={isAdmin && item.source === 'transmission' && item.transmissionHash ? () => handleCancelTorrent(item) :
+                !item.libraryReady && (isAdmin || item.canRetry) &&
                 (item.canCancelDownload || !item.audio && item.sourceId && (item.status !== 'importing' || item.hasError))
                 ? () => handleCancelSearch(item, true) : undefined}
               onPassFirst={!item.audio && isAdmin && (item.transmissionId ?? item.transmissionHash) && (item.status === 'queued' || item.status === 'pending')
