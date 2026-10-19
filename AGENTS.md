@@ -301,5 +301,9 @@ tmux split-window -v -t '=queuarr' -c /Users/grimaldev/code/projects/queuarr fis
 - Resume donors only by their job's persisted hash, never by a matching label or
   folder alone. Keep cancelled/rejected source exclusions across new requests
   and completed jobs so retained torrents cannot bypass fresh release selection.
+- Audio profile cleanup shares the profile-creation lease. Delete only unused
+  generated profiles with matching fingerprints; preserve edited profiles,
+  assigned profiles, base profiles, and shared custom formats. Require an hour
+  of unused observations to protect profile creation by separate deployments.
 - Validate using temporary synthetic media and mocked service responses. Follow
   the existing rule against adding test infrastructure without authorization.

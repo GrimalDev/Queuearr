@@ -153,9 +153,17 @@ The shared base profile is not modified. Do not edit Queuearr-managed profiles o
 custom formats. For a new movie, Radarr first obtains a base file with one requested
 language; the worker then applies the combined language requirements.
 
+Unused managed audio profiles are checked at startup and hourly. A profile must
+be observed unused at least an hour apart before it is removed. Cleanup
+checks the generated configuration fingerprint and current movie assignments,
+shares the profile-creation lock, and preserves manually edited profiles and
+configured base profiles. Radarr also protects profiles used by import lists or
+collections. Shared custom formats are retained. Failed or busy cleanup runs
+retry after five minutes; results are recorded in the server logs.
+
 The worker checks requests every 30 seconds and searches at most once every 15
 minutes per waiting request. Adding a language first queues an explicit search
-for a complete movie containing every existing and requested language. An eligible
+for a complete movie containing every explicitly requested language. An eligible
 release at equal or better quality replaces the whole movie through Radarr;
 the old file cannot complete the request before the replacement is imported.
 Only a successful search with no eligible full replacement enables the separate

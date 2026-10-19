@@ -210,6 +210,15 @@ export class RadarrClient {
     return response.data;
   }
 
+  async getQualityProfile(id: number): Promise<RadarrQualityProfile> {
+    const response = await this.client.get<RadarrQualityProfile>(`/api/v3/qualityprofile/${id}`);
+    return response.data;
+  }
+
+  async deleteQualityProfile(id: number): Promise<void> {
+    await this.client.delete(`/api/v3/qualityprofile/${id}`);
+  }
+
   async getRootFolders(): Promise<RadarrRootFolder[]> {
     const response = await this.client.get<RadarrRootFolder[]>('/api/v3/rootfolder');
     return response.data;

@@ -6,6 +6,29 @@ export class AudioProfileError extends Error {}
 
 export const AUDIO_PROFILE_PREFIX = 'Queuearr audio ';
 
+function audioProfileName(baseId: number, profile: Omit<RadarrQualityProfile, 'id'>): string {
+  const fingerprint = createHash('sha256').update(JSON.stringify({
+    name: '',
+    upgradeAllowed: profile.upgradeAllowed,
+    cutoff: profile.cutoff,
+    items: profile.items,
+    language: profile.language,
+    minFormatScore: profile.minFormatScore,
+    cutoffFormatScore: profile.cutoffFormatScore,
+    minUpgradeFormatScore: profile.minUpgradeFormatScore,
+    formatItems: profile.formatItems?.filter((item) => item.score !== 0)
+      .map(({ format, name, score }) => ({ format, name, score })).sort((a, b) => a.format - b.format),
+  })).digest('hex').slice(0, 12);
+  return `${AUDIO_PROFILE_PREFIX}${baseId} ${fingerprint}`;
+}
+
+/** A name prefix alone cannot prove that a profile is an unchanged generated copy. */
+export function isUnmodifiedAudioProfile(profile: RadarrQualityProfile): boolean {
+  const match = /^Queuearr audio ([1-9]\d*) [a-f0-9]{12}$/.exec(profile.name);
+  return !!match && !!profile.items?.length && !!profile.formatItems?.some((item) => item.score < 0) &&
+    profile.name === audioProfileName(Number(match[1]), profile);
+}
+
 export function missingAudioFormat(language: RadarrLanguage): Omit<RadarrCustomFormat, 'id'> {
   return {
     name: `Queuearr: Missing ${language.name} audio (${language.id})`,
@@ -60,11 +83,7 @@ export function buildAudioProfile(
     })),
   };
   // New base-profile settings produce a new copy instead of changing other movies.
-  const fingerprint = createHash('sha256').update(JSON.stringify({
-    ...profile,
-    formatItems: profile.formatItems.filter((item) => item.score !== 0).sort((a, b) => a.format - b.format),
-  })).digest('hex').slice(0, 12);
-  profile.name = `${AUDIO_PROFILE_PREFIX}${base.id} ${fingerprint}`;
+  profile.name = audioProfileName(base.id, profile);
   return profile;
 }
 
