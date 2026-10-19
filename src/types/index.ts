@@ -264,6 +264,8 @@ export interface SonarrRootFolder {
 }
 
 export interface TransmissionTorrent {
+  /** Recovered by Queuearr from Radarr/Sonarr, not supplied by Transmission. */
+  indexer?: string;
   id: number;
   hashString: string;
   name: string;
@@ -295,6 +297,12 @@ export interface TransmissionTorrent {
   queuePosition: number;
   trackerStats?: TransmissionTrackerStats[];
   downloadDir?: string;
+}
+
+export interface DownloadGrabHistory {
+  downloadId?: string;
+  eventType?: string;
+  data?: { indexer?: string };
 }
 
 export enum TransmissionStatus {

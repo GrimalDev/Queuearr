@@ -7,6 +7,7 @@ import { getMonitoredDownloadBySourceMedia, getLatestMonitoredDownloadBySourceMe
 import { getCachedSonarrQueue, invalidateQueueCache } from '@/lib/queue-cache';
 import { ensureDownloadSearchJob, parseDownloadScopes, updateDownloadSearchJob } from '@/lib/db/download-search-jobs';
 import { isImportInProgress } from '@/lib/queue-retry-safety';
+import { rememberTorrentIndexer } from '@/lib/db/torrent-indexers';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest) {
   try {
     const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1';
     const queue = await getCachedSonarrQueue(sonarr, { forceRefresh });
+    for (const item of queue.records) rememberTorrentIndexer('sonarr', item.downloadId, item.indexer);
     const filter = request.nextUrl.searchParams.get('filter') ?? 'mine';
     if (filter === 'all') {
       // Debug: Check if series data is included

@@ -7,6 +7,7 @@ import {
   RadarrRootFolder,
   RadarrCustomFormat,
   Release,
+  DownloadGrabHistory,
 } from '@/types';
 
 interface RadarrConfig {
@@ -52,6 +53,13 @@ export class RadarrClient {
   async getMovie(id: number): Promise<RadarrMovie> {
     const response = await this.client.get<RadarrMovie>(`/api/v3/movie/${id}`);
     return response.data;
+  }
+
+  async getGrabHistory(downloadId: string): Promise<DownloadGrabHistory[]> {
+    const response = await this.client.get<{ records: DownloadGrabHistory[] }>('/api/v3/history', {
+      params: { downloadId: downloadId.toUpperCase(), eventType: 1, page: 1, pageSize: 10, sortKey: 'date', sortDirection: 'descending' },
+    });
+    return response.data.records;
   }
 
   async updateMovie(movie: RadarrMovie): Promise<RadarrMovie> {

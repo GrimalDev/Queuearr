@@ -193,6 +193,14 @@ Error cards for blocked/failed imports offer retry even if the service reports
 an import-related status. The server rechecks ownership, queue IDs, active imports,
 and audio publication safeguards before changing a download.
 
+Indexer names are saved by torrent hash when available in Radarr/Sonarr's queue.
+For unmatched Transmission torrents in the admin **All downloads** view, Queuearr
+also checks Radarr/Sonarr grab history in bounded background batches. Confirmed
+names appear on subsequent polls and survive restarts. History failures do not
+delay download updates; missing matches remain **Indexer unavailable**. Filenames
+and tracker URLs are not used to guess the indexer. This metadata does not change
+request ownership, filtering, or download controls.
+
 ### Separate audio downloads and merging
 
 Movies, series, and additional audio share the Downloads card design. Movie

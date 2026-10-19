@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { createTransmissionClient } from '@/lib/api/transmission';
 import { authOptions } from '@/lib/auth';
 import { getCachedTransmissionState } from '@/lib/queue-cache';
+import { getTorrentIndexers } from '@/lib/db/torrent-indexers';
+import { recoverTorrentIndexers } from '@/lib/torrent-indexer-history';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -18,6 +20,13 @@ export async function GET(request: NextRequest) {
   try {
     const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1';
     const { torrents, stats } = await getCachedTransmissionState(transmission, { forceRefresh });
+    const hashes = torrents.map((torrent) => torrent.hashString);
+    const indexers = getTorrentIndexers(hashes);
+    if (session.user.role === 'admin' && request.nextUrl.searchParams.get('filter') === 'all') {
+      after(() => recoverTorrentIndexers(hashes).catch(() => {
+        console.warn('[indexers] Background history recovery failed.');
+      }));
+    }
 
     // Note: filtering by user happens at Radarr/Sonarr level, not here.
     // Transmission data is used to enrich queue items matched by hash.
@@ -25,6 +34,7 @@ export async function GET(request: NextRequest) {
       const problemCheck = transmission.isProblematic(torrent);
       return {
         ...torrent,
+        indexer: indexers.get(torrent.hashString.toLowerCase()),
         statusString: transmission.getStatusString(torrent.status),
         isProblematic: problemCheck.isProblematic,
         problemReason: problemCheck.reason,

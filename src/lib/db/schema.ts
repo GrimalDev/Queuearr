@@ -117,6 +117,13 @@ export const downloadSearchJobs = sqliteTable('download_search_jobs', {
   updatedAt: integer('updated_at').notNull(),
 });
 
+export const torrentIndexers = sqliteTable('torrent_indexers', {
+  hash: text('hash').primaryKey(),
+  indexer: text('indexer').notNull(),
+  source: text('source').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+});
+
 export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;
 export type PushSubscription = InferSelectModel<typeof pushSubscriptions>;

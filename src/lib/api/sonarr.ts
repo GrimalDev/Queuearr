@@ -8,6 +8,7 @@ import {
   SonarrLanguageProfile,
   SonarrRootFolder,
   Release,
+  DownloadGrabHistory,
 } from '@/types';
 
 interface SonarrConfig {
@@ -53,6 +54,13 @@ export class SonarrClient {
   async getSeriesById(id: number): Promise<SonarrSeries> {
     const response = await this.client.get<SonarrSeries>(`/api/v3/series/${id}`);
     return response.data;
+  }
+
+  async getGrabHistory(downloadId: string): Promise<DownloadGrabHistory[]> {
+    const response = await this.client.get<{ records: DownloadGrabHistory[] }>('/api/v3/history', {
+      params: { downloadId: downloadId.toUpperCase(), eventType: 1, page: 1, pageSize: 10, sortKey: 'date', sortDirection: 'descending' },
+    });
+    return response.data.records;
   }
 
   async addSeries(series: {

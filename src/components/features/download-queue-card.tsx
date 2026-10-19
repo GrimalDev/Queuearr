@@ -58,7 +58,8 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
     importing: 'Importing into the library', ready: item.status === 'seeding' ? 'Seeding' : 'Ready', error: 'Error',
   };
   const waiting = !isRetrying && !item.isSearching && (item.status === 'paused' || item.status === 'queued');
-  const label = phase === 'error' ? item.searchError === 'in_cinemas' ? IN_CINEMAS_SEARCH_MESSAGE : 'Error' : waiting ? item.status === 'paused' ? 'Paused' : 'Queued'
+  const waitingForSlot = waiting && item.status === 'queued' && item.transmissionId != null && phase !== 'error';
+  const label = phase === 'error' ? item.searchError === 'in_cinemas' ? IN_CINEMAS_SEARCH_MESSAGE : 'Error' : waiting ? item.status === 'paused' ? 'Paused' : waitingForSlot ? 'Waiting for a download slot' : 'Queued'
     : phase === 'downloading' && item.progress >= 100 ? audio ? 'Waiting for audio checks' : 'Waiting for import' : labels[phase];
   const step = phase === 'searching' ? 0 : phase === 'submitting' || phase === 'metadata' || phase === 'downloading' ? 1 :
     phase === 'validating' || phase === 'importing' ? 2 : 3;
@@ -95,7 +96,8 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
             {label}
           </div>
         )}
-        {phase === 'metadata' && <p className="text-xs text-muted-foreground">Waiting for peers to provide the torrent details. The download has not started yet.</p>}
+        {waitingForSlot && <p className="text-xs text-muted-foreground">Starts automatically when a slot becomes available.</p>}
+        {!waiting && phase === 'metadata' && <p className="text-xs text-muted-foreground">Waiting for peers to provide the torrent details. The download has not started yet.</p>}
         {(phase === 'downloading' || phase === 'ready' || waiting) && item.size > 0 && (
           <div className="space-y-2">
             <div className="flex justify-between gap-2 text-xs text-muted-foreground">

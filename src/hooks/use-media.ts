@@ -386,7 +386,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
                 ? (item.errorMessage || item.statusMessages?.[0]?.messages?.[0])
                 : matchedTorrent?.problemReason,
               downloadClient: item.downloadClient,
-              indexer: item.indexer,
+              indexer: item.indexer || matchedTorrent?.indexer,
               quality: item.quality?.quality?.name,
               estimatedCompletionTime: item.estimatedCompletionTime,
               peersConnected: matchedTorrent?.peersConnected,
@@ -494,7 +494,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
                 ? (item.errorMessage || item.statusMessages?.[0]?.messages?.[0])
                 : matchedTorrent?.problemReason,
               downloadClient: item.downloadClient,
-              indexer: item.indexer,
+              indexer: item.indexer || matchedTorrent?.indexer,
               quality: item.quality?.quality?.name,
               estimatedCompletionTime: item.estimatedCompletionTime,
               peersConnected: matchedTorrent?.peersConnected,
@@ -545,6 +545,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
         for (const torrent of transmissionHashMap.values()) {
           items.push({
             id: `transmission-${torrent.id}`,
+            indexer: torrent.indexer,
             source: 'transmission' as const,
             transmissionId: torrent.id,
             transmissionHash: torrent.hashString,

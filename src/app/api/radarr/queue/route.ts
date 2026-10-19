@@ -8,6 +8,7 @@ import { getMonitoredDownloadBySourceMedia, getLatestMonitoredDownloadBySourceMe
 import { getCachedRadarrQueue, invalidateQueueCache } from '@/lib/queue-cache';
 import { ensureDownloadSearchJob, updateDownloadSearchJob } from '@/lib/db/download-search-jobs';
 import { isImportInProgress } from '@/lib/queue-retry-safety';
+import { rememberTorrentIndexer } from '@/lib/db/torrent-indexers';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -23,6 +24,7 @@ export async function GET(request: NextRequest) {
   try {
     const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1';
     const queue = await getCachedRadarrQueue(radarr, { forceRefresh });
+    for (const item of queue.records) rememberTorrentIndexer('radarr', item.downloadId, item.indexer);
     const filter = request.nextUrl.searchParams.get('filter') ?? 'mine';
     if (filter === 'all') {
       return NextResponse.json(queue.records);
