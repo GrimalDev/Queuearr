@@ -200,20 +200,59 @@ async function processJob(
   }
   let releases: Release[] = [];
   const rejected = rejectedAudioDonors(job.rejectedDonors ?? '[]');
-  if (!job.donorHash) {
+  if (!job.donorHash || job.state === 'pending') {
+    if (await client.hasActiveMovieSearch(policy.radarrMovieId)) {
+      later(id, 'Waiting for the current Radarr movie search before choosing a full replacement.', 'pending', 30_000);
+      return;
+    }
+    console.info(`[audio] movie ${id}: searching for a complete multilingual replacement`, {
+      requiredLanguageIds: policy.requiredLanguages.map((language) => language.id),
+    });
     releases = await client.getReleases(policy.radarrMovieId);
     // Radarr returns decisions in its quality/profile preference order.
-    // After a donor retry, keep alternatives isolated instead of handing a rejected torrent back to Radarr.
-    const complete = !rejected.size && movie.movieFile?.id && releases.find((release) => isMovieRegrab(release, movie, policy.requiredLanguages, base));
+    // Reject individual previous sources, without excluding every full replacement on retry.
+    const excluded = new Set(rejected);
+    if (job.donorHash) excluded.add(`hash:${job.donorHash.toLowerCase()}`);
+    if (job.donorReleaseKey) excluded.add(job.donorReleaseKey);
+    const complete = movie.movieFile?.id && releases.find((release) =>
+      !isRejectedAudioRelease(release, excluded) && isMovieRegrab(release, movie, policy.requiredLanguages, base));
     if (complete) {
+      // An external Radarr action may have imported or queued a file during the search.
+      const current = await client.getMovie(policy.radarrMovieId);
+      if (current.movieFile?.id !== movie.movieFile?.id || current.movieFile?.path !== movie.movieFile?.path) {
+        later(id, 'The library file changed during replacement search. Checking it again.', 'pending', 30_000);
+        return;
+      }
+      if ((await client.getQueue(false)).records.some((item) => item.movieId === movie.id)) {
+        later(id, 'Radarr is downloading or importing a release.', 'downloading', 30_000);
+        return;
+      }
+      if (signal.aborted) throw new AudioReviewError('The audio worker lost its processing lock.');
+      if (job.donorHash) {
+        const transmission = createTransmissionClient();
+        const donor = transmission && (await transmission.getAudioDonors()).find((torrent) =>
+          torrent.hashString.toLowerCase() === job.donorHash!.toLowerCase());
+        if (!donor || !job.donorLanguageId || donor.labels?.length !== 1 ||
+            donor.labels[0] !== `queuearr-audio-${id}-${job.donorLanguageId}` ||
+            donor.downloadDir !== join(AUDIO_PATHS.donors, `${id}-${job.donorLanguageId}`)) {
+          throw new AudioReviewError('The previous audio donor is missing or no longer isolated. Review it before replacing the movie.');
+        }
+        // Keep complete donors seeding and retain all data. Only pause an unfinished donor.
+        if (donor.percentDone < 1) await transmission!.pauseTorrent(donor.hashString);
+        rememberDownloadTransfer('radarr', policy.radarrMovieId, donor.hashString);
+      }
       updateMovieAudioJob(id, { state: 'regrabbing', regrabFileId: movie.movieFile!.id, regrabRequestedAt: Date.now(),
+        donorHash: null, donorLanguageId: null, donorReleaseKey: null, donorMetadata: null, replaceDonor: false,
         donorIndexer: complete.indexer || `Indexer ${complete.indexerId}`, estimatedLanguages: JSON.stringify(complete.languages ?? []),
         detail: 'Downloading a complete movie with all requested audio.', nextAttemptAt: Date.now() + 30_000 });
+      console.info(`[audio] movie ${id}: submitting a complete multilingual replacement`, { indexerId: complete.indexerId });
       try { await client.grabRelease(complete.guid, complete.indexerId); }
       catch (cause) { logMovieAudioError(`movie ${id} multilingual replacement submission`, cause); }
       return;
     }
+    console.info(`[audio] movie ${id}: no eligible full replacement; using the audio donor fallback`, { returned: releases.length });
   }
+  if (!job.donorHash) updateMovieAudioJob(id, { donorLanguageId: wanted.id, detail: `Searching for compatible ${wanted.name} audio as a fallback.` });
   languageCodes(wanted);
   const paths = await audioPaths();
   const transmission = createTransmissionClient();

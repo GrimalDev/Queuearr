@@ -154,9 +154,17 @@ custom formats. For a new movie, Radarr first obtains a base file with one reque
 language; the worker then applies the combined language requirements.
 
 The worker checks requests every 30 seconds and searches at most once every 15
-minutes per waiting request. It prefers an eligible release containing every
-required language. If none is available, it automatically falls back to separate
-audio downloads and merging. No environment switch is required.
+minutes per waiting request. Adding a language first queues an explicit search
+for a complete movie containing every existing and requested language. An eligible
+release at equal or better quality replaces the whole movie through Radarr;
+the old file cannot complete the request before the replacement is imported.
+Only a successful search with no eligible full replacement enables the separate
+audio donor fallback. A failed or still-running search does not start a donor.
+Retries exclude individual rejected releases and still consider other complete
+replacements. Adding another language while a donor is active starts a new full
+replacement search; a superseded unfinished donor is paused and its data kept.
+The Downloads card starts as a movie replacement search and becomes an audio
+download only when the donor fallback is selected. No environment switch is required.
 
 For an initial movie download, the worker reads Radarr's release decisions and
 explicitly grabs an accepted release, preserving quality and language rules.
@@ -212,10 +220,11 @@ Ready requires a confirmed library file and every requested language, ready for
 Plex's normal scan. Seeding alone never confirms import. Recent ready cards stay
 visible for 24 hours, capped at 100 completed requests.
 
-All download cards show estimated audio languages as short markers such as EN
-and FR, separate from the requested language. Estimates come from release/queue
-metadata or exact torrent-hash history matches; unknown languages are not guessed
-from MULTI. Verified library audio is labelled Available audio.
+All download cards show one audio pill with short codes, such as **Audio: FR, EN**.
+It uses verified library languages when ready, release estimates during download,
+and the requested language while search results are unknown. The tooltip identifies
+the source and full language names. Estimates come from release/queue metadata or
+exact torrent-hash history matches; languages are not guessed from MULTI.
 Magnets waiting for peers show **Fetching torrent metadata** instead of a zero-byte download. Animations
 respect reduced-motion preferences. Indexer names are saved for newly selected
 releases; older jobs can show **Indexer unavailable**.
@@ -255,6 +264,11 @@ Searching cards offer **Retry search** when no release has entered the queue.
 the shared view. Seeing another user's title does not grant retry access. Late
 responses are discarded when the filter, account, or role changes. Adding a
 series with automatic searching disabled does not create an active download.
+
+Transfer snapshots are cached for 15 seconds by default. Expired snapshots wait
+for a live response; a failed refresh reports a service error instead of keeping
+removed torrents visible. Refresh bypasses the queue caches. An older in-flight
+response cannot repopulate a cache after invalidation or a newer forced refresh.
 
 Configure the shared folders below for the automatic merging fallback.
 The Docker image includes FFmpeg and FFprobe. Host development needs both tools

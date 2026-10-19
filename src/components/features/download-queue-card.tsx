@@ -47,7 +47,10 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
   const cooldown = !isAdmin && (remaining > 0 || item.retryAvailableAt == null);
   const audio = !!item.audio;
   const confirmedLanguages = item.libraryReady ? normalizeAudioLanguages(item.availableAudioLanguages) : [];
-  const releaseLanguages = confirmedLanguages.length ? confirmedLanguages : normalizeAudioLanguages(item.estimatedAudioLanguages);
+  const estimatedLanguages = normalizeAudioLanguages(item.estimatedAudioLanguages);
+  const requestedLanguages = normalizeAudioLanguages(item.requestedAudioLanguages ?? item.audio?.languages);
+  const displayLanguages = confirmedLanguages.length ? confirmedLanguages : estimatedLanguages.length ? estimatedLanguages : requestedLanguages;
+  const languageSource = confirmedLanguages.length ? 'Available audio' : estimatedLanguages.length ? 'Estimated audio' : 'Requested audio';
   const Icon = audio ? AudioLines : item.source === 'radarr' ? Film : item.source === 'sonarr' ? Tv : Download;
   const phase = isRetrying ? 'searching' : item.hasError || item.isStalled || ['failed', 'warning'].includes(item.status) ? 'error' :
     item.libraryReady ? 'ready' : item.isSearching ? 'searching' : item.isAwaitingDownload ? 'submitting' : item.lifecyclePhase ?? item.audio?.phase ??
@@ -89,19 +92,14 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
         </div>
         <div className="flex flex-wrap gap-2">
           {item.quality && <Badge variant="outline" className="font-normal">{item.quality}</Badge>}
-          {(item.requestedAudioLanguages ?? item.audio?.languages ?? []).map((language) => <Badge key={language.id} variant="secondary" className="gap-1.5">
-            <Languages className="size-3" aria-hidden="true" />Audio: {language.name}
-          </Badge>)}
+          <Badge variant="secondary" className="gap-1.5"
+            title={displayLanguages.length ? `${languageSource}: ${displayLanguages.map((language) => language.name).join(', ')}` : 'Audio languages unknown'}>
+            <Languages className="size-3" aria-hidden="true" />
+            Audio: {displayLanguages.length ? displayLanguages.map(audioLanguageMarker).join(', ') : 'Unknown'}
+          </Badge>
           <Badge variant="outline" className="font-normal text-muted-foreground">
             {item.indexer || (phase === 'searching' ? 'Choosing an indexer' : 'Indexer unavailable')}
           </Badge>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground" aria-label={confirmedLanguages.length ? 'Available audio languages' : 'Estimated audio languages'}>
-          <Languages className="size-3.5" aria-hidden="true" />
-          <span>{confirmedLanguages.length ? 'Available audio' : 'Estimated audio'}</span>
-          {releaseLanguages.length ? releaseLanguages.map((language) => <Badge key={language.id} variant="outline" className="font-normal" title={language.name}>
-            <abbr title={language.name} className="no-underline">{audioLanguageMarker(language)}</abbr>
-          </Badge>) : <span>Unknown</span>}
         </div>
         {indeterminate ? <AudioSearchIndicator label={`${label}…`} audio={audio} /> : (
           <div role={phase === 'error' ? 'alert' : 'status'} className={cn('flex items-center gap-2 text-sm', phase === 'error' && 'text-destructive')}>

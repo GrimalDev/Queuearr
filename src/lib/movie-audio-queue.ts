@@ -21,7 +21,8 @@ export function getMovieAudioQueue(
       availableAudioLanguages: getAvailableAudio(movie), estimatedAudioLanguages: readAudioLanguages(job.estimatedLanguages),
       subtitle: movie.year?.toString(), status: 'completed', progress: 100, size: 0, sizeRemaining: 0, hasError: false, isStalled: false,
     }];
-    const isRegrab = job.state === 'regrabbing' || job.regrabFileId != null;
+    const isRegrab = job.state === 'regrabbing' || job.regrabFileId != null ||
+      !!movie.hasFile && !job.donorHash && !job.donorLanguageId && !job.outputPath;
     const additionalAudio = movie.hasFile && !isRegrab;
     const available = getAvailableAudio(movie);
     const missing = policy.requiredLanguages.filter((language) => !available.some((item) => item.id === language.id));

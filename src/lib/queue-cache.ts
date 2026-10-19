@@ -47,68 +47,30 @@ async function getOrLoad<K extends QueueCacheKey>(
     return current.value;
   }
 
-  if (!options.forceRefresh && current?.value) {
-    if (!current.inFlight) {
-      const inFlight = loader()
-        .then((value) => {
-          queueCache.set(key, {
-            value,
-            expiresAt: Date.now() + getCacheTtlMs(),
-          } as CacheEntry<QueueCacheKey>);
-          return value;
-        })
-        .catch((error: unknown) => {
-          queueCache.set(key, {
-            value: current.value,
-            expiresAt: current.expiresAt,
-          } as CacheEntry<QueueCacheKey>);
-          throw error;
-        });
-
-      queueCache.set(key, {
-        value: current.value,
-        expiresAt: current.expiresAt,
-        inFlight,
-      } as CacheEntry<QueueCacheKey>);
-
-      void inFlight.catch((error: unknown) => {
-        console.error(`[queue-cache] Background refresh failed for ${key}:`, error);
-      });
-    }
-
-    return current.value;
-  }
-
   if (!options.forceRefresh && current?.inFlight) {
     return current.inFlight;
   }
 
+  // Expired transfers need live confirmation. A failed refresh must not keep
+  // presenting deleted torrents as active downloads indefinitely.
+  const entry: CacheEntry<K> = { expiresAt: 0 };
   const inFlight = loader()
     .then((value) => {
-      queueCache.set(key, {
-        value,
-        expiresAt: Date.now() + getCacheTtlMs(),
-      } as CacheEntry<QueueCacheKey>);
+      if (queueCache.get(key) === entry) {
+        queueCache.set(key, {
+          value,
+          expiresAt: Date.now() + getCacheTtlMs(),
+        } as CacheEntry<QueueCacheKey>);
+      }
       return value;
     })
     .catch((error: unknown) => {
-      const stale = queueCache.get(key) as CacheEntry<K> | undefined;
-      if (stale?.value) {
-        queueCache.set(key, {
-          value: stale.value,
-          expiresAt: stale.expiresAt,
-        } as CacheEntry<QueueCacheKey>);
-      } else {
-        queueCache.delete(key);
-      }
+      if (queueCache.get(key) === entry) queueCache.delete(key);
       throw error;
     });
 
-  queueCache.set(key, {
-    value: current?.value,
-    expiresAt: current?.expiresAt ?? 0,
-    inFlight,
-  } as CacheEntry<QueueCacheKey>);
+  entry.inFlight = inFlight;
+  queueCache.set(key, entry as CacheEntry<QueueCacheKey>);
 
   return inFlight;
 }

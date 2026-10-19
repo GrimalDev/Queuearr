@@ -284,9 +284,9 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
         .map((request) => request.item.tmdbId).filter((id) => id != null).slice(0, 20).join(',');
 
       const [radarrRes, sonarrRes, transmissionRes, monitoredRes, audioRes] = await Promise.allSettled([
-        fetch(`/api/radarr/queue?filter=${fetchFilter}`),
-        fetch(`/api/sonarr/queue?filter=${fetchFilter}`),
-        fetch(`/api/transmission?filter=${fetchFilter}`),
+        fetch(`/api/radarr/queue?filter=${fetchFilter}${force ? '&refresh=1' : ''}`),
+        fetch(`/api/sonarr/queue?filter=${fetchFilter}${force ? '&refresh=1' : ''}`),
+        fetch(`/api/transmission?filter=${fetchFilter}${force ? '&refresh=1' : ''}`),
         fetch(`/api/downloads/watch?filter=${fetchFilter}&includeReady=1`),
         fetch(`/api/radarr/audio/queue?filter=${fetchFilter}&settled=${acceptedIds}&includeReady=1`),
       ]);

@@ -85,8 +85,11 @@ export async function requestMovieAudio(
     if (!movie.id) throw new Error('Radarr returned a movie without an ID');
     const savedPolicy = { tmdbId, radarrMovieId: movie.id, baseProfileId: base.id, requiredLanguages: required };
     const continuing = !!previousJob?.donorHash || !!previousJob?.outputPath || previousJob?.regrabFileId != null;
-    const pendingJob = { state: continuing ? previousJob!.state : hasRequiredAudio(movie, required) && !forceDownload ? 'available' : 'pending',
-      detail: continuing ? previousJob!.detail : 'Applying the requested audio profile.', nextAttemptAt: 0,
+    const searchReplacement = !!movie.hasFile && !!previousJob?.donorHash && !previousJob.outputPath &&
+      previousJob.regrabFileId == null && !previousJob.replaceDonor &&
+      required.some((language) => !policy?.requiredLanguages.some((saved) => saved.id === language.id));
+    const pendingJob = { state: searchReplacement ? 'pending' : continuing ? previousJob!.state : hasRequiredAudio(movie, required) && !forceDownload ? 'available' : 'pending',
+      detail: searchReplacement ? 'Searching for a complete movie with all requested audio.' : continuing ? previousJob!.detail : 'Applying the requested audio profile.', nextAttemptAt: 0,
       ...(!continuing ? { estimatedLanguages: '[]' } : {}) };
     if (forceDownload || !hasRequiredAudio(movie, required)) {
       saveTrackedMovieAudioRequest(savedPolicy, pendingJob, movie.title, userId);
@@ -100,9 +103,9 @@ export async function requestMovieAudio(
     const satisfied = hasRequiredAudio(movie, required);
     const regrabbing = previousJob?.regrabFileId !== null && previousJob?.regrabFileId !== undefined;
     const processingAudio = !!previousJob?.donorHash || !!previousJob?.outputPath;
-    let detail = regrabbing || processingAudio ? previousJob!.detail :
+    let detail = searchReplacement ? 'Searching for a complete movie with all requested audio.' : regrabbing || processingAudio ? previousJob!.detail :
       satisfied ? 'All requested audio languages are available.' : 'Searching for a release with the requested audio.';
-    let state = regrabbing || processingAudio ? previousJob!.state : satisfied ? 'available' : 'pending';
+    let state = searchReplacement ? 'pending' : regrabbing || processingAudio ? previousJob!.state : satisfied ? 'available' : 'pending';
     updateMovieAudioJob(tmdbId, { state, detail, nextAttemptAt: 0 });
     let searchStarted = false;
     if (forceDownload && satisfied && !regrabbing && !processingAudio) {
@@ -133,19 +136,8 @@ export async function requestMovieAudio(
       }
     } else if (!satisfied || regrabbing) {
       if (!processingAudio && !regrabbing) startDownloadRetryCooldown('radarr', movieId);
-      try {
-        if (!processingAudio && !regrabbing &&
-            !(await client.getQueue(false)).records.some((item) => item.movieId === movie.id)) {
-          if (movie.hasFile) {
-            await client.triggerSearch([movieId]);
-            searchStarted = true;
-          }
-          // Initial movies are searched and explicitly grabbed by the worker.
-          // Sending a fire-and-forget search here used to leave an endless search card.
-        }
-      } catch {
-        console.warn('[audio] Request saved but Radarr could not start the movie search');
-      }
+      // The durable worker searches for a full replacement before considering donors.
+      // A separate Radarr search here could race that selection and its fallback.
     }
     return {
       movieId: movie.id!, state, detail,
