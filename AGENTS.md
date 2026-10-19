@@ -286,6 +286,9 @@ tmux split-window -v -t '=queuarr' -c /Users/grimaldev/code/projects/queuarr fis
   SQLite policies/jobs/leases, and the instrumentation-started worker.
 - Use FFprobe for inspection and FFmpeg stream copy for audio merging. Never
   infer synchronization from duration alone or silently drop existing tracks.
+- Replacement eligibility requires only explicitly requested languages. Bundled
+  tracks must not become requirements. A full replacement may omit incidental
+  languages; donor audio merging still preserves all existing streams.
 - Audio merging is always enabled; there is no environment activation switch.
   Do not initiate real downloads during development without configured shared
   media folders. Use mocked services for verification.

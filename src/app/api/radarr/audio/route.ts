@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { getMovieAudioJobs, getMovieAudioPolicies } from '@/lib/db/movie-audio';
-import { getAvailableAudio, getPublicMovieAudioDetail, isMovieAudioLanguage } from '@/lib/movie-audio-policy';
+import { getAvailableAudio, getPublicMovieAudioDetail, isMovieAudioLanguage, normalizeMovieAudioPolicy } from '@/lib/movie-audio-policy';
 import { movieAudioErrorResponse } from '@/lib/movie-audio-errors';
 import { MovieAudioRequestError, requestMovieAudio } from '@/lib/movie-audio-request';
 
@@ -17,7 +17,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const client = createRadarrClient();
     const movie = policy && client ? await client.getMovie(policy.radarrMovieId) : undefined;
     return NextResponse.json({
-      state: job?.state, detail: getPublicMovieAudioDetail(job?.state, job?.detail), requiredLanguages: policy?.requiredLanguages ?? [],
+      state: job?.state, detail: getPublicMovieAudioDetail(job?.state, job?.detail),
+      requiredLanguages: policy && movie ? normalizeMovieAudioPolicy(policy, movie).requiredLanguages : policy?.requiredLanguages ?? [],
       availableLanguages: movie ? getAvailableAudio(movie) : [],
       hasFile: !!movie?.hasFile,
     });

@@ -49,8 +49,9 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
   const confirmedLanguages = item.libraryReady ? normalizeAudioLanguages(item.availableAudioLanguages) : [];
   const estimatedLanguages = normalizeAudioLanguages(item.estimatedAudioLanguages);
   const requestedLanguages = normalizeAudioLanguages(item.requestedAudioLanguages ?? item.audio?.languages);
-  const displayLanguages = confirmedLanguages.length ? confirmedLanguages : estimatedLanguages.length ? estimatedLanguages : requestedLanguages;
-  const languageSource = confirmedLanguages.length ? 'Available audio' : estimatedLanguages.length ? 'Estimated audio' : 'Requested audio';
+  const searchingForLanguages = (item.isSearching || isRetrying) && requestedLanguages.length > 0;
+  const displayLanguages = searchingForLanguages ? requestedLanguages : confirmedLanguages.length ? confirmedLanguages : estimatedLanguages.length ? estimatedLanguages : requestedLanguages;
+  const languageSource = searchingForLanguages ? 'Requested audio' : confirmedLanguages.length ? 'Available audio' : estimatedLanguages.length ? 'Estimated audio' : 'Requested audio';
   const Icon = audio ? AudioLines : item.source === 'radarr' ? Film : item.source === 'sonarr' ? Tv : Download;
   const phase = isRetrying ? 'searching' : item.hasError || item.isStalled || ['failed', 'warning'].includes(item.status) ? 'error' :
     item.libraryReady ? 'ready' : item.isSearching ? 'searching' : item.isAwaitingDownload ? 'submitting' : item.lifecyclePhase ?? item.audio?.phase ??

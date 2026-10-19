@@ -28,6 +28,7 @@ export const movieAudioPolicies = sqliteTable('movie_audio_policies', {
   radarrMovieId: integer('radarr_movie_id').notNull(),
   baseProfileId: integer('base_profile_id').notNull(),
   requiredLanguages: text('required_languages').notNull(),
+  explicitLanguageRequests: integer('explicit_language_requests', { mode: 'boolean' }).notNull().default(false),
 });
 
 // Serializes read/merge/write requests across server processes sharing this DB.

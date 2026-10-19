@@ -10,6 +10,7 @@ export interface MovieAudioPolicy {
   radarrMovieId: number;
   baseProfileId: number;
   requiredLanguages: RadarrLanguage[];
+  explicitLanguageRequests?: boolean;
 }
 
 export function getMovieAudioPolicies(): Map<number, MovieAudioPolicy> {
@@ -20,7 +21,8 @@ export function getMovieAudioPolicies(): Map<number, MovieAudioPolicy> {
 }
 
 export function saveMovieAudioPolicy(policy: MovieAudioPolicy): void {
-  const row = { ...policy, requiredLanguages: JSON.stringify(policy.requiredLanguages) };
+  const row = { ...policy, explicitLanguageRequests: policy.explicitLanguageRequests ?? true,
+    requiredLanguages: JSON.stringify(policy.requiredLanguages) };
   db.insert(movieAudioPolicies).values(row).onConflictDoUpdate({
     target: movieAudioPolicies.tmdbId, set: row,
   }).run();

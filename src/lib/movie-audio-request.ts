@@ -1,6 +1,6 @@
 import type { RadarrClient } from '@/lib/api/radarr';
 import { acquireMovieAudioLock, getMovieAudioPolicies, releaseMovieAudioLock, saveMovieAudioPolicy, getMovieAudioJobs, renewMovieAudioLock, updateMovieAudioJob, saveTrackedMovieAudioRequest } from '@/lib/db/movie-audio';
-import { getAvailableAudio, hasRequiredAudio, mergeAudioLanguages, resolveAudioLanguage } from '@/lib/movie-audio-policy';
+import { getAvailableAudio, hasRequiredAudio, mergeAudioLanguages, normalizeMovieAudioPolicy, resolveAudioLanguage } from '@/lib/movie-audio-policy';
 import { AUDIO_PROFILE_PREFIX, AudioProfileError, ensureAudioProfile } from '@/lib/radarr-audio-profile';
 import { isMovieRegrab } from '@/lib/movie-audio-releases';
 import { startDownloadRetryCooldown } from '@/lib/download-retry';
@@ -57,7 +57,8 @@ export async function requestMovieAudio(
     if (movie.hasFile && (!available.length || movie.movieFile?.languages?.some((language) => language.id <= 0))) {
       throw new MovieAudioRequestError('Radarr has not identified all audio languages in the existing file. Analyze it in Radarr before requesting a replacement.');
     }
-    const policy = getMovieAudioPolicies().get(tmdbId);
+    const saved = getMovieAudioPolicies().get(tmdbId);
+    const policy = saved ? normalizeMovieAudioPolicy(saved, movie) : undefined;
     const baseProfileId = policy?.baseProfileId ?? (movie.id ? movie.qualityProfileId : undefined) ??
       (process.env.RADARR_QUALITY_PROFILE_ID ? Number(process.env.RADARR_QUALITY_PROFILE_ID) :
         profiles.find((profile) => !profile.name.startsWith(AUDIO_PROFILE_PREFIX))?.id);
@@ -65,7 +66,7 @@ export async function requestMovieAudio(
     if (!base || base.name.startsWith(AUDIO_PROFILE_PREFIX)) {
       throw new MovieAudioRequestError('Configure a base quality profile in Radarr before requesting audio.', 503);
     }
-    const required = mergeAudioLanguages(policy?.requiredLanguages ?? [], available, [requested]);
+    const required = mergeAudioLanguages(policy?.requiredLanguages ?? [], [requested]);
     let rootFolderPath: string | undefined;
     if (!movie.id) {
       const folders = await client.getRootFolders();
@@ -83,7 +84,8 @@ export async function requestMovieAudio(
       });
     }
     if (!movie.id) throw new Error('Radarr returned a movie without an ID');
-    const savedPolicy = { tmdbId, radarrMovieId: movie.id, baseProfileId: base.id, requiredLanguages: required };
+    const savedPolicy = { tmdbId, radarrMovieId: movie.id, baseProfileId: base.id, requiredLanguages: required,
+      explicitLanguageRequests: policy?.explicitLanguageRequests ?? true };
     const continuing = !!previousJob?.donorHash || !!previousJob?.outputPath || previousJob?.regrabFileId != null;
     const searchReplacement = !!movie.hasFile && !!previousJob?.donorHash && !previousJob.outputPath &&
       previousJob.regrabFileId == null && !previousJob.replaceDonor &&

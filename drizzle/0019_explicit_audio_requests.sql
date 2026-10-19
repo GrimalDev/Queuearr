@@ -1,0 +1,1 @@
+ALTER TABLE `movie_audio_policies` ADD `explicit_language_requests` integer DEFAULT false NOT NULL;

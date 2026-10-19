@@ -1,5 +1,5 @@
 import type { MovieAudioJob, MovieAudioPolicy } from '@/lib/db/movie-audio';
-import { getAvailableAudio, getPublicMovieAudioDetail } from '@/lib/movie-audio-policy';
+import { getAvailableAudio, getPublicMovieAudioDetail, normalizeMovieAudioPolicy } from '@/lib/movie-audio-policy';
 import { TransmissionStatus, type QueueItem, type RadarrMovie, type TransmissionTorrent } from '@/types';
 import { readAudioLanguages } from '@/lib/audio-languages';
 
@@ -10,11 +10,12 @@ export function getMovieAudioQueue(
 ): QueueItem[] {
   const library = new Map(movies.map((movie) => [movie.id, movie]));
   return jobs.flatMap((job): QueueItem[] => {
-    const policy = policies.get(job.tmdbId);
+    let policy = policies.get(job.tmdbId);
     if (!policy || job.state === 'cancelled' || (job.state === 'available' && !settledIds.has(job.tmdbId)) ||
         (visibleMovieIds && !visibleMovieIds.has(policy.radarrMovieId))) return [];
     const movie = library.get(policy.radarrMovieId);
     if (!movie || movie.tmdbId !== job.tmdbId) return [];
+    policy = normalizeMovieAudioPolicy(policy, movie);
     if (job.state === 'available') return [{
       id: `request-radarr-${policy.radarrMovieId}`, tmdbId: job.tmdbId, mediaId: policy.radarrMovieId, source: 'radarr', title: movie.title,
       libraryReady: true, requestedAudioLanguages: policy.requiredLanguages, indexer: job.donorIndexer ?? undefined,

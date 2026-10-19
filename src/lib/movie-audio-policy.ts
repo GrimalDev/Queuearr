@@ -1,4 +1,5 @@
 import type { MovieAudioLanguage, RadarrLanguage, RadarrMovie } from '@/types';
+import type { MovieAudioPolicy } from '@/lib/db/movie-audio';
 import { IN_CINEMAS_SEARCH_MESSAGE } from '@/lib/movie-release-status';
 
 export const MOVIE_AUDIO_OPTIONS: { value: MovieAudioLanguage; label: string }[] = [
@@ -17,6 +18,17 @@ export function mergeAudioLanguages(...lists: RadarrLanguage[][]): RadarrLanguag
     if (Number.isSafeInteger(language.id) && language.id > 0) languages.set(language.id, language);
   }
   return [...languages.values()].sort((a, b) => a.id - b.id);
+}
+
+/** Older policies mixed requests with every bundled track. Only these UI choices could have been requested. */
+export function normalizeMovieAudioPolicy(policy: MovieAudioPolicy, movie: RadarrMovie): MovieAudioPolicy {
+  if (policy.explicitLanguageRequests !== false || !movie.originalLanguage || movie.originalLanguage.id <= 0) return policy;
+  const selectable = new Set([1, 2, movie.originalLanguage.id]);
+  const requiredLanguages = policy.requiredLanguages.filter((language) => selectable.has(language.id));
+  // Do not erase a historical Original request if Radarr's original-language metadata changed.
+  if (!requiredLanguages.length) return policy;
+  return { ...policy, explicitLanguageRequests: true,
+    requiredLanguages };
 }
 
 export function getAvailableAudio(movie: RadarrMovie): RadarrLanguage[] {

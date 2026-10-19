@@ -8,7 +8,7 @@ import {
   getMovieAudioPolicies, saveMovieAudioPolicy, updateMovieAudioJob, type MovieAudioJob, type MovieAudioPolicy,
 } from '@/lib/db/movie-audio';
 import { AudioProfileError, ensureAudioProfile } from '@/lib/radarr-audio-profile';
-import { getAvailableAudio, hasRequiredAudio, mergeAudioLanguages } from '@/lib/movie-audio-policy';
+import { getAvailableAudio, hasRequiredAudio, normalizeMovieAudioPolicy } from '@/lib/movie-audio-policy';
 import { AudioReviewError, confinedFile, containsAudioLanguages, isInside, languageCodes, prepareAudioMerge, prepareMovieReplacement, verifyAudio } from '@/lib/movie-audio-media';
 import { canReplaceFromDonor, donorMetadata, isAudioDonor, isMovieRegrab, publishedDonorQuality } from '@/lib/movie-audio-releases';
 import { rememberDownloadTransfer } from '@/lib/db/download-transfers';
@@ -87,6 +87,11 @@ async function processJob(
   }
   let movie = await client.getMovie(policy.radarrMovieId);
   if (movie.tmdbId !== id) throw new AudioReviewError('The Radarr movie no longer matches this request.');
+  const requestedPolicy = normalizeMovieAudioPolicy(policy, movie);
+  if (requestedPolicy !== policy) {
+    policy = requestedPolicy;
+    saveMovieAudioPolicy(policy);
+  }
   if (job.regrabFileId !== null) {
     const downloading = (await client.getQueue(false)).records.some((item) => item.movieId === movie.id);
     if (downloading && (!movie.hasFile || movie.movieFile?.id === job.regrabFileId)) {
@@ -104,11 +109,6 @@ async function processJob(
   }
   if (movie.hasFile && (getAvailableAudio(movie).length === 0 || movie.movieFile?.languages?.some((language) => language.id <= 0))) {
     throw new AudioReviewError('Analyze the existing movie in Radarr to identify every audio language first.');
-  }
-  const union = mergeAudioLanguages(policy.requiredLanguages, getAvailableAudio(movie));
-  if (union.length !== policy.requiredLanguages.length) {
-    policy = { ...policy, requiredLanguages: union };
-    saveMovieAudioPolicy(policy);
   }
   const profiles = await client.getQualityProfiles();
   const base = profiles.find((profile) => profile.id === policy.baseProfileId);
