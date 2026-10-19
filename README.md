@@ -162,7 +162,12 @@ For an initial movie download, the worker reads Radarr's release decisions and
 explicitly grabs an accepted release, preserving quality and language rules.
 It waits for any active Radarr movie search instead of starting a competing grab.
 No accepted result produces **Error** on the card and a summary in server logs;
-the worker checks again after 15 minutes. A submitted release shows its indexer
+the worker checks again after 15 minutes. When Radarr identifies a movie as still
+in cinemas and the search returns no eligible release, the card instead shows
+**Still in cinemas. No suitable release is available yet.** This also applies to
+initial movie downloads with a language request. Connection and service errors
+remain generic. Cinema searches retain automatic retries and manual retry controls.
+A submitted release shows its indexer
 and **Waiting for the download client**. Queuearr does not resubmit an uncertain
 grab. If no download appears within five minutes, it logs the problem and pauses
 the request for review.
@@ -178,9 +183,11 @@ completed without another grab.
 New ordinary movie and series requests save tracking, requesters, and a search
 job in one SQLite transaction before external search/grab calls. Season and
 episode selections are persisted and reused on retries. Legacy series requests
-without a saved selection show **Error** with **Choose seasons or episodes**;
-Queuearr never guesses a whole-series search. Recovered requests also retain the
-existing five-minute manual retry cooldown and admin override.
+without a saved selection show **Error** with **Retry search**. Clicking retry
+saves a series search using Sonarr's current monitored seasons and episodes.
+Startup recovery does not automatically search these legacy series. Saved season
+and episode selections remain unchanged. Recovered requests retain the existing
+five-minute manual retry cooldown and admin override.
 
 Error cards for blocked/failed imports offer retry even if the service reports
 an import-related status. The server rechecks ownership, queue IDs, active imports,

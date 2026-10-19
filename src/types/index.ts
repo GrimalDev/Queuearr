@@ -412,7 +412,7 @@ export interface QueueItem {
   tmdbId?: number;
   isSearching?: boolean;
   isAwaitingDownload?: boolean;
-  requiresSelection?: boolean;
+  searchError?: 'in_cinemas';
   canRetrySearch?: boolean;
   canCancelSearch?: boolean;
   canRetry?: boolean;

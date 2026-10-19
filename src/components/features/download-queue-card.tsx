@@ -2,12 +2,12 @@
 
 import { AudioLines, ArrowUpToLine, Bug, Check, CircleAlert, Clock, Download, Film, Languages, Loader2, RotateCcw, Trash2, Tv, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { AudioSearchIndicator } from '@/components/features/audio-search-indicator';
+import { IN_CINEMAS_SEARCH_MESSAGE } from '@/lib/movie-release-status';
 import { cn } from '@/lib/utils';
 import type { QueueItem } from '@/types';
 
@@ -51,14 +51,14 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
       item.status === 'completed' || item.status === 'seeding' ? 'ready' : item.status === 'importing' ? 'importing' :
         item.status === 'pending' ? 'validating' : 'downloading');
   const labels = {
-    searching: audio ? 'Searching for audio' : item.isRegrab || isRetrying ? 'Searching for a replacement release' : 'Searching for a release',
+    searching: audio ? 'Searching for audio' : item.isRegrab || isRetrying && !item.canRetrySearch ? 'Searching for a replacement release' : 'Searching for a release',
     submitting: 'Waiting for the download client',
     metadata: 'Fetching torrent metadata', downloading: audio ? 'Downloading audio' : 'Downloading',
     validating: audio ? 'Checking audio and synchronization' : 'Checking download', merging: 'Merging audio', verifying: 'Verifying merged audio',
     importing: 'Importing into the library', ready: item.status === 'seeding' ? 'Seeding' : 'Ready', error: 'Error',
   };
   const waiting = !isRetrying && !item.isSearching && (item.status === 'paused' || item.status === 'queued');
-  const label = phase === 'error' ? 'Error' : waiting ? item.status === 'paused' ? 'Paused' : 'Queued'
+  const label = phase === 'error' ? item.searchError === 'in_cinemas' ? IN_CINEMAS_SEARCH_MESSAGE : 'Error' : waiting ? item.status === 'paused' ? 'Paused' : 'Queued'
     : phase === 'downloading' && item.progress >= 100 ? audio ? 'Waiting for audio checks' : 'Waiting for import' : labels[phase];
   const step = phase === 'searching' ? 0 : phase === 'submitting' || phase === 'metadata' || phase === 'downloading' ? 1 :
     phase === 'validating' || phase === 'importing' ? 2 : 3;
@@ -110,14 +110,13 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
             </div>
           </div>
         )}
-        {(onRetry || onCancelSearch || onDelete || onPassFirst || isAdmin || item.requiresSelection || item.hasError && item.canRetry) && <div className="flex flex-wrap items-center gap-2">
-          {item.requiresSelection && <Button variant="outline" size="sm" asChild><Link href="/">Choose seasons or episodes</Link></Button>}
-          {!onRetry && !item.requiresSelection && item.hasError && (isAdmin || item.canRetry) && <Button variant="outline" size="sm" disabled title="Review is required before retrying.">Retry unavailable</Button>}
+        {(onRetry || onCancelSearch || onDelete || onPassFirst || isAdmin || item.hasError && item.canRetry) && <div className="flex flex-wrap items-center gap-2">
+          {!onRetry && item.hasError && (isAdmin || item.canRetry) && <Button variant="outline" size="sm" disabled title="Review is required before retrying.">Retry unavailable</Button>}
           {onRetry && <Button variant="outline" size="sm" disabled={isRetrying || isDeleting || cooldown} onClick={onRetry}
             title={isAdmin && remaining > 0 ? 'Override the five-minute retry cooldown' : undefined}>
             <RotateCcw className={cn('size-3.5', isRetrying && 'motion-safe:animate-spin')} aria-hidden="true" />
             {isRetrying ? 'Searching…' : isAdmin && remaining > 0 ? 'Retry now (admin)' : remaining > 0 ? `Retry in ${countdown}` :
-              cooldown ? 'Retry unavailable' : item.isSearching || item.audio?.phase === 'searching' ? 'Retry search' : 'Try another release'}
+              cooldown ? 'Retry unavailable' : item.canRetrySearch || item.isSearching || item.audio?.phase === 'searching' ? 'Retry search' : 'Try another release'}
           </Button>}
           {onCancelSearch && <Button variant="ghost" size="sm" aria-label={`Cancel ${item.title} search`} onClick={onCancelSearch} disabled={isDeleting || isRetrying}>
             {isDeleting ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}

@@ -73,8 +73,9 @@ export async function DELETE(request: NextRequest) {
         let scopes = parseDownloadScopes(saved.scopes);
         if (!scopes.length) {
           const episodes = queue.records.filter((item) => ids.includes(item.id)).map((item) => item.episodeId ?? item.episode?.id);
-          if (episodes.some((id) => !id)) throw new DownloadRetryError('Select the seasons or episodes again before retrying.');
-          scopes = episodes.map((episodeId) => ({ type: 'episode' as const, episodeId: episodeId! }));
+          scopes = episodes.every((id) => Number.isSafeInteger(id) && id! > 0)
+            ? episodes.map((episodeId) => ({ type: 'episode' as const, episodeId: episodeId! }))
+            : [{ type: 'series' }];
         }
         updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes), state: 'pending', indexer: null, submittedAt: null, nextAttemptAt: 0 });
         await sonarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });

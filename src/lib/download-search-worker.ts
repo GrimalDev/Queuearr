@@ -6,6 +6,7 @@ import { getDownloadSearchJobs, parseDownloadScopes, recoverDownloadSearchJobs, 
 import { logMovieAudioError } from '@/lib/movie-audio-errors';
 import { pickBestRelease } from '@/lib/smart-grab';
 import { invalidateQueueCache } from '@/lib/queue-cache';
+import { isMovieInCinemas } from '@/lib/movie-release-status';
 
 function later(job: DownloadSearchJob, state: string, delay = 30_000): void {
   updateDownloadSearchJob(job.downloadId, { state, nextAttemptAt: Date.now() + delay });
@@ -29,7 +30,7 @@ export async function runDownloadSearchJobs(): Promise<void> {
     for (const saved of getDownloadSearchJobs()) {
       if (lostLease) break;
       const download = active.get(saved.downloadId);
-      if (!download || !['pending', 'searching', 'grab_pending', 'downloading', 'search_failed'].includes(saved.state) || saved.nextAttemptAt > Date.now()) continue;
+      if (!download || !['pending', 'searching', 'grab_pending', 'downloading', 'search_failed', 'in_cinemas'].includes(saved.state) || saved.nextAttemptAt > Date.now()) continue;
       if (download.source !== 'radarr' && download.source !== 'sonarr') continue;
       titleLock = acquireMovieAudioLock(-(download.mediaId * 2 + (download.source === 'sonarr' ? 1 : 0)));
       if (!titleLock) continue;
@@ -37,7 +38,7 @@ export async function runDownloadSearchJobs(): Promise<void> {
         const job = getDownloadSearchJobs().find((item) => item.downloadId === saved.downloadId);
         // Re-read after locking: cancellation or a new request can change the job.
         const current = (await getActiveMonitoredDownloads()).find((item) => item.id === saved.downloadId);
-        if (!job || !current || !['pending', 'searching', 'grab_pending', 'downloading', 'search_failed'].includes(job.state)) continue;
+        if (!job || !current || !['pending', 'searching', 'grab_pending', 'downloading', 'search_failed', 'in_cinemas'].includes(job.state)) continue;
         const scopes = parseDownloadScopes(job.scopes);
         if (!scopes.length || scopes.some((scope) => (scope.type === 'movie') !== (download.source === 'radarr'))) {
           later(job, 'needs_selection'); continue;
@@ -69,7 +70,7 @@ export async function runDownloadSearchJobs(): Promise<void> {
           const candidate = pickBestRelease(releases);
           if (!candidate) {
             console.warn(`[downloads] radarr ${download.mediaId}: no accepted release`, { returned: releases.length });
-            later(job, 'search_failed', 15 * 60_000); continue;
+            later(job, isMovieInCinemas(movie) ? 'in_cinemas' : 'search_failed', 15 * 60_000); continue;
           }
           if (lostLease) break;
           if ((await client.getQueue(false)).records.some((item) => item.movieId === download.mediaId)) { later(job, 'downloading'); continue; }
@@ -86,7 +87,7 @@ export async function runDownloadSearchJobs(): Promise<void> {
             later(job, job.state === 'pending' ? 'pending' : 'downloading'); continue;
           }
           const episodes = await client.getEpisodes(download.mediaId);
-          const selected = episodes.filter((episode) => scopes.some((scope) => scope.type === 'series' ||
+          const selected = episodes.filter((episode) => scopes.some((scope) => scope.type === 'series' && episode.monitored === true ||
             scope.type === 'season' && episode.seasonNumber === scope.seasonNumber || scope.type === 'episode' && episode.id === scope.episodeId));
           if (selected.length && selected.every((episode) => episode.hasFile)) { later(job, 'complete'); continue; }
           if (await client.hasActiveSeriesSearch(download.mediaId, episodes.map((episode) => episode.id))) {
@@ -100,7 +101,7 @@ export async function runDownloadSearchJobs(): Promise<void> {
           }
           if (lostLease) break;
           updateDownloadSearchJob(job.downloadId, { state: 'searching', submittedAt: Date.now(), nextAttemptAt: Date.now() + 30_000 });
-          // Only replay selections explicitly saved by the user. Legacy scopes remain blocked.
+          // Legacy requests receive a series scope only after an explicit retry.
           for (const scope of scopes) {
             if (scope.type === 'series') await client.triggerSearch(download.mediaId);
             else if (scope.type === 'season') await client.triggerSeasonSearch(download.mediaId, scope.seasonNumber);

@@ -14,6 +14,7 @@ import { isAudioDonor } from '@/lib/movie-audio-releases';
 import { getMovieAudioTorrentSource } from '@/lib/movie-audio-download';
 import { audioReleaseKey, isRejectedAudioRelease, rejectedAudioDonors } from '@/lib/movie-audio-attempts';
 import { pickBestRelease } from '@/lib/smart-grab';
+import { isMovieInCinemas, IN_CINEMAS_SEARCH_MESSAGE } from '@/lib/movie-release-status';
 import type { Release } from '@/types';
 
 interface AudioPaths { library: string; donors: string; backups: string }
@@ -167,7 +168,9 @@ async function processJob(
         customFormat: reasons.filter((reason) => /custom format|score/i.test(reason)).length,
         blocklisted: reasons.filter((reason) => /blocklist/i.test(reason)).length,
       });
-      later(id, 'No eligible initial movie release was returned by Radarr.', 'search_failed');
+      const inCinemas = isMovieInCinemas(movie);
+      later(id, inCinemas ? IN_CINEMAS_SEARCH_MESSAGE : 'No eligible initial movie release was returned by Radarr.',
+        inCinemas ? 'in_cinemas' : 'search_failed');
       return;
     }
     const indexer = candidate.indexer || `Indexer ${candidate.indexerId}`;

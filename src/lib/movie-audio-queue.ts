@@ -24,7 +24,7 @@ export function getMovieAudioQueue(
     const missing = policy.requiredLanguages.filter((language) => !available.some((item) => item.id === language.id));
     const languages = job.donorLanguageId
       ? policy.requiredLanguages.filter((language) => language.id === job.donorLanguageId) : missing;
-    const hasError = getPublicMovieAudioDetail(job.state, job.detail) === 'Error';
+    const hasError = job.state === 'in_cinemas' || getPublicMovieAudioDetail(job.state, job.detail) === 'Error';
     const phase = hasError ? 'error' : job.state === 'validating' || job.state === 'merging' || job.state === 'verifying'
       ? job.state : job.state === 'downloading' ? 'downloading' : 'searching';
     return [{
@@ -32,8 +32,9 @@ export function getMovieAudioQueue(
       source: 'radarr', mediaId: policy.radarrMovieId, isRegrab,
       isSearching: (job.replaceDonor || !additionalAudio) && !hasError && job.state !== 'grab_pending',
       isAwaitingDownload: job.state === 'grab_pending',
+      searchError: job.state === 'in_cinemas' ? 'in_cinemas' : undefined,
       canRetrySearch: !job.donorHash && !job.outputPath && job.restoreMonitored == null && !job.replaceDonor &&
-        ['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed'].includes(job.state),
+        ['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed', 'in_cinemas'].includes(job.state),
       title: movie.title, subtitle: movie.year?.toString(), transmissionHash: job.donorHash ?? undefined,
       audio: additionalAudio ? { phase, languages,
         canRetry: !!job.donorHash && !job.outputPath && job.restoreMonitored == null && !job.replaceDonor &&

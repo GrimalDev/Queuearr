@@ -59,13 +59,14 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
     };
   });
   const publicDetail = getPublicMovieAudioDetail(status.state, status.detail);
+  const hasSearchError = publicDetail === 'Error' || status.state === 'in_cinemas';
   const selected = options.find((option) => option.value === language)!;
   const hasFile = status.hasFile ?? result.hasFile ?? false;
   const isRegrab = hasFile && selected.present;
   const actionLabel = !hasFile ? 'Grab' : selected.present ? 'Regrab' : 'Add language';
-  const searchingAudio = !error && publicDetail !== 'Error' && hasFile &&
+  const searchingAudio = !error && !hasSearchError && hasFile &&
     ((busy && !selected.present) || status.state === 'pending');
-  const searchingMovie = !error && publicDetail !== 'Error' && !searchingAudio &&
+  const searchingMovie = !error && !hasSearchError && !searchingAudio &&
     (busy || status.state === 'pending' || status.state === 'regrabbing');
   const pendingLanguage = searchingAudio && !selected.present &&
     status.requiredLanguages.some((item) => item.id === selected.id);
@@ -135,7 +136,7 @@ export function MovieAudioRequest({ result }: { result: SearchResult }): React.J
       </div>
       {searchingAudio && <AudioSearchIndicator />}
       {searchingMovie && <AudioSearchIndicator audio={false} label={isRegrab ? 'Searching for a replacement release…' : 'Searching for a movie release…'} />}
-      {!searchingAudio && !searchingMovie && !error && publicDetail && status.state !== 'available' && <p role={publicDetail === 'Error' ? 'alert' : 'status'} className={cn('text-xs', publicDetail === 'Error' ? 'text-destructive' : 'text-muted-foreground')}>{publicDetail}</p>}
+      {!searchingAudio && !searchingMovie && !error && publicDetail && status.state !== 'available' && <p role={hasSearchError ? 'alert' : 'status'} className={cn('text-xs', hasSearchError ? 'text-destructive' : 'text-muted-foreground')}>{publicDetail}</p>}
       {(busy || (status.state && status.state !== 'available' && status.state !== 'cancelled')) && !error && <Button asChild variant="ghost" size="sm" className="w-full gap-2">
         <Link href="/queue">View downloads<ArrowRight className="size-4" aria-hidden="true" /></Link>
       </Button>}

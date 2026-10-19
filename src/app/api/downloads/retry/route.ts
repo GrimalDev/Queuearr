@@ -41,8 +41,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
         const monitored = await getLatestMonitoredDownloadBySourceMedia(source, mediaId);
         const saved = ensureDownloadSearchJob(monitored!.id, source);
-        if (!parseDownloadScopes(saved.scopes).length) throw new DownloadRetryError('Select the seasons or episodes again before retrying.');
-        updateDownloadSearchJob(saved.downloadId, { state: 'pending', indexer: null, submittedAt: null, nextAttemptAt: 0 });
+        // An explicit retry of a legacy request uses Sonarr's current monitoring.
+        const scopes = parseDownloadScopes(saved.scopes);
+        updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes.length ? scopes : [{ type: 'series' }]),
+          state: 'pending', indexer: null, submittedAt: null, nextAttemptAt: 0 });
       } else {
         const client = createRadarrClient();
         if (!client) throw new DownloadRetryError('Radarr is not configured.', 503);

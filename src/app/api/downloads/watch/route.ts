@@ -27,7 +27,6 @@ export async function GET(request: NextRequest) {
     searchState: searchJobs.get(download.id)?.state,
     searchIndexer: searchJobs.get(download.id)?.indexer,
     retryRequiresReview: searchJobs.get(download.id)?.state === 'needs_review' && searchJobs.get(download.id)?.submittedAt !== null,
-    requiresSelection: download.source === 'sonarr' && (!searchJobs.has(download.id) || searchJobs.get(download.id)?.state === 'needs_selection'),
   })));
 }
 

@@ -42,7 +42,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const searchJob = getDownloadSearchJobs().find((item) => item.downloadId === download.id);
     if (searchJob?.state === 'grab_pending') throw new DownloadRetryError('A release submission is already pending.');
     if (job ? job.donorHash || job.outputPath || job.restoreMonitored !== null || job.replaceDonor ||
-        !['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed'].includes(job.state)
+        !['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed', 'in_cinemas'].includes(job.state)
       : download.completedAt !== null || (!searchJob && download.lastStatus !== null)) {
       throw new DownloadRetryError('Only a pending search can be cancelled.');
     }

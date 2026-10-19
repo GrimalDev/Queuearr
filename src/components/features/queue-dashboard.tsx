@@ -481,7 +481,7 @@ export function QueueDashboard() {
               isDeleting={deletingIds.has(item.id)}
               isPassing={passingIds.has(item.id)}
               onRetry={item.audio?.canRetry ? () => handleAudioRetry(item) : item.canRetrySearch ? () => handleSearchRetry(item) :
-                !item.audio && !item.requiresSelection && (isAdmin || item.canRetry) && item.sourceId && (item.hasError || item.isStalled || !['importing', 'seeding', 'completed'].includes(item.status)) && (item.source === 'radarr' || item.source === 'sonarr') ? () => handleRetry(item) : undefined}
+                !item.audio && (isAdmin || item.canRetry) && item.sourceId && (item.hasError || item.isStalled || !['importing', 'seeding', 'completed'].includes(item.status)) && (item.source === 'radarr' || item.source === 'sonarr') ? () => handleRetry(item) : undefined}
               onCancelSearch={(item.canCancelSearch ?? item.canRetrySearch) ? () => handleCancelSearch(item) : undefined}
               onDelete={!item.audio && item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
               onPassFirst={!item.audio && isAdmin && (item.transmissionId ?? item.transmissionHash) && (item.status === 'queued' || item.status === 'pending')
