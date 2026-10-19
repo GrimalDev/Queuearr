@@ -132,7 +132,7 @@ async function processJob(
         }
       }
     }
-    updateMovieAudioJob(id, { state: 'available', detail: 'All requested audio languages are available.', outputPath: null, donorHash: null, donorLanguageId: null, donorReleaseKey: null, rejectedDonors: '[]', replaceDonor: false });
+    updateMovieAudioJob(id, { state: 'available', detail: 'All requested audio languages are available.', outputPath: null, donorHash: null, donorLanguageId: null, donorReleaseKey: null, replaceDonor: false });
     return;
   }
   if (job.outputPath) {
@@ -140,7 +140,7 @@ async function processJob(
     if (movie.movieFile?.path === job.outputPath && mergedLanguage && hasRequiredAudio(movie, [mergedLanguage])) {
       const paths = await audioPaths();
       await verifyAudio(await confinedFile(paths.library, job.outputPath), getAvailableAudio(movie), signal);
-      updateMovieAudioJob(id, { outputPath: null, donorHash: null, donorLanguageId: null, donorIndexer: null, donorReleaseKey: null, rejectedDonors: '[]', state: 'pending', nextAttemptAt: 0 });
+      updateMovieAudioJob(id, { outputPath: null, donorHash: null, donorLanguageId: null, donorIndexer: null, donorReleaseKey: null, state: 'pending', nextAttemptAt: 0 });
       return;
     }
     const mergedFile = await confinedFile((await audioPaths()).library, job.outputPath);
@@ -268,9 +268,11 @@ async function processJob(
   if (!isInside(paths.donors, await realpath(downloadDir))) throw new AudioReviewError('The donor directory escapes the configured folder.');
   const label = `queuearr-audio-${id}-${wanted.id}`;
   const torrents = await transmission.getAudioDonors();
-  const donor = torrents.find((torrent) => !rejected.has(`hash:${torrent.hashString.toLowerCase()}`) &&
+  // Labels identify the movie/language, not the request that selected a release.
+  // Only a persisted hash may resume. An untracked torrent must never bypass selection.
+  const donor = job.donorHash ? torrents.find((torrent) => !rejected.has(`hash:${torrent.hashString.toLowerCase()}`) &&
     torrent.labels?.length === 1 && torrent.labels[0] === label && torrent.downloadDir === downloadDir &&
-    (!job.donorHash || torrent.hashString.toLowerCase() === job.donorHash.toLowerCase()));
+    torrent.hashString.toLowerCase() === job.donorHash!.toLowerCase()) : undefined;
   if (!donor) {
     if (job.donorHash) throw new AudioReviewError('The tracked audio torrent is missing or its folder/label changed.');
     const candidate = releases.find((release) => !isRejectedAudioRelease(release, rejected) && isAudioDonor(release, movie, wanted, base));

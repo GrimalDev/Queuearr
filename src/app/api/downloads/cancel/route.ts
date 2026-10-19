@@ -13,6 +13,7 @@ import { DownloadRetryError, downloadRetryErrorResponse } from '@/lib/download-r
 import { invalidateQueueCache } from '@/lib/queue-cache';
 import { ensureDownloadSearchJob, getDownloadSearchJobs, updateDownloadSearchJob } from '@/lib/db/download-search-jobs';
 import { isImportInProgress } from '@/lib/queue-retry-safety';
+import { excludeCurrentAudioDonor } from '@/lib/movie-audio-attempts';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!movieLock) throw new DownloadRetryError('This movie is being processed.');
     }
     const job = policy ? getMovieAudioJobs().find((item) => item.tmdbId === policy.tmdbId) : undefined;
+    const rejectedDonors = job ? excludeCurrentAudioDonor(job) : undefined;
     let searchJob = getDownloadSearchJobs().find((item) => item.downloadId === download.id);
     if (!activeDownload && searchJob?.state === 'grab_pending') throw new DownloadRetryError('A release submission is already pending.');
     if (job ? (!activeDownload && job.donorHash) || job.outputPath || job.restoreMonitored !== null || job.replaceDonor ||
@@ -75,7 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // Reserve cancellation before external effects so a lost response cannot restart the job.
       db.transaction(() => {
         db.update(monitoredDownloads).set({ lastStatus: 'cancelling' }).where(eq(monitoredDownloads.id, download.id)).run();
-        if (job) updateMovieAudioJob(job.tmdbId, { state: 'cancelling', detail: 'Cancelling download.' });
+        if (job) updateMovieAudioJob(job.tmdbId, { state: 'cancelling', detail: 'Cancelling download.', rejectedDonors });
         if (searchJob) updateDownloadSearchJob(download.id, { state: 'cancelling' });
       });
       if (job?.donorHash && transmission) {
@@ -88,7 +90,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .where(eq(monitoredDownloads.id, download.id)).run();
       if (job) updateMovieAudioJob(job.tmdbId, { state: 'cancelled', detail: activeDownload ? 'Download cancelled.' : 'Search cancelled.', nextAttemptAt: 0,
         regrabFileId: null, regrabRequestedAt: null, donorHash: null, donorLanguageId: null, donorIndexer: null,
-        donorReleaseKey: null, donorMetadata: null, estimatedLanguages: '[]', rejectedDonors: '[]', replaceDonor: false });
+        donorReleaseKey: null, donorMetadata: null, estimatedLanguages: '[]', rejectedDonors, replaceDonor: false });
       if (searchJob) updateDownloadSearchJob(download.id, { state: 'cancelled' });
     });
     invalidateQueueCache([source === 'radarr' ? 'radarr-queue' : 'sonarr-queue', 'transmission-state']);

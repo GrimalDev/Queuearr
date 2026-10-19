@@ -298,5 +298,8 @@ tmux split-window -v -t '=queuarr' -c /Users/grimaldev/code/projects/queuarr fis
 - Donors must remain isolated from Radarr's import category. Keep originals and
   seeding files intact. Publication replaces an inode after verification and
   backup; it must never modify a hard-linked download in place.
+- Resume donors only by their job's persisted hash, never by a matching label or
+  folder alone. Keep cancelled/rejected source exclusions across new requests
+  and completed jobs so retained torrents cannot bypass fresh release selection.
 - Validate using temporary synthetic media and mocked service responses. Follow
   the existing rule against adding test infrastructure without authorization.

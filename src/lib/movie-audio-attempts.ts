@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Release } from '@/types';
+import type { MovieAudioJob } from '@/lib/db/movie-audio';
 
 export function audioReleaseKey(release: Pick<Release, 'guid' | 'indexerId'>): string {
   // Release GUIDs may be signed URLs. Persist only a digest, never their credentials.
@@ -12,6 +13,13 @@ export function rejectedAudioDonors(value: string): Set<string> {
     throw new Error('Invalid audio retry history');
   }
   return new Set(parsed as string[]);
+}
+
+export function excludeCurrentAudioDonor(job: Pick<MovieAudioJob, 'rejectedDonors' | 'donorHash' | 'donorReleaseKey'>): string {
+  const rejected = rejectedAudioDonors(job.rejectedDonors);
+  if (job.donorHash) rejected.add(`hash:${job.donorHash.toLowerCase()}`);
+  if (job.donorReleaseKey) rejected.add(job.donorReleaseKey);
+  return JSON.stringify([...rejected]);
 }
 
 export function isRejectedAudioRelease(release: Release, rejected: Set<string>): boolean {
