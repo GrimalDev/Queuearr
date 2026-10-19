@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useAppStore, QueueServiceError, SearchSortKey, SearchSortDir } from '@/store/app-store';
-import { SearchResult, QueueItem, RadarrMovie, SonarrSeries, RadarrQueueItem, SonarrQueueItem, TransmissionTorrent, TransmissionStatus } from '@/types';
+import { SearchResult, QueueItem, RadarrMovie, SonarrSeries, RadarrQueueItem, SonarrQueueItem, TransmissionTorrent, TransmissionStatus, MonitoredQueueDownload } from '@/types';
 import { mergeMovieAudioQueue } from '@/lib/movie-audio-queue';
+import { mergeDownloadLifecycle } from '@/lib/download-lifecycle';
+import { normalizeAudioLanguages } from '@/lib/audio-languages';
 import { matchesQueueRequest, mergePendingQueueRequests } from '@/lib/queue-requests';
 
 const STALL_GRACE_PERIOD_SECONDS = 5 * 60;
@@ -285,8 +287,8 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
         fetch(`/api/radarr/queue?filter=${fetchFilter}`),
         fetch(`/api/sonarr/queue?filter=${fetchFilter}`),
         fetch(`/api/transmission?filter=${fetchFilter}`),
-        fetch(`/api/downloads/watch?filter=${fetchFilter}`),
-        fetch(`/api/radarr/audio/queue?filter=${fetchFilter}&settled=${acceptedIds}`),
+        fetch(`/api/downloads/watch?filter=${fetchFilter}&includeReady=1`),
+        fetch(`/api/radarr/audio/queue?filter=${fetchFilter}&settled=${acceptedIds}&includeReady=1`),
       ]);
 
       // Discard results if filter changed while we were fetching
@@ -295,15 +297,14 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
       }
 
       // Build source+mediaId → DB timestamps map
-      type MonitoredRow = { source: 'radarr' | 'sonarr'; mediaId: number; title: string; lastStatus: string | null; createdAt: number; lastActivityAt: number | null; lastBytesAt: number | null; retryAvailableAt?: number; userIds: string[]; searchState?: string; searchIndexer?: string | null; retryRequiresReview?: boolean };
-      const monitoredMap = new Map<string, MonitoredRow>();
+      const monitoredMap = new Map<string, MonitoredQueueDownload>();
       if (audioRes.status === 'fulfilled' && audioRes.value.ok) {
         audioItems = await audioRes.value.json() as QueueItem[];
       } else {
         errors.push({ service: 'audio', message: 'Error' });
       }
       if (monitoredRes.status === 'fulfilled' && monitoredRes.value.ok) {
-        const rows: MonitoredRow[] = await monitoredRes.value.json();
+        const rows: MonitoredQueueDownload[] = await monitoredRes.value.json();
         for (const row of rows) {
           monitoredMap.set(`${row.source}:${row.mediaId}`, row);
         }
@@ -387,6 +388,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
                 : matchedTorrent?.problemReason,
               downloadClient: item.downloadClient,
               indexer: item.indexer || matchedTorrent?.indexer,
+              estimatedAudioLanguages: normalizeAudioLanguages(item.languages).length ? normalizeAudioLanguages(item.languages) : matchedTorrent?.estimatedAudioLanguages,
               quality: item.quality?.quality?.name,
               estimatedCompletionTime: item.estimatedCompletionTime,
               peersConnected: matchedTorrent?.peersConnected,
@@ -495,6 +497,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
                 : matchedTorrent?.problemReason,
               downloadClient: item.downloadClient,
               indexer: item.indexer || matchedTorrent?.indexer,
+              estimatedAudioLanguages: normalizeAudioLanguages(item.languages).length ? normalizeAudioLanguages(item.languages) : matchedTorrent?.estimatedAudioLanguages,
               quality: item.quality?.quality?.name,
               estimatedCompletionTime: item.estimatedCompletionTime,
               peersConnected: matchedTorrent?.peersConnected,
@@ -514,27 +517,14 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
         errors.push({ service: 'sonarr', message: sonarrRes.reason?.message || 'Connection failed' });
       }
       items = mergeMovieAudioQueue(items, audioItems, transmissionHashMap);
-      for (const monitored of monitoredMap.values()) {
-        if ((monitored.lastStatus === null || monitored.searchState) && !['complete', 'cancelled'].includes(monitored.searchState ?? '') &&
-            !items.some((item) => item.source === monitored.source && item.mediaId === monitored.mediaId)) {
-          const hasError = ['search_failed', 'needs_review', 'needs_selection', 'in_cinemas'].includes(monitored.searchState ?? '');
-          items.push({ id: `search-${monitored.source}-${monitored.mediaId}`, source: monitored.source,
-            mediaId: monitored.mediaId, title: monitored.title, isSearching: !hasError && monitored.searchState !== 'grab_pending',
-            isAwaitingDownload: monitored.searchState === 'grab_pending',
-            searchError: monitored.searchState === 'in_cinemas' ? 'in_cinemas' : undefined,
-            indexer: monitored.searchIndexer ?? undefined,
-            status: hasError ? 'failed' : 'pending', canRetrySearch: !monitored.retryRequiresReview && monitored.searchState !== 'grab_pending',
-            canCancelSearch: monitored.searchState !== 'grab_pending',
-            progress: 0, size: 0, sizeRemaining: 0, hasError: !!hasError, isStalled: false });
-        }
-      }
+      items = mergeDownloadLifecycle(items, [...monitoredMap.values()], transmissionHashMap);
 
       items = items.map((item) => {
         const monitored = item.mediaId != null ? monitoredMap.get(`${item.source}:${item.mediaId}`) : undefined;
         const own = isAdminRef.current || !!monitored?.userIds?.includes(session?.user?.id ?? '');
         return { ...item, retryAvailableAt: monitored?.retryAvailableAt ?? item.retryAvailableAt,
           dbCreatedAt: monitored?.createdAt ?? item.dbCreatedAt,
-          canRetry: own, canRetrySearch: item.canRetrySearch && (own || !monitored),
+          canRetry: own, canCancelDownload: item.canCancelDownload && own, canRetrySearch: item.canRetrySearch && (own || !monitored),
           canCancelSearch: (item.canCancelSearch ?? item.canRetrySearch) && (own || !monitored) };
       });
 
@@ -546,6 +536,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
           items.push({
             id: `transmission-${torrent.id}`,
             indexer: torrent.indexer,
+            estimatedAudioLanguages: torrent.estimatedAudioLanguages,
             source: 'transmission' as const,
             transmissionId: torrent.id,
             transmissionHash: torrent.hashString,

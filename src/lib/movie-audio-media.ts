@@ -133,6 +133,39 @@ export interface PreparedAudioMerge {
   dispose: () => Promise<void>;
 }
 
+function preparedPublication(
+  source: string, donor: string, sourceStat: Awaited<ReturnType<typeof stat>>, donorStat: Awaited<ReturnType<typeof stat>>,
+  outputPath: string, temporary: string, dispose: () => Promise<void>, backupRoot: string, signal: AbortSignal,
+): PreparedAudioMerge {
+  return {
+    outputPath, dispose,
+    publish: async (beforePublish): Promise<void> => {
+      const unchanged = async (): Promise<void> => {
+        for (const [path, previous] of [[source, sourceStat], [donor, donorStat]] as const) {
+          const current = await stat(path);
+          if (current.ino !== previous.ino || current.size !== previous.size || current.mtimeMs !== previous.mtimeMs) {
+            throw new AudioReviewError('A source file changed while the merge was running.');
+          }
+        }
+        if (signal.aborted) throw new AudioReviewError('The audio worker lost its processing lock.');
+      };
+      await unchanged();
+      await mkdir(backupRoot, { recursive: true });
+      const backup = join(backupRoot, `${Date.now()}-${randomUUID()}-${basename(source)}`);
+      await copyFile(source, backup, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE);
+      await beforePublish();
+      await unchanged();
+      // Never write into the existing inode: it may be hard-linked to a seeding torrent.
+      if (source === outputPath) await rename(temporary, outputPath);
+      else {
+        // An exclusive hard link publishes the complete file atomically without overwriting another MKV.
+        await link(temporary, outputPath);
+        await unlink(source);
+      }
+    },
+  };
+}
+
 /** Only exact decoded video timelines are auto-merged. Different cuts/encodes need review. */
 export async function prepareAudioMerge(
   source: string, donor: string, language: RadarrLanguage, required: RadarrLanguage[],
@@ -206,35 +239,58 @@ export async function prepareAudioMerge(
       throw new AudioReviewError('The requested audio track changed during the merge.');
     }
     await chmod(temporary, sourceStat.mode & 0o777);
-    return {
-      outputPath, dispose,
-      publish: async (beforePublish): Promise<void> => {
-        const unchanged = async (): Promise<void> => {
-          for (const [path, previous] of [[source, sourceStat], [donor, donorStat]] as const) {
-            const current = await stat(path);
-            if (current.ino !== previous.ino || current.size !== previous.size || current.mtimeMs !== previous.mtimeMs) {
-              throw new AudioReviewError('A source file changed while the merge was running.');
-            }
-          }
-          if (signal.aborted) throw new AudioReviewError('The audio worker lost its processing lock.');
-        };
-        await unchanged();
-        await mkdir(backupRoot, { recursive: true });
-        const backup = join(backupRoot, `${Date.now()}-${randomUUID()}-${basename(source)}`);
-        await copyFile(source, backup, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE);
-        await beforePublish();
-        await unchanged();
-        // Never write into the existing inode: it may be hard-linked to a seeding torrent.
-        if (source === outputPath) await rename(temporary, outputPath);
-        else {
-          // An exclusive hard link publishes the complete file atomically without overwriting another MKV.
-          await link(temporary, outputPath);
-          await unlink(source);
-        }
-      },
-    };
+    return preparedPublication(source, donor, sourceStat, donorStat, outputPath, temporary, dispose, backupRoot, signal);
   } catch (error) {
     await dispose();
     throw error;
   }
+}
+
+/** Keep a complete release's own video and audio together. Never splice its tracks into the old cut. */
+export async function prepareMovieReplacement(
+  source: string, donor: string, required: RadarrLanguage[], backupRoot: string, signal: AbortSignal,
+): Promise<PreparedAudioMerge> {
+  const [sourceStat, donorStat] = await Promise.all([stat(source), stat(donor)]);
+  await verifyAudio(donor, required, signal);
+  const donorInfo = await inspectMedia(donor, signal);
+  video(donorInfo);
+  const outputPath = join(dirname(source), basename(source, extname(source)) + '.mkv');
+  if (outputPath !== source && await stat(outputPath).then(() => true, () => false)) {
+    throw new AudioReviewError('An MKV already exists beside the current movie. Review the files before replacement.');
+  }
+  const staging = await mkdtemp(join(dirname(source), '.queuearr-audio-'));
+  const temporary = join(staging, 'output.mkv');
+  const dispose = async (): Promise<void> => { await unlink(temporary).catch(() => undefined); await rmdir(staging).catch(() => undefined); };
+  try {
+    const args = ['-v', 'error', '-nostdin', '-n', ...INPUT_OPTIONS, '-i', donor,
+      '-map', '0', '-map_metadata', '0', '-map_chapters', '0', '-c', 'copy'];
+    donorInfo.streams.filter((stream) => stream.codec_type === 'subtitle').forEach((stream, i) => {
+      if (stream.codec_name === 'mov_text') args.push(`-c:s:${i}`, 'srt');
+    });
+    args.push(temporary);
+    await runMedia('ffmpeg', args, signal);
+    await verifyAudio(temporary, required, signal);
+    const output = await inspectMedia(temporary, signal);
+    if (output.streams.length !== donorInfo.streams.length) throw new AudioReviewError('Replacement did not retain every source stream.');
+    for (const type of new Set(donorInfo.streams.map((stream) => stream.codec_type))) {
+      const original = donorInfo.streams.filter((stream) => stream.codec_type === type);
+      const copied = output.streams.filter((stream) => stream.codec_type === type);
+      if (original.length !== copied.length) throw new AudioReviewError('Replacement changed the source stream layout.');
+      if (type === 'video' || type === 'audio') {
+        for (let i = 0; i < original.length; i++) {
+          if (await packetFingerprint(donor, original[i].index, signal) !== await packetFingerprint(temporary, copied[i].index, signal)) {
+            throw new AudioReviewError('Replacement changed a source video or audio track.');
+          }
+        }
+      }
+    }
+    await chmod(temporary, sourceStat.mode & 0o777);
+    return preparedPublication(source, donor, sourceStat, donorStat, outputPath, temporary, dispose, backupRoot, signal);
+  } catch (error) { await dispose(); throw error; }
+}
+
+export async function containsAudioLanguages(path: string, required: RadarrLanguage[], signal: AbortSignal): Promise<boolean> {
+  const info = await inspectMedia(path, signal);
+  return required.length > 0 && required.every((language) => info.streams.some((stream) => matchesLanguage(stream, language) &&
+    !stream.disposition?.comment && !/commentary|description|descriptive/i.test(stream.tags?.title ?? '')));
 }

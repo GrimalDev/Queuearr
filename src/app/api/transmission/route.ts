@@ -3,7 +3,8 @@ import { getServerSession } from 'next-auth';
 import { createTransmissionClient } from '@/lib/api/transmission';
 import { authOptions } from '@/lib/auth';
 import { getCachedTransmissionState } from '@/lib/queue-cache';
-import { getTorrentIndexers } from '@/lib/db/torrent-indexers';
+import { getTorrentIndexerMetadata } from '@/lib/db/torrent-indexers';
+import { readAudioLanguages } from '@/lib/audio-languages';
 import { recoverTorrentIndexers } from '@/lib/torrent-indexer-history';
 
 export async function GET(request: NextRequest) {
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
     const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1';
     const { torrents, stats } = await getCachedTransmissionState(transmission, { forceRefresh });
     const hashes = torrents.map((torrent) => torrent.hashString);
-    const indexers = getTorrentIndexers(hashes);
+    const indexers = getTorrentIndexerMetadata(hashes);
     if (session.user.role === 'admin' && request.nextUrl.searchParams.get('filter') === 'all') {
       after(() => recoverTorrentIndexers(hashes).catch(() => {
         console.warn('[indexers] Background history recovery failed.');
@@ -34,7 +35,8 @@ export async function GET(request: NextRequest) {
       const problemCheck = transmission.isProblematic(torrent);
       return {
         ...torrent,
-        indexer: indexers.get(torrent.hashString.toLowerCase()),
+        indexer: indexers.get(torrent.hashString.toLowerCase())?.indexer,
+        estimatedAudioLanguages: readAudioLanguages(indexers.get(torrent.hashString.toLowerCase())?.audioLanguages),
         statusString: transmission.getStatusString(torrent.status),
         isProblematic: problemCheck.isProblematic,
         problemReason: problemCheck.reason,

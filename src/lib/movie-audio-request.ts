@@ -43,6 +43,7 @@ export async function requestMovieAudio(
     if (previousJob?.restoreMonitored !== null && previousJob?.restoreMonitored !== undefined) {
       throw new MovieAudioRequestError('An interrupted merge needs recovery. Please wait for the audio worker.');
     }
+    if (previousJob?.state === 'cancelling') throw new MovieAudioRequestError('Finish cancelling this download before requesting audio.');
     if (previousJob?.state === 'needs_review') throw new MovieAudioRequestError(previousJob.detail);
     if (previousJob?.state === 'grab_pending') throw new MovieAudioRequestError('A release has already been sent to Radarr. Wait for its download client before submitting another request.');
     const [movies, profiles] = await Promise.all([client.getMovies(), client.getQualityProfiles()]);
@@ -85,7 +86,8 @@ export async function requestMovieAudio(
     const savedPolicy = { tmdbId, radarrMovieId: movie.id, baseProfileId: base.id, requiredLanguages: required };
     const continuing = !!previousJob?.donorHash || !!previousJob?.outputPath || previousJob?.regrabFileId != null;
     const pendingJob = { state: continuing ? previousJob!.state : hasRequiredAudio(movie, required) && !forceDownload ? 'available' : 'pending',
-      detail: continuing ? previousJob!.detail : 'Applying the requested audio profile.', nextAttemptAt: 0 };
+      detail: continuing ? previousJob!.detail : 'Applying the requested audio profile.', nextAttemptAt: 0,
+      ...(!continuing ? { estimatedLanguages: '[]' } : {}) };
     if (forceDownload || !hasRequiredAudio(movie, required)) {
       saveTrackedMovieAudioRequest(savedPolicy, pendingJob, movie.title, userId);
     } else {
@@ -120,7 +122,7 @@ export async function requestMovieAudio(
       detail = 'Sending a fresh download to Radarr. The existing movie stays available until import.';
       // Persist before submitting: a lost response must not cause duplicate grabs or early completion.
       updateMovieAudioJob(tmdbId, { state, detail, regrabFileId: movie.movieFile.id,
-        donorIndexer: candidate.indexer || `Indexer ${candidate.indexerId}`,
+        donorIndexer: candidate.indexer || `Indexer ${candidate.indexerId}`, estimatedLanguages: JSON.stringify(candidate.languages ?? []),
         regrabRequestedAt: Date.now(), nextAttemptAt: Date.now() + 30_000 });
       try {
         await client.grabRelease(candidate.guid, candidate.indexerId);

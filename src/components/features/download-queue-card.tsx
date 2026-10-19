@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { AudioSearchIndicator } from '@/components/features/audio-search-indicator';
 import { IN_CINEMAS_SEARCH_MESSAGE } from '@/lib/movie-release-status';
+import { audioLanguageMarker, normalizeAudioLanguages } from '@/lib/audio-languages';
 import { cn } from '@/lib/utils';
 import type { QueueItem } from '@/types';
 
@@ -15,6 +16,7 @@ interface DownloadQueueCardProps {
   item: QueueItem;
   onRetry?: () => void;
   onCancelSearch?: () => void;
+  onCancelDownload?: () => void;
   onDelete?: () => void;
   onPassFirst?: () => void;
   isAdmin?: boolean;
@@ -29,7 +31,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** unit).toFixed(1)} ${['B', 'KB', 'MB', 'GB', 'TB'][unit]}`;
 }
 
-export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onPassFirst, isAdmin, isRetrying = false, isDeleting = false, isPassing = false }: DownloadQueueCardProps): React.JSX.Element {
+export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownload, onDelete, onPassFirst, isAdmin, isRetrying = false, isDeleting = false, isPassing = false }: DownloadQueueCardProps): React.JSX.Element {
   const [showDebug, setShowDebug] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -44,26 +46,31 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
   const countdown = `${Math.floor(remaining / 60)}:${(remaining % 60).toString().padStart(2, '0')}`;
   const cooldown = !isAdmin && (remaining > 0 || item.retryAvailableAt == null);
   const audio = !!item.audio;
+  const confirmedLanguages = item.libraryReady ? normalizeAudioLanguages(item.availableAudioLanguages) : [];
+  const releaseLanguages = confirmedLanguages.length ? confirmedLanguages : normalizeAudioLanguages(item.estimatedAudioLanguages);
   const Icon = audio ? AudioLines : item.source === 'radarr' ? Film : item.source === 'sonarr' ? Tv : Download;
   const phase = isRetrying ? 'searching' : item.hasError || item.isStalled || ['failed', 'warning'].includes(item.status) ? 'error' :
-    item.isSearching ? 'searching' : item.isAwaitingDownload ? 'submitting' : item.audio?.phase ??
+    item.libraryReady ? 'ready' : item.isSearching ? 'searching' : item.isAwaitingDownload ? 'submitting' : item.lifecyclePhase ?? item.audio?.phase ??
     (item.metadataPercentComplete != null && item.metadataPercentComplete < 1 ? 'metadata' :
-      item.status === 'completed' || item.status === 'seeding' ? 'ready' : item.status === 'importing' ? 'importing' :
+      item.status === 'completed' || item.status === 'seeding' ? item.libraryReady === false || item.source !== 'transmission' ? 'importing' : 'downloaded' : item.status === 'importing' ? 'importing' :
         item.status === 'pending' ? 'validating' : 'downloading');
   const labels = {
     searching: audio ? 'Searching for audio' : item.isRegrab || isRetrying && !item.canRetrySearch ? 'Searching for a replacement release' : 'Searching for a release',
     submitting: 'Waiting for the download client',
     metadata: 'Fetching torrent metadata', downloading: audio ? 'Downloading audio' : 'Downloading',
     validating: audio ? 'Checking audio and synchronization' : 'Checking download', merging: 'Merging audio', verifying: 'Verifying merged audio',
-    importing: 'Importing into the library', ready: item.status === 'seeding' ? 'Seeding' : 'Ready', error: 'Error',
+    checking_audio: 'Checking requested audio', importing: 'Waiting for library import', ready: 'Ready',
+    replacing: 'Replacing movie with all requested audio',
+    downloaded: item.status === 'seeding' ? 'Download complete · Seeding' : 'Download complete', error: 'Error',
   };
   const waiting = !isRetrying && !item.isSearching && (item.status === 'paused' || item.status === 'queued');
   const waitingForSlot = waiting && item.status === 'queued' && item.transmissionId != null && phase !== 'error';
   const label = phase === 'error' ? item.searchError === 'in_cinemas' ? IN_CINEMAS_SEARCH_MESSAGE : 'Error' : waiting ? item.status === 'paused' ? 'Paused' : waitingForSlot ? 'Waiting for a download slot' : 'Queued'
     : phase === 'downloading' && item.progress >= 100 ? audio ? 'Waiting for audio checks' : 'Waiting for import' : labels[phase];
-  const step = phase === 'searching' ? 0 : phase === 'submitting' || phase === 'metadata' || phase === 'downloading' ? 1 :
-    phase === 'validating' || phase === 'importing' ? 2 : 3;
-  const steps = audio ? ['Search', 'Download', 'Check', 'Merge'] : ['Search', 'Download', 'Import', 'Ready'];
+  const hasAudioRequest = audio || !!item.requestedAudioLanguages?.length;
+  const steps = hasAudioRequest ? ['Search', 'Download', 'Import', 'Audio', 'Ready'] : ['Search', 'Download', 'Import', 'Ready'];
+  const step = audio && phase !== 'ready' ? 3 : phase === 'searching' ? 0 : phase === 'submitting' || phase === 'metadata' || phase === 'downloading' ? 1 :
+    phase === 'downloaded' || phase === 'importing' ? 2 : phase === 'ready' ? steps.length - 1 : hasAudioRequest ? 3 : 2;
   const indeterminate = !waiting && (phase === 'searching' || phase === 'metadata');
   return (
     <Card className={cn(phase === 'error' && 'border-destructive/50')}>
@@ -89,6 +96,13 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
             {item.indexer || (phase === 'searching' ? 'Choosing an indexer' : 'Indexer unavailable')}
           </Badge>
         </div>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground" aria-label={confirmedLanguages.length ? 'Available audio languages' : 'Estimated audio languages'}>
+          <Languages className="size-3.5" aria-hidden="true" />
+          <span>{confirmedLanguages.length ? 'Available audio' : 'Estimated audio'}</span>
+          {releaseLanguages.length ? releaseLanguages.map((language) => <Badge key={language.id} variant="outline" className="font-normal" title={language.name}>
+            <abbr title={language.name} className="no-underline">{audioLanguageMarker(language)}</abbr>
+          </Badge>) : <span>Unknown</span>}
+        </div>
         {indeterminate ? <AudioSearchIndicator label={`${label}…`} audio={audio} /> : (
           <div role={phase === 'error' ? 'alert' : 'status'} className={cn('flex items-center gap-2 text-sm', phase === 'error' && 'text-destructive')}>
             {phase === 'error' ? <CircleAlert className="size-4" aria-hidden="true" /> : waiting ? <Clock className="size-4" aria-hidden="true" /> :
@@ -96,9 +110,10 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
             {label}
           </div>
         )}
-        {waitingForSlot && <p className="text-xs text-muted-foreground">Starts automatically when a slot becomes available.</p>}
+        {phase === 'ready' && <p className="text-xs text-muted-foreground">Ready for Plex to pick up.</p>}
+        {phase === 'downloaded' && <p className="text-xs text-muted-foreground">Library readiness has not been confirmed.</p>}
         {!waiting && phase === 'metadata' && <p className="text-xs text-muted-foreground">Waiting for peers to provide the torrent details. The download has not started yet.</p>}
-        {(phase === 'downloading' || phase === 'ready' || waiting) && item.size > 0 && (
+        {(phase !== 'searching' && phase !== 'submitting' || waiting) && item.size > 0 && (
           <div className="space-y-2">
             <div className="flex justify-between gap-2 text-xs text-muted-foreground">
               <span>{formatBytes(item.size - item.sizeRemaining)} / {formatBytes(item.size)}</span>
@@ -112,13 +127,17 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
             </div>
           </div>
         )}
-        {(onRetry || onCancelSearch || onDelete || onPassFirst || isAdmin || item.hasError && item.canRetry) && <div className="flex flex-wrap items-center gap-2">
+        {(onRetry || onCancelSearch || onCancelDownload || onDelete || onPassFirst || isAdmin || item.hasError && item.canRetry) && <div className="flex flex-wrap items-center gap-2">
           {!onRetry && item.hasError && (isAdmin || item.canRetry) && <Button variant="outline" size="sm" disabled title="Review is required before retrying.">Retry unavailable</Button>}
           {onRetry && <Button variant="outline" size="sm" disabled={isRetrying || isDeleting || cooldown} onClick={onRetry}
             title={isAdmin && remaining > 0 ? 'Override the five-minute retry cooldown' : undefined}>
             <RotateCcw className={cn('size-3.5', isRetrying && 'motion-safe:animate-spin')} aria-hidden="true" />
-            {isRetrying ? 'Searching…' : isAdmin && remaining > 0 ? 'Retry now (admin)' : remaining > 0 ? `Retry in ${countdown}` :
+            {isRetrying ? 'Searching…' : isAdmin && remaining > 0 ? `Retry now (${countdown})` : remaining > 0 ? `Retry in ${countdown}` :
               cooldown ? 'Retry unavailable' : item.canRetrySearch || item.isSearching || item.audio?.phase === 'searching' ? 'Retry search' : 'Try another release'}
+          </Button>}
+          {onCancelDownload && <Button variant="ghost" size="sm" aria-label={`Cancel ${item.title} download`} onClick={onCancelDownload} disabled={isDeleting || isRetrying}>
+            {isDeleting ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
+            {isDeleting ? 'Cancelling…' : 'Cancel download'}
           </Button>}
           {onCancelSearch && <Button variant="ghost" size="sm" aria-label={`Cancel ${item.title} search`} onClick={onCancelSearch} disabled={isDeleting || isRetrying}>
             {isDeleting ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
@@ -134,13 +153,12 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onDelete, onP
             <Bug className="size-4" aria-hidden="true" />
           </Button>}
         </div>}
-        {onRetry && isAdmin && remaining > 0 && !isRetrying && <p className="text-xs text-muted-foreground">Cooldown {countdown}. Admin override is available.</p>}
         {showDebug && <pre className="max-h-64 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify(
           Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'errorMessage')), null, 2)}</pre>}
-        <ol aria-label={audio ? 'Audio download stages' : 'Download stages'} className="grid grid-cols-4 gap-2 border-t pt-4">
+        <ol aria-label={hasAudioRequest ? 'Movie and audio readiness stages' : 'Download stages'} className={cn('grid gap-2 border-t pt-4', hasAudioRequest ? 'grid-cols-5' : 'grid-cols-4')}>
           {steps.map((name, index) => (
             <li key={name} aria-current={phase !== 'error' && index === step ? 'step' : undefined}
-              className={cn('flex items-center gap-1.5 text-[11px] sm:text-xs', index > step || phase === 'error' ? 'text-muted-foreground' : 'text-foreground')}>
+              className={cn('flex flex-col items-center gap-1.5 text-[11px] sm:flex-row sm:text-xs', index > step || phase === 'error' ? 'text-muted-foreground' : 'text-foreground')}>
               <span className={cn('flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px]',
                 (index < step || phase === 'ready') && phase !== 'error' && 'border-foreground bg-foreground text-background',
                 index === step && phase !== 'error' && 'border-foreground')}>

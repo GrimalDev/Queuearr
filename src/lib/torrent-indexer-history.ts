@@ -1,6 +1,6 @@
 import { createRadarrClient } from '@/lib/api/radarr';
 import { createSonarrClient } from '@/lib/api/sonarr';
-import { getTorrentIndexers, normalizeTorrentHash, rememberTorrentIndexer } from '@/lib/db/torrent-indexers';
+import { getTorrentIndexerMetadata, normalizeTorrentHash, rememberTorrentIndexer } from '@/lib/db/torrent-indexers';
 
 const nextCheck = new Map<string, number>();
 let inFlight: Promise<void> | undefined;
@@ -11,8 +11,8 @@ export function recoverTorrentIndexers(hashes: string[]): Promise<void> {
   const task = async (): Promise<void> => {
     const current = new Set(hashes.map(normalizeTorrentHash).filter((hash) => hash !== undefined));
     for (const hash of nextCheck.keys()) if (!current.has(hash)) nextCheck.delete(hash);
-    const known = getTorrentIndexers([...current]);
-    const pending = [...current].filter((hash) => !known.has(hash) && (nextCheck.get(hash) ?? 0) <= Date.now()).slice(0, 8);
+    const known = getTorrentIndexerMetadata([...current]);
+    const pending = [...current].filter((hash) => (!known.has(hash) || known.get(hash)?.audioLanguages == null) && (nextCheck.get(hash) ?? 0) <= Date.now()).slice(0, 8);
     if (!pending.length) return;
     const services = [
       { source: 'radarr' as const, client: createRadarrClient() },
@@ -27,7 +27,7 @@ export function recoverTorrentIndexers(hashes: string[]): Promise<void> {
           const records = await client!.getGrabHistory(hash);
           const match = records.find((record) => normalizeTorrentHash(record.downloadId) === hash &&
             record.eventType === 'grabbed' && typeof record.data?.indexer === 'string' && record.data.indexer.trim());
-          return match?.data?.indexer ? { source, indexer: match.data.indexer } : undefined;
+          return match?.data?.indexer ? { source, indexer: match.data.indexer, languages: match.languages ?? (match.language ? [match.language] : []) } : undefined;
         }));
         let found = false;
         let error = false;
@@ -35,7 +35,7 @@ export function recoverTorrentIndexers(hashes: string[]): Promise<void> {
           const result = results[i];
           if (result.status === 'rejected') { error = true; failed.add(services[i].source); }
           else if (!found && result.value) {
-            rememberTorrentIndexer(result.value.source, hash, result.value.indexer);
+            rememberTorrentIndexer(result.value.source, hash, result.value.indexer, result.value.languages);
             found = true;
           }
         }

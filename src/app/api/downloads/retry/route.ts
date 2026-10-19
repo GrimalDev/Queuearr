@@ -44,7 +44,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         // An explicit retry of a legacy request uses Sonarr's current monitoring.
         const scopes = parseDownloadScopes(saved.scopes);
         updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes.length ? scopes : [{ type: 'series' }]),
-          state: 'pending', indexer: null, submittedAt: null, nextAttemptAt: 0 });
+          state: 'pending', indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
       } else {
         const client = createRadarrClient();
         if (!client) throw new DownloadRetryError('Radarr is not configured.', 503);
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           if (!release) throw new DownloadRetryError('No eligible replacement release is available.');
           await client.grabRelease(release.guid, release.indexerId);
           updateMovieAudioJob(policy.tmdbId, { state: 'regrabbing', regrabRequestedAt: Date.now(),
-            donorIndexer: release.indexer || `Indexer ${release.indexerId}`, nextAttemptAt: Date.now() + 30_000 });
+            donorIndexer: release.indexer || `Indexer ${release.indexerId}`, estimatedLanguages: JSON.stringify(release.languages ?? []), nextAttemptAt: Date.now() + 30_000 });
         } else if (movie.hasFile) {
           if (!job || !policy) throw new DownloadRetryError('The movie is already available.');
           // The worker chooses an isolated audio donor and retains every media safety check.
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             if (saved.state === 'grab_pending' || saved.state === 'needs_review' && saved.submittedAt !== null) {
               throw new DownloadRetryError('The previous release submission needs review.');
             }
-            updateDownloadSearchJob(saved.downloadId, { state: 'pending', indexer: null, submittedAt: null, nextAttemptAt: 0 });
+            updateDownloadSearchJob(saved.downloadId, { state: 'pending', indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
           }
         }
       }

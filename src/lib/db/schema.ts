@@ -38,6 +38,8 @@ export const movieAudioLocks = sqliteTable('movie_audio_locks', {
 });
 
 export const movieAudioJobs = sqliteTable('movie_audio_jobs', {
+  donorMetadata: text('donor_metadata'),
+  estimatedLanguages: text('estimated_languages').notNull().default('[]'),
   tmdbId: integer('tmdb_id').primaryKey(),
   state: text('state').notNull().default('pending'),
   detail: text('detail').notNull().default('Waiting for a suitable release.'),
@@ -108,6 +110,7 @@ export const monitoredDownloadUsers = sqliteTable(
 );
 
 export const downloadSearchJobs = sqliteTable('download_search_jobs', {
+  estimatedLanguages: text('estimated_languages').notNull().default('[]'),
   downloadId: integer('download_id').primaryKey().references(() => monitoredDownloads.id, { onDelete: 'cascade' }),
   scopes: text('scopes').notNull().default('[]'),
   state: text('state').notNull().default('pending'),
@@ -118,11 +121,18 @@ export const downloadSearchJobs = sqliteTable('download_search_jobs', {
 });
 
 export const torrentIndexers = sqliteTable('torrent_indexers', {
+  audioLanguages: text('audio_languages'),
   hash: text('hash').primaryKey(),
   indexer: text('indexer').notNull(),
   source: text('source').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });
+
+export const downloadTransfers = sqliteTable('download_transfers', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  downloadId: integer('download_id').notNull().references(() => monitoredDownloads.id, { onDelete: 'cascade' }),
+  hash: text('hash').notNull(),
+}, (table) => ({ downloadHashUnique: uniqueIndex('download_transfers_download_hash_unique').on(table.downloadId, table.hash) }));
 
 export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;

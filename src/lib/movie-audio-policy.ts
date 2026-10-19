@@ -36,7 +36,7 @@ export function resolveAudioLanguage(choice: MovieAudioLanguage, movie: RadarrMo
 
 export function getPublicMovieAudioDetail(state?: string, detail?: string): string | undefined {
   if (state === 'in_cinemas') return IN_CINEMAS_SEARCH_MESSAGE;
-  if (state === 'needs_review' || state === 'waiting_for_configuration' || state === 'error' || state === 'failed' || state === 'search_failed' ||
+  if (state === 'needs_review' || state === 'waiting_for_configuration' || state === 'error' || state === 'failed' || state === 'search_failed' || state === 'cancelling' ||
       detail === 'A service or shared folder is unavailable. Queuearr will retry in 15 minutes.') {
     return 'Error';
   }

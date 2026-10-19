@@ -206,9 +206,17 @@ request ownership, filtering, or download controls.
 Movies, series, and additional audio share the Downloads card design. Movie
 requests and regrabs appear immediately in **Searching**, with a **View downloads**
 link. Saved jobs keep them visible across reloads and turn into transfer cards
-without duplicates. Movies show search/download/import/ready stages; audio shows
-search/download/check/merge with its requested language. Magnets waiting for peers
-show **Fetching torrent metadata** instead of a zero-byte download. Animations
+without duplicates. The same request card follows Search, Download, Import, and
+Ready. Language requests add an Audio stage for checks, merging or replacement.
+Ready requires a confirmed library file and every requested language, ready for
+Plex's normal scan. Seeding alone never confirms import. Recent ready cards stay
+visible for 24 hours, capped at 100 completed requests.
+
+All download cards show estimated audio languages as short markers such as EN
+and FR, separate from the requested language. Estimates come from release/queue
+metadata or exact torrent-hash history matches; unknown languages are not guessed
+from MULTI. Verified library audio is labelled Available audio.
+Magnets waiting for peers show **Fetching torrent metadata** instead of a zero-byte download. Animations
 respect reduced-motion preferences. Indexer names are saved for newly selected
 releases; older jobs can show **Indexer unavailable**.
 
@@ -224,9 +232,14 @@ checks. Ordinary movie retries use Radarr's existing blocklist/retry handling.
 Searching cards also offer **Cancel search**, including during the retry cooldown.
 The requester or an administrator can remove the pending Queuearr request and
 stop its audio worker job. Existing library files and saved language preferences
-are kept, and a new request can start the search again. Cancellation checks the
-live service queue and refuses if a download or audio publication has started.
-It does not abort a search command already running inside Radarr or Sonarr.
+are kept, and a new request can start the search again.
+Active cards offer **Cancel download**, including isolated audio donors.
+Cancellation stops the saved job and removes its matching service queue entries.
+Audio donors are paused and removed from Transmission without deleting their
+files. Exact donor ownership and isolation are rechecked; active import and file
+publication cannot be interrupted. Failed cancellation stays reserved for a safe
+retry, so a worker cannot restart it. It does not abort a search command already
+running inside Radarr or Sonarr.
 
 Active downloads appear first, earliest start first. Importing, problem, and
 waiting/searching cards follow. Ordering uses Transmission's start time, falling
@@ -234,8 +247,9 @@ back to its added time and then the Queuearr request time when unavailable.
 
 Manual retries have a five-minute cooldown after the initial request and each
 retry attempt. The deadline is stored in SQLite and shown as a countdown, so
-refreshing the page does not reset it. Administrators can use **Retry now (admin)**
-to override the timer; media ownership and publication checks still apply.
+refreshing the page does not reset it. The countdown appears inside the retry
+button. Administrators can use **Retry now (m:ss)** to override the timer; media
+ownership and publication checks still apply.
 Searching cards offer **Retry search** when no release has entered the queue.
 **My downloads** includes only requests the user follows; **All downloads** keeps
 the shared view. Seeing another user's title does not grant retry access. Late
@@ -294,6 +308,18 @@ reasons, blocked releases, wrong movies/editions and disallowed qualities are
 not bypassed. A donor's rejection for missing the *other* requested languages
 or not improving the existing file can be bypassed only if its base quality
 profile rules still pass.
+
+When a donor contains every existing and requested audio language and its saved
+quality is equal or better in the base Radarr profile, Queuearr replaces the
+whole movie with that donor's video and audio together. Edition and revision
+checks still apply. This avoids combining audio with another cut's video.
+FFprobe confirms the tracks, and FFmpeg preserves and verifies the donor streams.
+The original movie is backed up and seeding files remain unchanged. After rescan,
+Queuearr records the replacement quality in Radarr before marking Ready, preserving
+the analyzed languages and preventing old filename quality tags from affecting
+future upgrade decisions. If the donor
+is incomplete or its quality cannot replace the current movie, it uses the
+synchronization checks below.
 
 FFprobe checks language tags and timing. FFmpeg compares every decoded video
 frame and timestamp before copying the original streams plus the requested

@@ -36,34 +36,12 @@ export function QueueDashboard() {
     if (!response.ok) throw new Error('Error');
   };
 
-  const handleForceDelete = async (item: QueueItem) => {
-    if (!item.sourceId || (item.source !== 'radarr' && item.source !== 'sonarr')) return;
-    setDeletingIds((prev) => new Set(prev).add(item.id));
-    try {
-      const response = await fetch(`/api/${item.source}/queue`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [item.sourceId], retry: false, mediaId: item.mediaId }),
-      });
-      if (!response.ok) throw new Error('Error');
-      await refresh();
-    } catch {
-      useAppStore.getState().addAlert({ type: 'error', title: 'Error', message: 'Error', source: item.source, relatedItemId: item.id });
-    } finally {
-      setDeletingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(item.id);
-        return next;
-      });
-    }
-  };
-
-  const handleCancelSearch = async (item: QueueItem): Promise<void> => {
+  const handleCancelSearch = async (item: QueueItem, activeDownload = false): Promise<void> => {
     if (!item.mediaId || item.source === 'transmission') return;
     setDeletingIds((previous) => new Set(previous).add(item.id));
     try {
       const response = await fetch('/api/downloads/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: item.source, mediaId: item.mediaId }),
+        body: JSON.stringify({ source: item.source, mediaId: item.mediaId, activeDownload }),
       });
       if (!response.ok) throw new Error('Error');
       const store = useAppStore.getState();
@@ -482,8 +460,10 @@ export function QueueDashboard() {
               isPassing={passingIds.has(item.id)}
               onRetry={item.audio?.canRetry ? () => handleAudioRetry(item) : item.canRetrySearch ? () => handleSearchRetry(item) :
                 !item.audio && (isAdmin || item.canRetry) && item.sourceId && (item.hasError || item.isStalled || !['importing', 'seeding', 'completed'].includes(item.status)) && (item.source === 'radarr' || item.source === 'sonarr') ? () => handleRetry(item) : undefined}
-              onCancelSearch={(item.canCancelSearch ?? item.canRetrySearch) ? () => handleCancelSearch(item) : undefined}
-              onDelete={!item.audio && item.sourceId && (item.source === 'radarr' || item.source === 'sonarr') && !retryingItems.has(item.id) && !deletingIds.has(item.id) ? () => handleForceDelete(item) : undefined}
+              onCancelSearch={(item.canCancelSearch ?? item.canRetrySearch) && !item.transmissionId && !item.transmissionHash && !item.sourceId && !item.canCancelDownload ? () => handleCancelSearch(item) : undefined}
+              onCancelDownload={!item.libraryReady && (isAdmin || item.canRetry) &&
+                (item.canCancelDownload || !item.audio && item.sourceId && (item.status !== 'importing' || item.hasError))
+                ? () => handleCancelSearch(item, true) : undefined}
               onPassFirst={!item.audio && isAdmin && (item.transmissionId ?? item.transmissionHash) && (item.status === 'queued' || item.status === 'pending')
                 ? () => handlePassFirst(item)
                 : undefined}

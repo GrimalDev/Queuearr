@@ -1,6 +1,7 @@
 import type { MovieAudioJob, MovieAudioPolicy } from '@/lib/db/movie-audio';
 import { getAvailableAudio, getPublicMovieAudioDetail } from '@/lib/movie-audio-policy';
 import { TransmissionStatus, type QueueItem, type RadarrMovie, type TransmissionTorrent } from '@/types';
+import { readAudioLanguages } from '@/lib/audio-languages';
 
 export function getMovieAudioQueue(
   jobs: MovieAudioJob[], policies: Map<number, MovieAudioPolicy>, movies: RadarrMovie[],
@@ -15,7 +16,9 @@ export function getMovieAudioQueue(
     const movie = library.get(policy.radarrMovieId);
     if (!movie || movie.tmdbId !== job.tmdbId) return [];
     if (job.state === 'available') return [{
-      id: `movie-${job.tmdbId}`, tmdbId: job.tmdbId, mediaId: policy.radarrMovieId, source: 'radarr', title: movie.title,
+      id: `request-radarr-${policy.radarrMovieId}`, tmdbId: job.tmdbId, mediaId: policy.radarrMovieId, source: 'radarr', title: movie.title,
+      libraryReady: true, requestedAudioLanguages: policy.requiredLanguages, indexer: job.donorIndexer ?? undefined,
+      availableAudioLanguages: getAvailableAudio(movie), estimatedAudioLanguages: readAudioLanguages(job.estimatedLanguages),
       subtitle: movie.year?.toString(), status: 'completed', progress: 100, size: 0, sizeRemaining: 0, hasError: false, isStalled: false,
     }];
     const isRegrab = job.state === 'regrabbing' || job.regrabFileId != null;
@@ -25,12 +28,20 @@ export function getMovieAudioQueue(
     const languages = job.donorLanguageId
       ? policy.requiredLanguages.filter((language) => language.id === job.donorLanguageId) : missing;
     const hasError = job.state === 'in_cinemas' || getPublicMovieAudioDetail(job.state, job.detail) === 'Error';
-    const phase = hasError ? 'error' : job.state === 'validating' || job.state === 'merging' || job.state === 'verifying'
+    const phase = hasError ? 'error' : job.state === 'validating' || job.state === 'merging' || job.state === 'replacing' || job.state === 'verifying'
       ? job.state : job.state === 'downloading' ? 'downloading' : 'searching';
     return [{
-      id: `${additionalAudio ? 'audio' : 'movie'}-${job.tmdbId}`, tmdbId: job.tmdbId,
+      id: `request-radarr-${policy.radarrMovieId}`, tmdbId: job.tmdbId,
+      libraryReady: false,
+      estimatedAudioLanguages: readAudioLanguages(job.estimatedLanguages),
+      lifecyclePhase: ['validating', 'merging', 'replacing', 'verifying'].includes(job.state)
+        ? job.state === 'validating' ? 'checking_audio' : job.state as 'merging' | 'replacing' | 'verifying'
+        : movie.hasFile && !job.donorHash && job.state === 'downloading' ? 'checking_audio' : undefined,
       source: 'radarr', mediaId: policy.radarrMovieId, isRegrab,
-      isSearching: (job.replaceDonor || !additionalAudio) && !hasError && job.state !== 'grab_pending',
+      isSearching: !hasError && !['downloading', 'regrabbing', 'grab_pending', 'validating', 'merging', 'replacing', 'verifying'].includes(job.state),
+      canCancelDownload: (!!job.donorHash || ['downloading', 'regrabbing', 'needs_review', 'cancelling'].includes(job.state)) &&
+        !job.outputPath && job.restoreMonitored == null && !job.replaceDonor &&
+        ['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed', 'in_cinemas', 'needs_review', 'cancelling'].includes(job.state),
       isAwaitingDownload: job.state === 'grab_pending',
       searchError: job.state === 'in_cinemas' ? 'in_cinemas' : undefined,
       requestedAudioLanguages: additionalAudio ? languages : policy.requiredLanguages,
@@ -59,9 +70,14 @@ export function mergeMovieAudioQueue(
       (!hash || entry.transmissionHash?.toLowerCase() === hash));
     const torrent = hash ? torrents.get(hash) : undefined;
     if (hash) torrents.delete(hash);
+    if (item.libraryReady) return { ...movieDownload, ...item, sourceId: undefined,
+      transmissionId: movieDownload?.transmissionId, transmissionHash: movieDownload?.transmissionHash };
     if (!item.audio) return movieDownload ? {
       ...movieDownload, id: item.id, tmdbId: item.tmdbId, isRegrab: item.isRegrab, isSearching: false,
       requestedAudioLanguages: item.requestedAudioLanguages,
+      estimatedAudioLanguages: movieDownload.estimatedAudioLanguages?.length ? movieDownload.estimatedAudioLanguages : item.estimatedAudioLanguages,
+      libraryReady: false, lifecyclePhase: item.lifecyclePhase,
+      canCancelDownload: item.canCancelDownload,
       indexer: movieDownload.indexer ?? item.indexer,
     } : item;
     if (item.isSearching) return item;
@@ -89,6 +105,7 @@ export function mergeMovieAudioQueue(
     } : {};
     return {
       ...item, ...enriched, indexer: item.indexer ?? movieDownload?.indexer,
+      estimatedAudioLanguages: item.estimatedAudioLanguages?.length ? item.estimatedAudioLanguages : torrent?.estimatedAudioLanguages ?? movieDownload?.estimatedAudioLanguages,
       hasError, errorMessage: hasError ? 'Error' : undefined,
       audio: { ...item.audio!, canRetry: item.audio!.canRetry && (torrent?.percentDone ?? movieDownload?.progress ?? 0) < (torrent ? 1 : 100),
         phase: hasError ? 'error' : transferring && metadata ? 'metadata' :

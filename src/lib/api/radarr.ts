@@ -8,6 +8,7 @@ import {
   RadarrCustomFormat,
   Release,
   DownloadGrabHistory,
+  MediaQuality,
 } from '@/types';
 
 interface RadarrConfig {
@@ -65,6 +66,14 @@ export class RadarrClient {
   async updateMovie(movie: RadarrMovie): Promise<RadarrMovie> {
     const response = await this.client.put<RadarrMovie>(`/api/v3/movie/${movie.id}`, movie);
     return response.data;
+  }
+
+  async updateMovieFileQuality(id: number, expectedPath: string, quality: MediaQuality): Promise<boolean> {
+    const { data: file } = await this.client.get<NonNullable<RadarrMovie['movieFile']>>(`/api/v3/moviefile/${id}`);
+    if (file.id !== id || file.path !== expectedPath) return false;
+    // Preserve analyzed languages, edition and flags from the current full resource.
+    await this.client.put(`/api/v3/moviefile/${id}`, { ...file, quality });
+    return true;
   }
 
   async getCustomFormats(): Promise<RadarrCustomFormat[]> {

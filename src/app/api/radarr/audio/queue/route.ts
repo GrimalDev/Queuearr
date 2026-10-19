@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { getMovieAudioJobs, getMovieAudioPolicies } from '@/lib/db/movie-audio';
-import { getWatchedMediaIds } from '@/lib/db/monitored-downloads';
+import { getWatchedMediaIds, getQueueMonitoredDownloads } from '@/lib/db/monitored-downloads';
 import { getMovieAudioQueue } from '@/lib/movie-audio-queue';
 import { movieAudioErrorResponse } from '@/lib/movie-audio-errors';
 import { getCachedRadarrMovies } from '@/lib/queue-cache';
@@ -20,6 +20,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const settled = new Set((request.nextUrl.searchParams.get('settled') ?? '').split(',').slice(0, 20)
       .map(Number).filter((id) => Number.isSafeInteger(id) && id > 0));
     const policies = getMovieAudioPolicies();
+    if (request.nextUrl.searchParams.get('includeReady') === '1') {
+      const requests = await getQueueMonitoredDownloads(visible ? session.user.id : undefined);
+      for (const policy of policies.values()) {
+        if (requests.some((download) => download.source === 'radarr' && download.mediaId === policy.radarrMovieId)) settled.add(policy.tmdbId);
+      }
+    }
     const jobs = getMovieAudioJobs().filter((job) => job.state !== 'cancelled' && (job.state !== 'available' || settled.has(job.tmdbId)) &&
       (!visible || visible.has(policies.get(job.tmdbId)?.radarrMovieId ?? -1)));
     if (!jobs.length) return NextResponse.json([]);
@@ -28,6 +34,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const items = getMovieAudioQueue(jobs, policies, await getCachedRadarrMovies(client), visible, settled);
     const retryTimes = getDownloadRetryTimes();
     return NextResponse.json(items.map((item) => ({ ...item,
+      canCancelDownload: item.canCancelDownload && (session.user.role === 'admin' || watched.has(item.mediaId!)),
       retryAvailableAt: retryTimes.get(`radarr:${item.mediaId}`),
       canRetrySearch: item.canRetrySearch && (session.user.role === 'admin' || watched.has(item.mediaId!)),
       ...(item.audio ? { audio: { ...item.audio,

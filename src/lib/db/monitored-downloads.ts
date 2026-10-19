@@ -1,6 +1,6 @@
-import { eq, and, isNull, desc } from 'drizzle-orm';
+import { eq, and, isNull, desc, or, gte, ne } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { monitoredDownloads, monitoredDownloadUsers } from '@/lib/db/schema';
+import { monitoredDownloads, monitoredDownloadUsers, downloadTransfers } from '@/lib/db/schema';
 import type { MonitoredDownload } from '@/lib/db/schema';
 import { DOWNLOAD_RETRY_COOLDOWN_MS } from '@/lib/download-retry-policy';
 
@@ -37,6 +37,7 @@ export async function addUserToDownload(downloadId: number, userId: string): Pro
 export function saveTrackedRequest(source: 'radarr' | 'sonarr', mediaId: number, title: string, userId: string): MonitoredDownload {
   const now = Date.now();
   const prior = db.select().from(monitoredDownloads).where(and(eq(monitoredDownloads.source, source), eq(monitoredDownloads.mediaId, mediaId))).get();
+  if (prior?.lastStatus === 'cancelling') throw new Error('Finish cancelling this download before submitting a new request.');
   const row = db.insert(monitoredDownloads).values({ source, mediaId, title, createdAt: now, lastActivityAt: now, lastBytesAt: now,
     retryAfter: now + DOWNLOAD_RETRY_COOLDOWN_MS })
     .onConflictDoUpdate({ target: [monitoredDownloads.source, monitoredDownloads.mediaId], set: {
@@ -44,6 +45,7 @@ export function saveTrackedRequest(source: 'radarr' | 'sonarr', mediaId: number,
       retryAfter: Math.max(prior?.retryAfter ?? 0, now + DOWNLOAD_RETRY_COOLDOWN_MS),
       ...(prior?.completedAt != null ? { createdAt: now } : {}),
     } }).returning().get();
+  if (prior?.completedAt != null) db.delete(downloadTransfers).where(eq(downloadTransfers.downloadId, row.id)).run();
   db.insert(monitoredDownloadUsers).values({ downloadId: row.id, userId }).onConflictDoNothing().run();
   return row;
 }
@@ -54,6 +56,7 @@ export async function reopenMonitoredDownload(
   const download = await upsertMonitoredDownload(source, mediaId, title);
   if (download.completedAt !== null) {
     const now = Date.now();
+    db.delete(downloadTransfers).where(eq(downloadTransfers.downloadId, download.id)).run();
     await db.update(monitoredDownloads).set({
       completedAt: null, lastStatus: null, createdAt: now, lastActivityAt: now, lastBytesAt: now,
     }).where(eq(monitoredDownloads.id, download.id));
@@ -68,55 +71,19 @@ export interface ActiveMonitoredDownload {
   title: string;
   lastStatus: string | null;
   createdAt: number;
+  completedAt?: number | null;
   lastActivityAt: number | null;
   lastBytesAt: number | null;
   userIds: string[];
 }
 
 export async function getActiveMonitoredDownloadsForUser(userId: string): Promise<ActiveMonitoredDownload[]> {
-  const rows = await db
-    .select({
-      id: monitoredDownloads.id,
-      source: monitoredDownloads.source,
-      mediaId: monitoredDownloads.mediaId,
-      title: monitoredDownloads.title,
-      lastStatus: monitoredDownloads.lastStatus,
-      createdAt: monitoredDownloads.createdAt,
-      lastActivityAt: monitoredDownloads.lastActivityAt,
-      lastBytesAt: monitoredDownloads.lastBytesAt,
-      userId: monitoredDownloadUsers.userId,
-    })
-    .from(monitoredDownloads)
-    .innerJoin(
-      monitoredDownloadUsers,
-      and(
-        eq(monitoredDownloads.id, monitoredDownloadUsers.downloadId),
-        eq(monitoredDownloadUsers.userId, userId)
-      )
-    )
-    .where(isNull(monitoredDownloads.completedAt));
+  return listMonitoredDownloads(userId);
+}
 
-  const map = new Map<number, ActiveMonitoredDownload>();
-  for (const row of rows) {
-    if (!map.has(row.id)) {
-      map.set(row.id, {
-        id: row.id,
-        source: row.source,
-        mediaId: row.mediaId,
-        title: row.title,
-        lastStatus: row.lastStatus,
-        createdAt: row.createdAt,
-        lastActivityAt: row.lastActivityAt,
-        lastBytesAt: row.lastBytesAt,
-        userIds: [],
-      });
-    }
-    if (row.userId) {
-      map.get(row.id)!.userIds.push(row.userId);
-    }
-  }
-
-  return Array.from(map.values());
+/** Keep up to 100 recent completed requests visible for 24 hours, plus every active request. */
+export async function getQueueMonitoredDownloads(userId?: string): Promise<ActiveMonitoredDownload[]> {
+  return listMonitoredDownloads(userId, true);
 }
 
 export async function getWatchedMediaIds(userId: string, source: 'radarr' | 'sonarr', includeCompleted = false): Promise<Set<number>> {
@@ -139,46 +106,30 @@ export async function getWatchedMediaIds(userId: string, source: 'radarr' | 'son
 }
 
 export async function getActiveMonitoredDownloads(): Promise<ActiveMonitoredDownload[]> {
-  const rows = await db
-    .select({
-      id: monitoredDownloads.id,
-      source: monitoredDownloads.source,
-      mediaId: monitoredDownloads.mediaId,
-      title: monitoredDownloads.title,
-      lastStatus: monitoredDownloads.lastStatus,
-      createdAt: monitoredDownloads.createdAt,
-      lastActivityAt: monitoredDownloads.lastActivityAt,
-      lastBytesAt: monitoredDownloads.lastBytesAt,
-      userId: monitoredDownloadUsers.userId,
-    })
-    .from(monitoredDownloads)
-    .leftJoin(
-      monitoredDownloadUsers,
-      eq(monitoredDownloads.id, monitoredDownloadUsers.downloadId)
-    )
-    .where(isNull(monitoredDownloads.completedAt));
+  return listMonitoredDownloads();
+}
 
-  const map = new Map<number, ActiveMonitoredDownload>();
-  for (const row of rows) {
-    if (!map.has(row.id)) {
-      map.set(row.id, {
-        id: row.id,
-        source: row.source,
-        mediaId: row.mediaId,
-        title: row.title,
-        lastStatus: row.lastStatus,
-        createdAt: row.createdAt,
-        lastActivityAt: row.lastActivityAt,
-        lastBytesAt: row.lastBytesAt,
-        userIds: [],
-      });
-    }
-    if (row.userId) {
-      map.get(row.id)!.userIds.push(row.userId);
-    }
+async function listMonitoredDownloads(userId?: string, includeRecent = false): Promise<ActiveMonitoredDownload[]> {
+  const rows = await db.select({
+    id: monitoredDownloads.id, source: monitoredDownloads.source, mediaId: monitoredDownloads.mediaId,
+    title: monitoredDownloads.title, lastStatus: monitoredDownloads.lastStatus, createdAt: monitoredDownloads.createdAt,
+    completedAt: monitoredDownloads.completedAt, lastActivityAt: monitoredDownloads.lastActivityAt,
+    lastBytesAt: monitoredDownloads.lastBytesAt, userId: monitoredDownloadUsers.userId,
+  }).from(monitoredDownloads).leftJoin(monitoredDownloadUsers, eq(monitoredDownloads.id, monitoredDownloadUsers.downloadId))
+    .where(and(userId ? eq(monitoredDownloadUsers.userId, userId) : undefined,
+      includeRecent ? or(isNull(monitoredDownloads.completedAt), and(
+        gte(monitoredDownloads.completedAt, Date.now() - 24 * 60 * 60_000),
+        or(isNull(monitoredDownloads.lastStatus), ne(monitoredDownloads.lastStatus, 'cancelled')),
+      )) : isNull(monitoredDownloads.completedAt)))
+    .orderBy(desc(monitoredDownloads.completedAt)).all();
+  const grouped = new Map<number, ActiveMonitoredDownload>();
+  for (const { userId: requester, ...row } of rows) {
+    let download = grouped.get(row.id);
+    if (!download) { download = { ...row, userIds: [] }; grouped.set(row.id, download); }
+    if (requester) download.userIds.push(requester);
   }
-
-  return Array.from(map.values());
+  let completed = 0;
+  return [...grouped.values()].filter((row) => row.completedAt == null || ++completed <= 100);
 }
 
 export async function getActiveMediaIds(source: 'radarr' | 'sonarr'): Promise<Map<number, number>> {

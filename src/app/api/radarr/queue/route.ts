@@ -9,6 +9,7 @@ import { getCachedRadarrQueue, invalidateQueueCache } from '@/lib/queue-cache';
 import { ensureDownloadSearchJob, updateDownloadSearchJob } from '@/lib/db/download-search-jobs';
 import { isImportInProgress } from '@/lib/queue-retry-safety';
 import { rememberTorrentIndexer } from '@/lib/db/torrent-indexers';
+import { rememberDownloadTransfer } from '@/lib/db/download-transfers';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -24,7 +25,10 @@ export async function GET(request: NextRequest) {
   try {
     const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1';
     const queue = await getCachedRadarrQueue(radarr, { forceRefresh });
-    for (const item of queue.records) rememberTorrentIndexer('radarr', item.downloadId, item.indexer);
+    for (const item of queue.records) {
+      rememberTorrentIndexer('radarr', item.downloadId, item.indexer, item.languages?.length ? item.languages : undefined);
+      rememberDownloadTransfer('radarr', item.movieId, item.downloadId);
+    }
     const filter = request.nextUrl.searchParams.get('filter') ?? 'mine';
     if (filter === 'all') {
       return NextResponse.json(queue.records);
@@ -81,7 +85,7 @@ export async function DELETE(request: NextRequest) {
         if (policy) updateMovieAudioJob(policy.tmdbId, { state: 'pending', detail: 'Searching for another movie release.', nextAttemptAt: 0 });
         else if (monitored) {
           ensureDownloadSearchJob(monitored.id, 'radarr');
-          updateDownloadSearchJob(monitored.id, { state: 'pending', indexer: null, submittedAt: null, nextAttemptAt: 0 });
+          updateDownloadSearchJob(monitored.id, { state: 'pending', indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
         }
         await radarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });
         if (monitored) await resetMonitoredDownload(monitored.id);

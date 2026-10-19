@@ -1,4 +1,4 @@
-import type { QualityProfileItem, RadarrLanguage, RadarrMovie, RadarrQualityProfile, Release } from '@/types';
+import type { MediaQuality, QualityProfileItem, RadarrLanguage, RadarrMovie, RadarrQualityProfile, Release } from '@/types';
 
 function allowedQuality(items: QualityProfileItem[], id: number): boolean {
   return items.some((item) => item.items?.length
@@ -30,6 +30,34 @@ function qualityRank(items: QualityProfileItem[], id: number): number {
   return items.findIndex((item) => item.items?.length
     ? item.allowed !== false && allowedQuality(item.items, id)
     : item.allowed === true && item.quality?.id === id);
+}
+
+export function donorMetadata(release: Release): string {
+  return JSON.stringify({ quality: release.quality, edition: release.edition ?? '' });
+}
+
+export function canReplaceFromDonor(metadata: string | null | undefined, movie: RadarrMovie, profile: RadarrQualityProfile): boolean {
+  try {
+    if (!metadata) return false;
+    const saved = JSON.parse(metadata) as { quality?: MediaQuality; edition?: string };
+    const quality = saved.quality;
+    const current = movie.movieFile?.quality;
+    if (!quality?.quality || !current?.quality || !quality.revision || !current.revision ||
+        !Number.isSafeInteger(quality.quality.id) || !Number.isSafeInteger(quality.revision.version) || !Number.isSafeInteger(quality.revision.real) ||
+        typeof saved.edition !== 'string' || saved.edition.toLowerCase() !== (movie.movieFile?.edition ?? '').toLowerCase() ||
+        /cam|telesync|telecine|workprint/i.test(quality.quality.source)) return false;
+    const rank = qualityRank(profile.items ?? [], quality.quality.id);
+    const currentRank = qualityRank(profile.items ?? [], current.quality.id);
+    return rank >= 0 && currentRank >= 0 && (rank > currentRank || rank === currentRank &&
+      quality.revision.version >= current.revision.version && quality.revision.real >= current.revision.real);
+  } catch { return false; }
+}
+
+export function publishedDonorQuality(metadata?: string | null): MediaQuality | undefined {
+  try {
+    const saved = JSON.parse(metadata ?? '{}') as { publishedReplacement?: boolean; quality?: MediaQuality };
+    return saved.publishedReplacement === true && saved.quality?.quality && saved.quality.revision ? saved.quality : undefined;
+  } catch { return undefined; }
 }
 
 /** A manual regrab may override existing-file cutoffs, never language or quality rules. */

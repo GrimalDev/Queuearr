@@ -54,10 +54,10 @@ export async function runDownloadSearchJobs(): Promise<void> {
           movieLock = acquireMovieAudioLock(movie.tmdbId + 2);
           if (!movieLock) continue;
           if ([...getMovieAudioPolicies().values()].some((policy) => policy.radarrMovieId === download.mediaId)) { later(job, 'cancelled'); continue; }
+          if (movie.hasFile) { later(job, 'complete'); continue; }
           if ((await client.getQueue(false)).records.some((item) => item.movieId === download.mediaId)) {
             later(job, job.state === 'pending' ? 'pending' : 'downloading'); continue;
           }
-          if (movie.hasFile) { later(job, 'complete'); continue; }
           if (job.state === 'grab_pending') {
             if (Date.now() - (job.submittedAt ?? job.updatedAt) >= 5 * 60_000) {
               console.warn(`[downloads] radarr ${download.mediaId}: submission has no queue entry; review required`);
@@ -75,7 +75,7 @@ export async function runDownloadSearchJobs(): Promise<void> {
           if (lostLease) break;
           if ((await client.getQueue(false)).records.some((item) => item.movieId === download.mediaId)) { later(job, 'downloading'); continue; }
           if ((await client.getMovie(download.mediaId)).hasFile) { later(job, 'complete'); continue; }
-          updateDownloadSearchJob(job.downloadId, { state: 'grab_pending', indexer: candidate.indexer || `Indexer ${candidate.indexerId}`,
+          updateDownloadSearchJob(job.downloadId, { state: 'grab_pending', indexer: candidate.indexer || `Indexer ${candidate.indexerId}`, estimatedLanguages: JSON.stringify(candidate.languages ?? []),
             submittedAt: Date.now(), nextAttemptAt: Date.now() + 30_000 });
           try { await client.grabRelease(candidate.guid, candidate.indexerId); }
           catch (cause) { logMovieAudioError(`radarr ${download.mediaId} submission`, cause); }
@@ -83,13 +83,13 @@ export async function runDownloadSearchJobs(): Promise<void> {
         } else {
           const client = createSonarrClient();
           if (!client) throw new Error('Sonarr is not configured.');
-          if ((await client.getQueue()).records.some((item) => item.seriesId === download.mediaId)) {
-            later(job, job.state === 'pending' ? 'pending' : 'downloading'); continue;
-          }
           const episodes = await client.getEpisodes(download.mediaId);
           const selected = episodes.filter((episode) => scopes.some((scope) => scope.type === 'series' && episode.monitored === true ||
             scope.type === 'season' && episode.seasonNumber === scope.seasonNumber || scope.type === 'episode' && episode.id === scope.episodeId));
           if (selected.length && selected.every((episode) => episode.hasFile)) { later(job, 'complete'); continue; }
+          if ((await client.getQueue()).records.some((item) => item.seriesId === download.mediaId)) {
+            later(job, job.state === 'pending' ? 'pending' : 'downloading'); continue;
+          }
           if (await client.hasActiveSeriesSearch(download.mediaId, episodes.map((episode) => episode.id))) {
             updateDownloadSearchJob(job.downloadId, { state: 'searching', submittedAt: job.submittedAt ?? Date.now(), nextAttemptAt: Date.now() + 30_000 });
             continue;

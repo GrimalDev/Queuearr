@@ -12,7 +12,8 @@ import {
   getLatestMonitoredDownloadBySourceMedia,
 } from '@/lib/db/monitored-downloads';
 import type { RadarrQueueItem, SonarrQueueItem, TransmissionTorrent } from '@/types';
-import { getDownloadSearchJobs } from '@/lib/db/download-search-jobs';
+import { ensureDownloadSearchJob, getDownloadSearchJobs, updateDownloadSearchJob } from '@/lib/db/download-search-jobs';
+import { rememberDownloadTransfer } from '@/lib/db/download-transfers';
 
 type DownloadStatus = 'downloading' | 'queued' | 'importing' | 'warning' | 'failed' | 'stalled' | 'error';
 
@@ -94,7 +95,7 @@ const NOTIFICATION_MESSAGES: Record<string, { title: (t: string) => string; body
 
 const READY_NOTIFICATION = {
   title: (t: string) => `${t} is ready!`,
-  body: 'Your download has completed',
+  body: 'Your media is ready in the library.',
 };
 
 let isRunning = false;
@@ -159,10 +160,14 @@ async function checkDownloads(): Promise<void> {
     const audioJobs = new Map(getMovieAudioJobs().map((job) => [job.tmdbId, job]));
     const searchJobs = new Map(getDownloadSearchJobs().map((job) => [job.downloadId, job]));
     for (const download of monitored) {
+      if (download.lastStatus === 'cancelling') continue;
       const queueItems =
         download.source === 'radarr'
           ? radarrQueue.filter((item) => item.movieId === download.mediaId)
           : sonarrQueue.filter((item) => item.seriesId === download.mediaId);
+      for (const item of queueItems) {
+        if (download.source === 'radarr' || download.source === 'sonarr') rememberDownloadTransfer(download.source, download.mediaId, item.downloadId);
+      }
 
       // Find matched torrent for this download
       const matchedTorrent = queueItems
@@ -184,7 +189,15 @@ async function checkDownloads(): Promise<void> {
       const audioPolicy = download.source === 'radarr' ? audioPolicies.get(download.mediaId) : undefined;
       const audioReady = audioPolicy ? audioJobs.get(audioPolicy.tmdbId)?.state === 'available' : undefined;
       const searchJob = searchJobs.get(download.id);
-      if (queueItems.length === 0 && (audioPolicy ? audioReady : searchJob ? searchJob.state === 'complete' : download.lastStatus !== null)) {
+      let legacyReady = false;
+      // Legacy movie tracking also needs a confirmed library file, never an empty queue alone.
+      if (!audioPolicy && download.source === 'radarr' && radarr && queueItems.length === 0 && download.lastStatus !== null &&
+          (!searchJob || searchJob.state === 'needs_review' && searchJob.submittedAt === null && download.userIds.length === 0)) {
+        try {
+          legacyReady = (await radarr.getMovie(download.mediaId)).hasFile === true;
+        } catch { console.warn(`[watcher] library confirmation unavailable for movie ${download.mediaId}`); }
+      }
+      if (audioPolicy ? audioReady : searchJob?.state === 'complete' || legacyReady) {
         const requestLock = acquireMovieAudioLock(-(download.mediaId * 2 + (download.source === 'sonarr' ? 1 : 0)));
         if (!requestLock) continue;
         const audioLock = audioPolicy ? acquireMovieAudioLock(audioPolicy.tmdbId + 2) : null;
@@ -192,8 +205,15 @@ async function checkDownloads(): Promise<void> {
         try {
           const fresh = await getLatestMonitoredDownloadBySourceMedia(download.source as 'radarr' | 'sonarr', download.mediaId);
           if (!fresh || fresh.completedAt !== null) continue;
-          const currentSearch = getDownloadSearchJobs().find((job) => job.downloadId === download.id);
-          if (!audioPolicy && currentSearch && currentSearch.state !== 'complete') continue;
+          let currentSearch = getDownloadSearchJobs().find((job) => job.downloadId === download.id);
+          if (!audioPolicy && [...getMovieAudioPolicies().values()].some((policy) => policy.radarrMovieId === download.mediaId)) continue;
+          if (legacyReady && !audioPolicy && fresh.lastStatus === download.lastStatus && fresh.createdAt === download.createdAt &&
+              (!currentSearch || currentSearch.state === 'needs_review' && currentSearch.submittedAt === null && download.userIds.length === 0)) {
+            currentSearch = ensureDownloadSearchJob(download.id, 'radarr');
+            updateDownloadSearchJob(download.id, { state: 'complete' });
+            currentSearch = { ...currentSearch, state: 'complete' };
+          }
+          if (!audioPolicy && currentSearch?.state !== 'complete') continue;
           // A new language request may have arrived since the initial status read.
           if (audioPolicy && getMovieAudioJobs().find((job) => job.tmdbId === audioPolicy.tmdbId)?.state !== 'available') continue;
           await Promise.all(

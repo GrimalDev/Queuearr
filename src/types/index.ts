@@ -63,6 +63,7 @@ export interface MediaQuality {
 }
 
 export interface RadarrQueueItem {
+  languages?: RadarrLanguage[];
   id: number;
   movieId?: number;
   movie?: RadarrMovie;
@@ -196,6 +197,7 @@ export interface SonarrSeason {
 }
 
 export interface SonarrQueueItem {
+  languages?: RadarrLanguage[];
   id: number;
   seriesId?: number;
   series?: SonarrSeries;
@@ -266,6 +268,7 @@ export interface SonarrRootFolder {
 export interface TransmissionTorrent {
   /** Recovered by Queuearr from Radarr/Sonarr, not supplied by Transmission. */
   indexer?: string;
+  estimatedAudioLanguages?: RadarrLanguage[];
   id: number;
   hashString: string;
   name: string;
@@ -300,6 +303,8 @@ export interface TransmissionTorrent {
 }
 
 export interface DownloadGrabHistory {
+  languages?: RadarrLanguage[];
+  language?: RadarrLanguage;
   downloadId?: string;
   eventType?: string;
   data?: { indexer?: string };
@@ -422,6 +427,12 @@ export interface QueueItem {
   isAwaitingDownload?: boolean;
   searchError?: 'in_cinemas';
   requestedAudioLanguages?: RadarrLanguage[];
+  estimatedAudioLanguages?: RadarrLanguage[];
+  availableAudioLanguages?: RadarrLanguage[];
+  /** Library import and all requested audio have been confirmed by the server. */
+  libraryReady?: boolean;
+  lifecyclePhase?: 'checking_audio' | 'merging' | 'replacing' | 'verifying';
+  canCancelDownload?: boolean;
   canRetrySearch?: boolean;
   canCancelSearch?: boolean;
   canRetry?: boolean;
@@ -436,7 +447,7 @@ export interface QueueItem {
   title: string;
   subtitle?: string;
   audio?: {
-    phase: 'searching' | 'metadata' | 'downloading' | 'validating' | 'merging' | 'verifying' | 'error';
+    phase: 'searching' | 'metadata' | 'downloading' | 'validating' | 'merging' | 'replacing' | 'verifying' | 'error';
     languages: RadarrLanguage[];
     canRetry?: boolean;
   };
@@ -464,6 +475,28 @@ export interface QueueItem {
   dbCreatedAt?: number;
   dbLastActivityAt?: number | null;
   dbLastBytesAt?: number | null;
+}
+
+export interface MonitoredQueueDownload {
+  estimatedAudioLanguages?: RadarrLanguage[];
+  id: number;
+  source: 'radarr' | 'sonarr';
+  mediaId: number;
+  title: string;
+  lastStatus: string | null;
+  createdAt: number;
+  completedAt?: number | null;
+  lastActivityAt: number | null;
+  lastBytesAt: number | null;
+  retryAvailableAt?: number;
+  userIds: string[];
+  searchState?: string;
+  searchIndexer?: string | null;
+  retryRequiresReview?: boolean;
+  audioState?: string;
+  requestedAudioLanguages?: RadarrLanguage[];
+  downloadHashes?: string[];
+  libraryReady?: boolean;
 }
 
 export type DownloadSearchScope = { type: 'movie' } | { type: 'series' } |

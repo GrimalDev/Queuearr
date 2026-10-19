@@ -127,6 +127,13 @@
       "when": 1792405057433,
       "tag": "0017_torrent_indexers",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1792406946911,
+      "tag": "0018_download_lifecycle",
+      "breakpoints": true
     }
   ]
 }
