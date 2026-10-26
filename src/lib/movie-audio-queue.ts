@@ -56,7 +56,7 @@ export function getMovieAudioQueue(
       indexer: job.donorIndexer ?? undefined,
       status: hasError ? 'failed' : !additionalAudio || phase === 'searching' ? 'pending' : phase === 'downloading' ? 'downloading' : 'importing',
       progress: 0, size: 0, sizeRemaining: 0, isStalled: false, hasError,
-      errorMessage: hasError ? 'Error' : undefined,
+      errorMessage: hasError ? job.detail : undefined,
     }];
   });
 }
@@ -79,6 +79,8 @@ export function mergeMovieAudioQueue(
       requestedAudioLanguages: item.requestedAudioLanguages,
       estimatedAudioLanguages: movieDownload.estimatedAudioLanguages?.length ? movieDownload.estimatedAudioLanguages : item.estimatedAudioLanguages,
       libraryReady: false, lifecyclePhase: item.lifecyclePhase,
+      hasError: item.hasError || movieDownload.hasError,
+      errorMessage: item.hasError ? item.errorMessage : movieDownload.errorMessage,
       canCancelDownload: item.canCancelDownload,
       indexer: movieDownload.indexer ?? item.indexer,
     } : item;
@@ -108,7 +110,8 @@ export function mergeMovieAudioQueue(
     return {
       ...item, ...enriched, indexer: item.indexer ?? movieDownload?.indexer,
       estimatedAudioLanguages: item.estimatedAudioLanguages?.length ? item.estimatedAudioLanguages : torrent?.estimatedAudioLanguages ?? movieDownload?.estimatedAudioLanguages,
-      hasError, errorMessage: hasError ? 'Error' : undefined,
+      hasError, errorMessage: hasError ? [item.hasError ? item.errorMessage : undefined, torrent?.error ? torrent.errorString : undefined,
+        movieDownload?.hasError ? movieDownload.errorMessage : undefined].filter(Boolean).join('\n\n') || 'Error' : undefined,
       audio: { ...item.audio!, canRetry: item.audio!.canRetry && (torrent?.percentDone ?? movieDownload?.progress ?? 0) < (torrent ? 1 : 100),
         phase: hasError ? 'error' : transferring && metadata ? 'metadata' :
         transferring && (torrent || movieDownload) ? 'downloading' : phase },

@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
     downloadHashes: hashes.get(download.id) ?? [],
     retryAvailableAt: retryTimes.get(`${download.source}:${download.mediaId}`),
     searchState: searchJobs.get(download.id)?.state,
+    errorMessage: session.user.role === 'admin' ? audio?.detail : undefined,
     searchIndexer: audio?.donorIndexer ?? searchJobs.get(download.id)?.indexer ?? savedTransfer.find((transfer) => transfer?.indexer)?.indexer,
     retryRequiresReview: searchJobs.get(download.id)?.state === 'needs_review' && searchJobs.get(download.id)?.submittedAt !== null,
   }; }).filter((download) => download.completedAt == null || download.libraryReady));

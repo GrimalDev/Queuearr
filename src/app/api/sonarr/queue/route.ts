@@ -9,6 +9,7 @@ import { ensureDownloadSearchJob, parseDownloadScopes, updateDownloadSearchJob }
 import { isImportInProgress } from '@/lib/queue-retry-safety';
 import { rememberTorrentIndexer } from '@/lib/db/torrent-indexers';
 import { rememberDownloadTransfer } from '@/lib/db/download-transfers';
+import { restrictQueueDiagnostics } from '@/lib/queue-errors';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -29,21 +30,22 @@ export async function GET(request: NextRequest) {
       rememberDownloadTransfer('sonarr', item.seriesId, item.downloadId);
     }
     const filter = request.nextUrl.searchParams.get('filter') ?? 'mine';
+    const records = queue.records.map((item) => restrictQueueDiagnostics(item, session.user.role === 'admin'));
     if (filter === 'all') {
       // Debug: Check if series data is included
       const sample = queue.records[0];
       if (sample && !sample.series) {
         console.log('[sonarr/queue] WARNING: series data not included in response. Sample item:', JSON.stringify({ id: sample.id, title: sample.title, seriesId: sample.seriesId, hasSeries: !!sample.series }));
       }
-      return NextResponse.json(queue.records);
+      return NextResponse.json(records);
     }
     const watchedIds = await getWatchedMediaIds(session.user.id, 'sonarr');
-    const filtered = queue.records.filter((item) => item.seriesId != null && watchedIds.has(item.seriesId));
+    const filtered = records.filter((item) => item.seriesId != null && watchedIds.has(item.seriesId));
     return NextResponse.json(filtered);
   } catch (error) {
     console.error('Sonarr queue error:', error);
     const message = error instanceof Error ? error.message : 'Failed to get queue';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: session.user.role === 'admin' ? message : 'Error' }, { status: 500 });
   }
 }
 

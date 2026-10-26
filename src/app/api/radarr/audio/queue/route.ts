@@ -34,6 +34,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const items = getMovieAudioQueue(jobs, policies, await getCachedRadarrMovies(client), visible, settled);
     const retryTimes = getDownloadRetryTimes();
     return NextResponse.json(items.map((item) => ({ ...item,
+      errorMessage: item.hasError ? session.user.role === 'admin' ? item.errorMessage : 'Error' : undefined,
       canCancelDownload: item.canCancelDownload && (session.user.role === 'admin' || watched.has(item.mediaId!)),
       retryAvailableAt: retryTimes.get(`radarr:${item.mediaId}`),
       canRetrySearch: item.canRetrySearch && (session.user.role === 'admin' || watched.has(item.mediaId!)),

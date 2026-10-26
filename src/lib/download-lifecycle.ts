@@ -40,7 +40,7 @@ export function mergeDownloadLifecycle(
         progress: ready ? 100 : transfer ? transfer.percentDone * 100 : 0,
         size: transfer?.sizeWhenDone ?? 0, sizeRemaining: ready ? 0 : transfer?.leftUntilDone ?? 0,
         transmissionId: transfer?.id, transmissionHash: transfer?.hashString,
-        hasError, isStalled: false });
+        hasError, errorMessage: hasError ? download.errorMessage : undefined, isStalled: false });
     }
     for (let i = 0; i < result.length; i++) {
       const item = result[i];
@@ -52,6 +52,7 @@ export function mergeDownloadLifecycle(
         estimatedAudioLanguages: item.estimatedAudioLanguages?.length ? item.estimatedAudioLanguages : download.estimatedAudioLanguages,
         dbCreatedAt: download.createdAt, retryAvailableAt: download.retryAvailableAt ?? item.retryAvailableAt,
         indexer: item.indexer ?? download.searchIndexer ?? undefined,
+        errorMessage: ready ? undefined : item.errorMessage ?? (item.hasError ? download.errorMessage : undefined),
         ...(ready ? { status: 'completed', progress: 100, sizeRemaining: 0, isSearching: false, isAwaitingDownload: false,
           lifecyclePhase: undefined, hasError: false, isStalled: false, audio: undefined,
           sourceId: undefined, canRetrySearch: false, canCancelSearch: false, canCancelDownload: false }

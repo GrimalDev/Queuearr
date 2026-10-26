@@ -85,11 +85,16 @@ export async function GET(request: NextRequest) {
       const problemCheck = transmission.isProblematic(torrent);
       return {
         ...torrent,
+        errorString: session.user.role === 'admin' ? torrent.errorString : torrent.errorString ? 'Error' : '',
+        trackerStats: session.user.role === 'admin' ? torrent.trackerStats : torrent.trackerStats?.map((tracker) => ({ ...tracker,
+          lastAnnounceResult: tracker.lastAnnounceResult ? tracker.lastAnnounceSucceeded ? 'Success' : 'Error' : '',
+          lastScrapeResult: tracker.lastScrapeResult ? tracker.lastScrapeSucceeded ? 'Success' : 'Error' : '',
+        })),
         indexer: indexers.get(torrent.hashString.toLowerCase())?.indexer,
         estimatedAudioLanguages: readAudioLanguages(indexers.get(torrent.hashString.toLowerCase())?.audioLanguages),
         statusString: transmission.getStatusString(torrent.status),
         isProblematic: problemCheck.isProblematic,
-        problemReason: problemCheck.reason,
+        problemReason: session.user.role === 'admin' ? problemCheck.reason : problemCheck.reason ? 'Error' : undefined,
       };
     });
 
@@ -100,6 +105,6 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Transmission error:', error);
     const message = error instanceof Error ? error.message : 'Failed to get torrents';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: session.user.role === 'admin' ? message : 'Error' }, { status: 500 });
   }
 }

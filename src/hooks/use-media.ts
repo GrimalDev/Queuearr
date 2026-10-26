@@ -6,6 +6,7 @@ import { mergeMovieAudioQueue } from '@/lib/movie-audio-queue';
 import { mergeDownloadLifecycle } from '@/lib/download-lifecycle';
 import { normalizeAudioLanguages } from '@/lib/audio-languages';
 import { matchesQueueRequest, mergePendingQueueRequests } from '@/lib/queue-requests';
+import { getQueueErrorMessage } from '@/lib/queue-errors';
 
 const STALL_GRACE_PERIOD_SECONDS = 5 * 60;
 
@@ -383,9 +384,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
                 : item.timeleft,
               isStalled: !!(matchedTorrent?.isStalled && isActivelyDownloading && isStalledAfterGrace),
               hasError: !!(hasRealError || transmissionHasError),
-              errorMessage: hasRealError
-                ? (item.errorMessage || item.statusMessages?.[0]?.messages?.[0])
-                : matchedTorrent?.problemReason,
+              errorMessage: getQueueErrorMessage(hasRealError ? item : {}, matchedTorrent?.problemReason),
               downloadClient: item.downloadClient,
               indexer: item.indexer || matchedTorrent?.indexer,
               estimatedAudioLanguages: normalizeAudioLanguages(item.languages).length ? normalizeAudioLanguages(item.languages) : matchedTorrent?.estimatedAudioLanguages,
@@ -492,9 +491,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
                 : item.timeleft,
               isStalled: !!(matchedTorrent?.isStalled && isActivelyDownloading && isStalledAfterGrace),
               hasError: !!(hasRealError || transmissionHasError),
-              errorMessage: hasRealError
-                ? (item.errorMessage || item.statusMessages?.[0]?.messages?.[0])
-                : matchedTorrent?.problemReason,
+              errorMessage: getQueueErrorMessage(hasRealError ? item : {}, matchedTorrent?.problemReason),
               downloadClient: item.downloadClient,
               indexer: item.indexer || matchedTorrent?.indexer,
               estimatedAudioLanguages: normalizeAudioLanguages(item.languages).length ? normalizeAudioLanguages(item.languages) : matchedTorrent?.estimatedAudioLanguages,
@@ -575,7 +572,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
             addAlert({
               type: item.hasError ? 'error' : 'warning',
               title: item.isStalled ? 'Download Stalled' : 'Download Issue',
-              message: `${item.title}: ${item.errorMessage || 'Unknown issue'}`,
+              message: `${item.title}: ${item.isStalled ? 'Download stalled' : 'Error'}`,
               source: item.source,
               relatedItemId: item.id,
             });

@@ -491,6 +491,8 @@ export interface MonitoredQueueDownload {
   retryAvailableAt?: number;
   userIds: string[];
   searchState?: string;
+  /** Detailed diagnostics are returned only to administrators. */
+  errorMessage?: string;
   searchIndexer?: string | null;
   retryRequiresReview?: boolean;
   audioState?: string;

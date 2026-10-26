@@ -1,7 +1,7 @@
 'use client';
 
-import { AudioLines, ArrowUpToLine, Bug, Check, CircleAlert, Clock, Download, Film, Languages, Loader2, RotateCcw, Trash2, Tv, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AudioLines, ArrowUpToLine, Bug, Check, ChevronDown, CircleAlert, Clock, Download, Film, Languages, Loader2, RotateCcw, Trash2, Tv, Users } from 'lucide-react';
+import { useEffect, useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +33,8 @@ function formatBytes(bytes: number): string {
 
 export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownload, onDelete, onPassFirst, isAdmin, isRetrying = false, isDeleting = false, isPassing = false }: DownloadQueueCardProps): React.JSX.Element {
   const [showDebug, setShowDebug] = useState(false);
+  const [showError, setShowError] = useState(false);
+  const errorDetailsId = useId();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!onRetry || !item.retryAvailableAt || item.retryAvailableAt <= Date.now()) return;
@@ -107,8 +109,17 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
             {phase === 'error' ? <CircleAlert className="size-4" aria-hidden="true" /> : waiting ? <Clock className="size-4" aria-hidden="true" /> :
               phase === 'ready' ? <Check className="size-4" aria-hidden="true" /> : <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />}
             {label}
+            {phase === 'error' && isAdmin && <Button variant="ghost" size="xs"
+              aria-label={`${showError ? 'Hide' : 'Show'} error details for ${item.title}`}
+              aria-expanded={showError} aria-controls={errorDetailsId} onClick={() => setShowError((value) => !value)}>
+              Details <ChevronDown className={cn('size-3', showError && 'rotate-180')} aria-hidden="true" />
+            </Button>}
           </div>
         )}
+        {phase === 'error' && isAdmin && showError && <pre id={errorDetailsId}
+          className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs">
+          {item.errorMessage && item.errorMessage !== 'Error' ? item.errorMessage : 'No detailed error was recorded for this download.'}
+        </pre>}
         {phase === 'ready' && <p className="text-xs text-muted-foreground">Ready for Plex to pick up.</p>}
         {phase === 'downloaded' && <p className="text-xs text-muted-foreground">Library readiness has not been confirmed.</p>}
         {!waiting && phase === 'metadata' && <p className="text-xs text-muted-foreground">Waiting for peers to provide the torrent details. The download has not started yet.</p>}
@@ -152,7 +163,7 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
             <Bug className="size-4" aria-hidden="true" />
           </Button>}
         </div>}
-        {showDebug && <pre className="max-h-64 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify(
+        {isAdmin && showDebug && <pre className="max-h-64 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify(
           Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'errorMessage')), null, 2)}</pre>}
         <ol aria-label={hasAudioRequest ? 'Movie and audio readiness stages' : 'Download stages'} className={cn('grid gap-2 border-t pt-4', hasAudioRequest ? 'grid-cols-5' : 'grid-cols-4')}>
           {steps.map((name, index) => (

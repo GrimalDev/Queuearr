@@ -10,6 +10,7 @@ import { ensureDownloadSearchJob, updateDownloadSearchJob } from '@/lib/db/downl
 import { isImportInProgress } from '@/lib/queue-retry-safety';
 import { rememberTorrentIndexer } from '@/lib/db/torrent-indexers';
 import { rememberDownloadTransfer } from '@/lib/db/download-transfers';
+import { restrictQueueDiagnostics } from '@/lib/queue-errors';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -30,16 +31,17 @@ export async function GET(request: NextRequest) {
       rememberDownloadTransfer('radarr', item.movieId, item.downloadId);
     }
     const filter = request.nextUrl.searchParams.get('filter') ?? 'mine';
+    const records = queue.records.map((item) => restrictQueueDiagnostics(item, session.user.role === 'admin'));
     if (filter === 'all') {
-      return NextResponse.json(queue.records);
+      return NextResponse.json(records);
     }
     const watchedIds = await getWatchedMediaIds(session.user.id, 'radarr');
-    const filtered = queue.records.filter((item) => item.movieId != null && watchedIds.has(item.movieId));
+    const filtered = records.filter((item) => item.movieId != null && watchedIds.has(item.movieId));
     return NextResponse.json(filtered);
   } catch (error) {
     console.error('Radarr queue error:', error);
     const message = error instanceof Error ? error.message : 'Failed to get queue';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: session.user.role === 'admin' ? message : 'Error' }, { status: 500 });
   }
 }
 
