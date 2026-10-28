@@ -97,6 +97,17 @@ export function isInside(root: string, path: string): boolean {
   const rel = relative(resolve(root), resolve(path));
   return rel !== '' && rel !== '..' && !rel.startsWith('..' + '/') && !isAbsolute(rel);
 }
+
+/** Radarr's shared mount and Queuearr's fixed movie mount name the same host library. */
+export function movieFilePath(path: string): string {
+  const roots = ['/movies', '/media/movies'];
+  const root = roots.find((candidate) => path.startsWith(candidate + '/'));
+  if (!root || path.split('/').some((part) => part === '..' || part === '.')) {
+    throw new AudioReviewError('Radarr returned a movie path outside the shared movie library.');
+  }
+  return join('/movies', path.slice(root.length + 1));
+}
+
 export async function confinedFile(root: string, path: string): Promise<string> {
   const [actualRoot, actualPath] = await Promise.all([realpath(root), realpath(path)]).catch(() => {
     throw new AudioReviewError('A required media file or shared folder is missing. Check the mounts and files before retrying.');

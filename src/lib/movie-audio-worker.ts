@@ -9,7 +9,7 @@ import {
 } from '@/lib/db/movie-audio';
 import { AudioProfileError, ensureAudioProfile } from '@/lib/radarr-audio-profile';
 import { getAvailableAudio, hasRequiredAudio, normalizeMovieAudioPolicy } from '@/lib/movie-audio-policy';
-import { AudioReviewError, confinedFile, containsAudioLanguages, isInside, languageCodes, prepareAudioMerge, prepareMovieReplacement, verifyAudio } from '@/lib/movie-audio-media';
+import { AudioReviewError, confinedFile, containsAudioLanguages, isInside, languageCodes, movieFilePath, prepareAudioMerge, prepareMovieReplacement, verifyAudio } from '@/lib/movie-audio-media';
 import { canReplaceFromDonor, donorMetadata, isAudioDonor, isMovieRegrab, publishedDonorQuality } from '@/lib/movie-audio-releases';
 import { rememberDownloadTransfer } from '@/lib/db/download-transfers';
 import { getMovieAudioTorrentSource } from '@/lib/movie-audio-download';
@@ -310,7 +310,7 @@ async function processJob(
     throw new AudioReviewError('The donor must contain exactly one complete movie file. Review this download.');
   }
   if (!movie.movieFile?.path) throw new AudioReviewError('Radarr did not return the current movie file path.');
-  const source = await confinedFile(paths.library, movie.movieFile.path);
+  const source = await confinedFile(paths.library, movieFilePath(movie.movieFile.path));
   const donorFile = await confinedFile(downloadDir, join(downloadDir, files[0].name));
   updateMovieAudioJob(id, { state: 'validating', detail: 'Checking the complete video timeline and audio tracks.', nextAttemptAt: Date.now() + 60_000 });
   const requiredAfterMerge = policy.requiredLanguages.filter((language) =>
