@@ -8,6 +8,7 @@ import { pickBestRelease } from '@/lib/smart-grab';
 import { invalidateQueueCache } from '@/lib/queue-cache';
 import { isMovieInCinemas } from '@/lib/movie-release-status';
 import { releaseSearchRetry, summarizeReleaseSearch } from '@/lib/release-search-retry';
+import { episodeMatchesSearchScope, getUnqueuedSonarrSearchScopes } from '@/lib/sonarr-search-scopes';
 
 function later(job: DownloadSearchJob, state: string, delay = 30_000): void {
   updateDownloadSearchJob(job.downloadId, { state, nextAttemptAt: Date.now() + delay });
@@ -88,13 +89,14 @@ export async function runDownloadSearchJobs(): Promise<void> {
           const client = createSonarrClient();
           if (!client) throw new Error('Sonarr is not configured.');
           const episodes = await client.getEpisodes(download.mediaId);
-          const selected = episodes.filter((episode) => scopes.some((scope) => scope.type === 'series' && episode.monitored === true ||
-            scope.type === 'season' && episode.seasonNumber === scope.seasonNumber || scope.type === 'episode' && episode.id === scope.episodeId));
+          const selected = episodes.filter((episode) => scopes.some((scope) => episodeMatchesSearchScope(episode, scope)));
           if (selected.length && selected.every((episode) => episode.hasFile)) { later(job, 'complete'); continue; }
-          if ((await client.getQueue()).records.some((item) => item.seriesId === download.mediaId)) {
-            later(job, job.state === 'pending' ? 'pending' : 'downloading'); continue;
+          const queue = (await client.getQueue()).records.filter((item) => item.seriesId === download.mediaId);
+          const searches = getUnqueuedSonarrSearchScopes(scopes, episodes, queue);
+          if (!searches.length) {
+            later(job, queue.length ? 'downloading' : 'needs_selection'); continue;
           }
-          if (await client.hasActiveSeriesSearch(download.mediaId, episodes.map((episode) => episode.id))) {
+          if (await client.hasActiveSeriesSearch(download.mediaId, selected.map((episode) => episode.id))) {
             updateDownloadSearchJob(job.downloadId, { state: 'searching', submittedAt: job.submittedAt ?? Date.now(), nextAttemptAt: Date.now() + 30_000 });
             continue;
           }
@@ -106,7 +108,7 @@ export async function runDownloadSearchJobs(): Promise<void> {
           if (lostLease) break;
           updateDownloadSearchJob(job.downloadId, { state: 'searching', submittedAt: Date.now(), nextAttemptAt: Date.now() + 30_000 });
           // Legacy requests receive a series scope only after an explicit retry.
-          for (const scope of scopes) {
+          for (const scope of searches) {
             if (scope.type === 'series') await client.triggerSearch(download.mediaId);
             else if (scope.type === 'season') await client.triggerSeasonSearch(download.mediaId, scope.seasonNumber);
             else if (scope.type === 'episode') await client.triggerEpisodeSearch([scope.episodeId]);

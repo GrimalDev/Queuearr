@@ -10,6 +10,7 @@ import { isImportInProgress } from '@/lib/queue-retry-safety';
 import { rememberTorrentIndexer } from '@/lib/db/torrent-indexers';
 import { rememberDownloadTransfer } from '@/lib/db/download-transfers';
 import { restrictQueueDiagnostics } from '@/lib/queue-errors';
+import { getSonarrRetryItems } from '@/lib/sonarr-search-scopes';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -76,17 +77,21 @@ export async function DELETE(request: NextRequest) {
           throw new DownloadRetryError('The queue entries do not belong to this title.');
         }
         const monitored = await getLatestMonitoredDownloadBySourceMedia('sonarr', mediaId);
-        if (queue.records.some((item) => ids.includes(item.id) && isImportInProgress(item))) throw new DownloadRetryError('Import is in progress.');
-        const saved = ensureDownloadSearchJob(monitored!.id, 'sonarr');
-        let scopes = parseDownloadScopes(saved.scopes);
-        if (!scopes.length) {
-          const episodes = queue.records.filter((item) => ids.includes(item.id)).map((item) => item.episodeId ?? item.episode?.id);
-          scopes = episodes.every((id) => Number.isSafeInteger(id) && id! > 0)
-            ? episodes.map((episodeId) => ({ type: 'episode' as const, episodeId: episodeId! }))
-            : [{ type: 'series' }];
+        const affected = getSonarrRetryItems(queue.records, ids);
+        if (affected.some((item) => item.seriesId !== mediaId)) throw new DownloadRetryError('The transfer contains another series. Review is required.');
+        if (affected.some(isImportInProgress)) throw new DownloadRetryError('Import is in progress.');
+        const episodes = [...new Set(affected.map((item) => item.episodeId ?? item.episode?.id))];
+        if (!episodes.length || episodes.some((id) => !Number.isSafeInteger(id) || id! <= 0)) {
+          throw new DownloadRetryError('The affected episodes could not be identified.');
         }
-        updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes), state: 'pending', indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
+        const saved = ensureDownloadSearchJob(monitored!.id, 'sonarr');
+        // Retain outstanding selections while ensuring the retried transfer is included.
+        const retained = ['pending', 'searching', 'downloading', 'search_failed'].includes(saved.state) ? parseDownloadScopes(saved.scopes) : [];
+        const scopes = [...new Map([...retained, ...episodes.map((episodeId) => ({ type: 'episode' as const, episodeId: episodeId! }))]
+          .map((scope) => [JSON.stringify(scope), scope])).values()];
+        if (scopes.length > 100) throw new DownloadRetryError('Too many pending episode selections.');
         await sonarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });
+        updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes), state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
         if (monitored) await resetMonitoredDownload(monitored.id);
       });
     } else {
