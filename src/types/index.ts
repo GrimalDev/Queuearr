@@ -203,6 +203,7 @@ export interface SonarrQueueItem {
   series?: SonarrSeries;
   episodeId?: number;
   episode?: SonarrEpisode;
+  seasonNumber?: number;
   title: string;
   status: string;
   trackedDownloadState?: string;
@@ -484,6 +485,7 @@ export interface QueueItem {
 
 export interface MonitoredQueueDownload {
   requestAttribution?: DownloadRequestAttribution[];
+  searchScopes?: DownloadSearchScope[];
   estimatedAudioLanguages?: RadarrLanguage[];
   id: number;
   source: 'radarr' | 'sonarr';

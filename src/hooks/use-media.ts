@@ -477,7 +477,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
               sourceId: item.id,
               mediaId: item.seriesId,
               episodeId: item.episodeId,
-              seasonNumber: item.episode?.seasonNumber,
+              seasonNumber: item.episode?.seasonNumber ?? item.seasonNumber,
               episodeIds: (downloadHash ? byDownloadId.get(downloadHash) ?? [item] : [item])
                 .flatMap((entry) => entry.episodeId ?? entry.episode?.id ?? []),
               source: 'sonarr' as const,

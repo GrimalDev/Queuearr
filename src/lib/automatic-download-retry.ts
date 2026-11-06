@@ -2,13 +2,14 @@ import { createRadarrClient } from '@/lib/api/radarr';
 import { createSonarrClient } from '@/lib/api/sonarr';
 import { createTransmissionClient } from '@/lib/api/transmission';
 import { getActiveMonitoredDownloads } from '@/lib/db/monitored-downloads';
-import { getDownloadSearchJobs } from '@/lib/db/download-search-jobs';
+import { getDownloadSearchJobs, parseDownloadScopes } from '@/lib/db/download-search-jobs';
 import { getMovieAudioJobs, getMovieAudioPolicies } from '@/lib/db/movie-audio';
 import { clearSettledAutomaticDownloadRetries, getAutomaticDownloadRetry, observeAutomaticDownloadFailures } from '@/lib/db/automatic-download-retries';
 import { DownloadRetryError, getDownloadRetryTimes } from '@/lib/download-retry';
 import { retryAudioAlternative, retryDownloadSearch, retryRadarrQueue, retrySonarrQueue } from '@/lib/download-retry-actions';
 import { automaticRetryAt, automaticSearchRetryKey, isAutomaticRetryFailure } from '@/lib/automatic-retry-policy';
 import { logMovieAudioError } from '@/lib/movie-audio-errors';
+import { sonarrQueueItemMatchesScope } from '@/lib/sonarr-search-scopes';
 
 const INTERVAL_MS = 60_000;
 const worker = globalThis as typeof globalThis & {
@@ -57,7 +58,11 @@ async function retryFailedDownloads(): Promise<void> {
         } else {
           const items = source === 'radarr' ? movies!.filter((item) => item.movieId === download.mediaId)
             : series!.filter((item) => item.seriesId === download.mediaId);
-          const failed = items.filter(isAutomaticRetryFailure);
+          const search = searchJobs.find((item) => item.downloadId === download.id);
+          const scopes = source === 'sonarr' && search ? parseDownloadScopes(search.scopes) : [];
+          const failed = source === 'sonarr' && scopes.length
+            ? series!.filter((item) => item.seriesId === download.mediaId && isAutomaticRetryFailure(item) &&
+              scopes.some((scope) => sonarrQueueItemMatchesScope(item, scope))) : items.filter(isAutomaticRetryFailure);
           const transfers = new Set<string>();
           for (const item of failed) {
             const transfer = item.downloadId?.toLowerCase() || String(item.id);
@@ -67,7 +72,6 @@ async function retryFailedDownloads(): Promise<void> {
               retry: (automaticKey) => source === 'radarr' ? retryRadarrQueue(download.mediaId, [item.id], { automaticKey })
                 : retrySonarrQueue(download.mediaId, [item.id], { automaticKey }) });
           }
-          const search = searchJobs.find((item) => item.downloadId === download.id);
           const failedSearch = audio ? ['search_failed', 'waiting_for_configuration'].includes(audio.state)
             : search?.state === 'search_failed';
           if (!items.length && failedSearch) candidates.push({ key: automaticSearchRetryKey(download.id, audio?.updatedAt ?? search?.submittedAt ?? search?.updatedAt ?? 0),

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getDownloadRetryTimes } from '@/lib/download-retry';
-import { getDownloadSearchJobs } from '@/lib/db/download-search-jobs';
+import { getDownloadSearchJobs, parseDownloadScopes } from '@/lib/db/download-search-jobs';
 import { getMovieAudioJobs, getMovieAudioPolicies } from '@/lib/db/movie-audio';
 import { getDownloadTransferHashes } from '@/lib/db/download-transfers';
 import { readAudioLanguages } from '@/lib/audio-languages';
@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
     downloadHashes: hashes.get(download.id) ?? [],
     retryAvailableAt: retryTimes.get(`${download.source}:${download.mediaId}`),
     searchState: searchJobs.get(download.id)?.state,
+    searchScopes: parseDownloadScopes(searchJobs.get(download.id)?.scopes ?? '[]'),
     errorMessage: session.user.role === 'admin' ? audio?.detail : undefined,
     searchIndexer: audio?.donorIndexer ?? searchJobs.get(download.id)?.indexer ?? savedTransfer.find((transfer) => transfer?.indexer)?.indexer,
     retryRequiresReview: searchJobs.get(download.id)?.state === 'needs_review' && searchJobs.get(download.id)?.submittedAt !== null,

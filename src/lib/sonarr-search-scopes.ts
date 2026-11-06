@@ -1,5 +1,11 @@
 import type { DownloadSearchScope, SonarrEpisode, SonarrQueueItem } from '@/types';
 
+export function sonarrQueueItemMatchesScope(item: SonarrQueueItem, scope: DownloadSearchScope): boolean {
+  return scope.type === 'series' && item.episode?.monitored !== false ||
+    scope.type === 'season' && (item.episode?.seasonNumber ?? item.seasonNumber) === scope.seasonNumber ||
+    scope.type === 'episode' && (item.episodeId ?? item.episode?.id) === scope.episodeId;
+}
+
 export function episodeMatchesSearchScope(episode: SonarrEpisode, scope: DownloadSearchScope): boolean {
   return scope.type === 'series' && episode.monitored === true ||
     scope.type === 'season' && episode.seasonNumber === scope.seasonNumber ||

@@ -12,9 +12,12 @@ export function automaticSearchRetryKey(downloadId: number, attempt: number): st
 
 export function isAutomaticRetryFailure(item: {
   status: string; trackedDownloadState?: string; trackedDownloadStatus?: string; errorMessage?: string;
+  statusMessages?: { title: string; messages: string[] }[];
 }): boolean {
   if (isImportInProgress(item)) return false;
   return ['failed', 'error'].includes(item.status.toLowerCase()) ||
     ['downloadfailed', 'failedpending', 'importblocked', 'importfailed'].includes(item.trackedDownloadState?.toLowerCase() ?? '') ||
-    item.trackedDownloadStatus?.toLowerCase() === 'error' || !!item.errorMessage?.trim();
+    item.trackedDownloadStatus?.toLowerCase() === 'error' || !!item.errorMessage?.trim() ||
+    item.trackedDownloadState?.toLowerCase() === 'importpending' && item.trackedDownloadStatus?.toLowerCase() === 'warning' &&
+      !!item.statusMessages?.some((message) => message.title.trim() || message.messages.some((detail) => detail.trim()));
 }

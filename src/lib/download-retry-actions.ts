@@ -3,15 +3,16 @@ import { createSonarrClient } from '@/lib/api/sonarr';
 import { DownloadRetryError, runDownloadRetry } from '@/lib/download-retry';
 import type { DownloadRetryActor } from '@/types';
 import { acquireMovieAudioLock, getMovieAudioJobs, getMovieAudioPolicies, releaseMovieAudioLock, updateMovieAudioJob } from '@/lib/db/movie-audio';
-import { getLatestMonitoredDownloadBySourceMedia, resetMonitoredDownload } from '@/lib/db/monitored-downloads';
+import { getLatestMonitoredDownloadBySourceMedia, resetMonitoredDownload, saveTrackedRequest } from '@/lib/db/monitored-downloads';
 import { ensureDownloadSearchJob, getDownloadSearchJobs, parseDownloadScopes, updateDownloadSearchJob } from '@/lib/db/download-search-jobs';
 import { invalidateQueueCache } from '@/lib/queue-cache';
 import { isImportInProgress } from '@/lib/queue-retry-safety';
-import { getSonarrRetryItems } from '@/lib/sonarr-search-scopes';
+import { getSonarrRetryItems, sonarrQueueItemMatchesScope } from '@/lib/sonarr-search-scopes';
 import { automaticSearchRetryKey, isAutomaticRetryFailure } from '@/lib/automatic-retry-policy';
 import { isMovieRegrab } from '@/lib/movie-audio-releases';
 import { rejectedAudioDonors } from '@/lib/movie-audio-attempts';
 import { createTransmissionClient } from '@/lib/api/transmission';
+import { db } from '@/lib/db';
 
 export async function retryRadarrQueue(mediaId: number, ids: number[], actor: DownloadRetryActor): Promise<number> {
   const radarr = createRadarrClient();
@@ -81,14 +82,20 @@ export async function retrySonarrQueue(mediaId: number, ids: number[], actor: Do
       }
       const saved = ensureDownloadSearchJob(monitored!.id, 'sonarr');
       // Retain outstanding selections while ensuring the retried transfer is included.
-      const retained = ['pending', 'searching', 'downloading', 'search_failed'].includes(saved.state) ? parseDownloadScopes(saved.scopes) : [];
+      const retained = monitored!.lastStatus !== 'cancelled' && ['pending', 'searching', 'downloading', 'search_failed'].includes(saved.state)
+        ? parseDownloadScopes(saved.scopes) : [];
       const scopes = [...new Map([...retained, ...episodes.map((episodeId) => ({ type: 'episode' as const, episodeId: episodeId! }))]
         .map((scope) => [JSON.stringify(scope), scope])).values()];
       if (scopes.length > 100) throw new DownloadRetryError('Too many pending episode selections.');
       await sonarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });
-      updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes), state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
+      db.transaction(() => {
+        if (monitored?.lastStatus === 'cancelled' && !('automaticKey' in actor)) {
+          for (const scope of scopes) saveTrackedRequest('sonarr', mediaId, monitored.title, actor.id, scope);
+        }
+        updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes), state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
+      });
       if (monitored) await resetMonitoredDownload(monitored.id);
-    });
+    }, { restartCancelledQueue: true });
   } finally { invalidateQueueCache(['sonarr-queue', 'transmission-state']); }
 }
 
@@ -119,13 +126,14 @@ export async function retryDownloadSearch(source: 'radarr' | 'sonarr', mediaId: 
       if (source === 'sonarr') {
         const client = createSonarrClient();
         if (!client) throw new DownloadRetryError('Sonarr is not configured.', 503);
-        if ((await client.getQueue()).records.some((item) => item.seriesId === mediaId)) {
-          throw new DownloadRetryError('A series download already exists. Refresh its queue entry.');
-        }
         const monitored = await getLatestMonitoredDownloadBySourceMedia(source, mediaId);
         const saved = ensureDownloadSearchJob(monitored!.id, source);
         // An explicit retry of a legacy request uses Sonarr's current monitoring.
         const scopes = parseDownloadScopes(saved.scopes);
+        if ((await client.getQueue()).records.some((item) => item.seriesId === mediaId &&
+            (!scopes.length || scopes.some((scope) => sonarrQueueItemMatchesScope(item, scope))))) {
+          throw new DownloadRetryError('A download already exists for this selection. Refresh its queue entry.');
+        }
         updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes.length ? scopes : [{ type: 'series' }]),
           state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
       } else {

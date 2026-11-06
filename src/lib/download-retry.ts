@@ -27,6 +27,7 @@ export function startDownloadRetryCooldown(source: 'radarr' | 'sonarr', mediaId:
 export async function runDownloadRetry(
   source: 'radarr' | 'sonarr', mediaId: number, actor: DownloadRetryActor,
   operation: () => Promise<void>,
+  options: { restartCancelledQueue?: boolean } = {},
 ): Promise<number> {
   if (!Number.isSafeInteger(mediaId) || mediaId <= 0 || mediaId > 2_147_483_647) {
     throw new DownloadRetryError('Invalid media ID.', 400);
@@ -49,7 +50,9 @@ export async function runDownloadRetry(
       throw new DownloadRetryError('Requester or administrator access required.', 403);
     }
     if (download?.lastStatus === 'cancelling') throw new DownloadRetryError('Finish cancelling this download before retrying.');
-    if (download?.lastStatus === 'cancelled') throw new DownloadRetryError('This search was cancelled. Submit a new request to start again.');
+    if (download?.lastStatus === 'cancelled' && (automatic || !options.restartCancelledQueue)) {
+      throw new DownloadRetryError('This search was cancelled. Submit a new request to start again.');
+    }
     if (!download) download = await upsertMonitoredDownload(source, mediaId, `${source} ${mediaId}`);
     const now = Date.now();
     const retryAvailableAt = now + DOWNLOAD_RETRY_COOLDOWN_MS;
