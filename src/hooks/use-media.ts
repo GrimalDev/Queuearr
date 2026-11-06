@@ -7,6 +7,7 @@ import { mergeDownloadLifecycle } from '@/lib/download-lifecycle';
 import { normalizeAudioLanguages } from '@/lib/audio-languages';
 import { isQueueRetryConfirmed, matchesQueueRequest, mergePendingQueueRequests, mergePendingQueueRetries, QUEUE_RETRY_CONFIRMATION_MS } from '@/lib/queue-requests';
 import { getQueueErrorMessage } from '@/lib/queue-errors';
+import { getDownloadInitiator } from '@/lib/download-attribution';
 
 const STALL_GRACE_PERIOD_SECONDS = 5 * 60;
 
@@ -476,6 +477,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
               sourceId: item.id,
               mediaId: item.seriesId,
               episodeId: item.episodeId,
+              seasonNumber: item.episode?.seasonNumber,
               episodeIds: (downloadHash ? byDownloadId.get(downloadHash) ?? [item] : [item])
                 .flatMap((entry) => entry.episodeId ?? entry.episode?.id ?? []),
               source: 'sonarr' as const,
@@ -566,6 +568,9 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
 
       // Parsing response bodies also awaits work. A filter or account can change during that time.
       if (!isCurrent()) return;
+      if (isAdminRef.current) items = items.map((item) => ({ ...item,
+        initiatedBy: getDownloadInitiator(item, item.mediaId != null ? monitoredMap.get(`${item.source}:${item.mediaId}`)?.requestAttribution : undefined),
+      }));
       const retryView = mergePendingQueueRetries(items, useAppStore.getState().pendingQueueRetries, fetchUserId, fetchFilter);
       const currentProblematic = new Set(
         retryView.filter((item) => item.hasError || item.isStalled).map((item) => item.id)

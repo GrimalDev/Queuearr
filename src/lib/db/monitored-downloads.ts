@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { monitoredDownloads, monitoredDownloadUsers, downloadTransfers } from '@/lib/db/schema';
 import type { MonitoredDownload } from '@/lib/db/schema';
 import { DOWNLOAD_RETRY_COOLDOWN_MS } from '@/lib/download-retry-policy';
+import { recordDownloadRequest } from '@/lib/db/download-requests';
+import type { DownloadRequestScope } from '@/types';
 
 export async function upsertMonitoredDownload(
   source: 'radarr' | 'sonarr',
@@ -34,7 +36,7 @@ export async function addUserToDownload(downloadId: number, userId: string): Pro
 }
 
 /** Use inside a transaction with its worker job, before submitting external work. */
-export function saveTrackedRequest(source: 'radarr' | 'sonarr', mediaId: number, title: string, userId: string): MonitoredDownload {
+export function saveTrackedRequest(source: 'radarr' | 'sonarr', mediaId: number, title: string, userId: string, scope: DownloadRequestScope): MonitoredDownload {
   const now = Date.now();
   const prior = db.select().from(monitoredDownloads).where(and(eq(monitoredDownloads.source, source), eq(monitoredDownloads.mediaId, mediaId))).get();
   if (prior?.lastStatus === 'cancelling') throw new Error('Finish cancelling this download before submitting a new request.');
@@ -47,6 +49,7 @@ export function saveTrackedRequest(source: 'radarr' | 'sonarr', mediaId: number,
     } }).returning().get();
   if (prior?.completedAt != null) db.delete(downloadTransfers).where(eq(downloadTransfers.downloadId, row.id)).run();
   db.insert(monitoredDownloadUsers).values({ downloadId: row.id, userId }).onConflictDoNothing().run();
+  recordDownloadRequest(row, userId, scope);
   return row;
 }
 

@@ -163,8 +163,14 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
             <Bug className="size-4" aria-hidden="true" />
           </Button>}
         </div>}
-        {isAdmin && showDebug && <pre className="max-h-64 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify(
-          Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'errorMessage')), null, 2)}</pre>}
+        {isAdmin && showDebug && <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+          <p className="text-sm">Initiated by <span className="font-medium">{item.initiatedBy?.username ?? 'Unknown / external'}</span></p>
+          {item.initiatedBy?.requestedAt != null && <p className="text-xs text-muted-foreground">
+            {new Date(item.initiatedBy.requestedAt).toLocaleString()}
+          </p>}
+          <pre className="max-h-64 overflow-auto text-xs">{JSON.stringify(
+            Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'errorMessage')), null, 2)}</pre>
+        </div>}
         <ol aria-label={hasAudioRequest ? 'Movie and audio readiness stages' : 'Download stages'} className={cn('grid gap-2 border-t pt-4', hasAudioRequest ? 'grid-cols-5' : 'grid-cols-4')}>
           {steps.map((name, index) => (
             <li key={name} aria-current={phase !== 'error' && index === step ? 'step' : undefined}

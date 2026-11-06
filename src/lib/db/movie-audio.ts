@@ -65,7 +65,8 @@ export function updateMovieAudioJob(tmdbId: number, changes: Partial<Omit<MovieA
 export function saveTrackedMovieAudioRequest(policy: MovieAudioPolicy, changes: Partial<Omit<MovieAudioJob, 'tmdbId'>>,
   title: string, userId: string): void {
   db.transaction(() => {
-    const tracked = saveTrackedRequest('radarr', policy.radarrMovieId, title, userId);
+    const tracked = saveTrackedRequest('radarr', policy.radarrMovieId, title, userId,
+      { type: 'audio', languageIds: policy.requiredLanguages.map((language) => language.id).sort((left, right) => left - right) });
     db.update(downloadSearchJobs).set({ state: 'cancelled', updatedAt: Date.now() }).where(eq(downloadSearchJobs.downloadId, tracked.id)).run();
     saveMovieAudioPolicy(policy);
     updateMovieAudioJob(policy.tmdbId, changes);

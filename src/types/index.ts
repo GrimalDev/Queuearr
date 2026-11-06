@@ -422,6 +422,8 @@ export interface SearchResult {
 
 export interface QueueItem {
   id: string;
+  /** Original request attribution, exposed only to administrators. */
+  initiatedBy?: DownloadInitiator;
   tmdbId?: number;
   isSearching?: boolean;
   isRetryPending?: boolean;
@@ -443,6 +445,7 @@ export interface QueueItem {
   mediaId?: number;
   episodeId?: number;
   episodeIds?: number[];
+  seasonNumber?: number;
   source: 'radarr' | 'sonarr' | 'transmission';
   transmissionId?: number;
   transmissionHash?: string;
@@ -480,6 +483,7 @@ export interface QueueItem {
 }
 
 export interface MonitoredQueueDownload {
+  requestAttribution?: DownloadRequestAttribution[];
   estimatedAudioLanguages?: RadarrLanguage[];
   id: number;
   source: 'radarr' | 'sonarr';
@@ -507,6 +511,18 @@ export type DownloadSearchScope = { type: 'movie' } | { type: 'series' } |
   { type: 'season'; seasonNumber: number } | { type: 'episode'; episodeId: number };
 
 export type DownloadRetryActor = { id: string; role: string } | { automaticKey: string };
+
+export type DownloadRequestScope = DownloadSearchScope | { type: 'audio'; languageIds: number[] } | { type: 'legacy' };
+
+export interface DownloadInitiator {
+  userId: string | null;
+  username: string;
+  requestedAt: number | null;
+}
+
+export interface DownloadRequestAttribution extends DownloadInitiator {
+  scope: DownloadRequestScope;
+}
 
 export interface PendingQueueRequest {
   item: QueueItem;

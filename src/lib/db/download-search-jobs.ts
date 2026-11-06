@@ -49,7 +49,7 @@ export function queueDownloadSearch(source: 'radarr' | 'sonarr', mediaId: number
       ? parseDownloadScopes(existing.scopes) : [];
     const scopes = [...new Map([...retained, scope].map((item) => [JSON.stringify(item), item])).values()];
     if (scopes.length > 100) throw new Error('Too many pending download selections.');
-    const tracked = saveTrackedRequest(source, mediaId, title, userId);
+    const tracked = saveTrackedRequest(source, mediaId, title, userId, scope);
     const values = { scopes: JSON.stringify(scopes), state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0, updatedAt: Date.now() };
     db.insert(downloadSearchJobs).values({ downloadId: tracked.id, ...values })
       .onConflictDoUpdate({ target: downloadSearchJobs.downloadId, set: values }).run();

@@ -7,6 +7,7 @@ import { getMovieAudioJobs, getMovieAudioPolicies } from '@/lib/db/movie-audio';
 import { getDownloadTransferHashes } from '@/lib/db/download-transfers';
 import { readAudioLanguages } from '@/lib/audio-languages';
 import { getTorrentIndexerMetadata } from '@/lib/db/torrent-indexers';
+import { getDownloadRequestAttribution } from '@/lib/db/download-requests';
 import {
   getMonitoredDownloadBySourceMedia,
   getActiveMonitoredDownloads,
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
   const audioJobs = new Map(getMovieAudioJobs().map((job) => [job.tmdbId, job]));
   const hashes = getDownloadTransferHashes(downloads.map((download) => download.id));
   const transferMetadata = getTorrentIndexerMetadata([...hashes.values()].flat());
+  const attribution = session.user.role === 'admin' ? getDownloadRequestAttribution(downloads.map((download) => download.id)) : undefined;
   return NextResponse.json(downloads.map((download) => {
     const policy = download.source === 'radarr' ? audioPolicies.get(download.mediaId) : undefined;
     const audio = policy ? audioJobs.get(policy.tmdbId) : undefined;
@@ -40,6 +42,7 @@ export async function GET(request: NextRequest) {
     const savedTransfer = [...(hashes.get(download.id) ?? [])].reverse().map((hash) => transferMetadata.get(hash));
     const estimated = readAudioLanguages(audio?.estimatedLanguages ?? searchJobs.get(download.id)?.estimatedLanguages);
     return { ...download,
+    ...(attribution ? { requestAttribution: attribution.get(download.id) ?? [] } : {}),
     libraryReady: ready, audioState: audio?.state, requestedAudioLanguages: policy?.requiredLanguages,
     estimatedAudioLanguages: estimated.length ? estimated : savedTransfer.map((transfer) => readAudioLanguages(transfer?.audioLanguages)).find((languages) => languages.length) ?? [],
     downloadHashes: hashes.get(download.id) ?? [],

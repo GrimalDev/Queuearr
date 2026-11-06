@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 import { InferSelectModel, InferInsertModel } from 'drizzle-orm';
 
 export const users = sqliteTable('users', {
@@ -129,6 +129,22 @@ export const automaticDownloadRetries = sqliteTable('automatic_download_retries'
   failedAt: integer('failed_at').notNull(),
   retryDeadline: integer('retry_deadline').notNull(),
 });
+
+// Request history survives retries, request reuse, and user deletion.
+export const downloadRequests = sqliteTable('download_requests', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  downloadId: integer('download_id').notNull(),
+  source: text('source').notNull(),
+  mediaId: integer('media_id').notNull(),
+  cycleStartedAt: integer('cycle_started_at').notNull(),
+  scope: text('scope').notNull(),
+  userId: text('user_id'),
+  username: text('username'),
+  requestedAt: integer('requested_at').notNull(),
+}, (table) => ({
+  requestUnique: uniqueIndex('download_requests_scope_unique').on(table.downloadId, table.cycleStartedAt, table.scope),
+  requestedAtIndex: index('download_requests_requested_at_index').on(table.requestedAt),
+}));
 
 export const torrentIndexers = sqliteTable('torrent_indexers', {
   audioLanguages: text('audio_languages'),
