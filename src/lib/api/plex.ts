@@ -4,6 +4,29 @@ import { PlexPin, PlexUser, PlexServer } from '@/types';
 
 const PLEX_API_URL = 'https://plex.tv/api/v2';
 
+function plexInviteId(value: unknown): string {
+  // Plex can return an invited email/text ID instead of a numeric account ID.
+  // Keep it opaque instead of coercing it to a number.
+  if (typeof value !== 'string' && typeof value !== 'number') throw new Error('Invalid Plex pending invite ID');
+  if (typeof value === 'number' && (!Number.isSafeInteger(value) || value <= 0)) throw new Error('Invalid Plex pending invite ID');
+  const id = String(value).trim();
+  if (!id || id.length > 512 || /[\u0000-\u0020\u007f]/.test(id) || id === '.' || id === '..') {
+    throw new Error('Invalid Plex pending invite ID');
+  }
+  return id;
+}
+
+function decodePlexXmlAttribute(value: string): string {
+  return value.replace(/&(?:amp|quot|apos|lt|gt|#\d+|#x[\da-f]+);/gi, (entity) => {
+    const named: Record<string, string> = { '&amp;': '&', '&quot;': '"', '&apos;': "'", '&lt;': '<', '&gt;': '>' };
+    if (entity in named) return named[entity];
+    if (!entity.startsWith('&#')) return entity;
+    const hex = entity[2].toLowerCase() === 'x';
+    const code = Number.parseInt(entity.slice(hex ? 3 : 2, -1), hex ? 16 : 10);
+    return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : entity;
+  });
+}
+
 interface PlexHeaders {
   [key: string]: string | undefined;
   Accept: string;
@@ -411,7 +434,7 @@ export class PlexAdminClient {
    * Get list of pending (not-yet-accepted) invitations sent by the admin.
    * These live at a different endpoint than accepted shares.
    */
-  async getPendingInvites(): Promise<Array<{ id: number; email: string; username: string }>> {
+  async getPendingInvites(): Promise<Array<{ id: string; email: string; username: string }>> {
     const url = `${PLEX_TV_API}/invites/requested`;
 
     try {
@@ -420,28 +443,30 @@ export class PlexAdminClient {
 
       // JSON response
       if (typeof data === 'object' && data !== null && data.MediaContainer?.Invite) {
-        return (data.MediaContainer.Invite as Array<{ id: number; email?: string; username?: string }>)
+        const entries: unknown = data.MediaContainer.Invite;
+        const invites: unknown[] = Array.isArray(entries) ? entries : [entries];
+        return invites
           .map((invite) => {
-            const id = Number(invite.id);
-            if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid Plex pending invite ID');
+            if (!invite || typeof invite !== 'object' || !('id' in invite)) throw new Error('Invalid Plex pending invite');
+            const id = plexInviteId(invite.id);
             return {
               id,
-              email: typeof invite.email === 'string' ? invite.email : '',
-              username: typeof invite.username === 'string' ? invite.username : '',
+              email: 'email' in invite && typeof invite.email === 'string' ? invite.email : '',
+              username: 'username' in invite && typeof invite.username === 'string' ? invite.username : '',
             };
           });
       }
 
       // XML response fallback
       if (typeof data === 'string' && data.includes('<MediaContainer')) {
-        const pendingInvites: Array<{ id: number; email: string; username: string }> = [];
+        const pendingInvites: Array<{ id: string; email: string; username: string }> = [];
         const inviteRegex = /<Invite\b([^>]*)\/?>/g;
         const attrRegex = /(\w+)="([^"]*)"/g;
         let inviteMatch: RegExpExecArray | null;
 
         while ((inviteMatch = inviteRegex.exec(data)) !== null) {
           const attrs = inviteMatch[1];
-          let id = 0;
+          let id = '';
           let email = '';
           let username = '';
           let attrMatch: RegExpExecArray | null;
@@ -449,14 +474,13 @@ export class PlexAdminClient {
 
           while ((attrMatch = attrRegex.exec(attrs)) !== null) {
             const key = attrMatch[1];
-            const value = attrMatch[2];
-            if (key === 'id') id = Number.parseInt(value, 10);
+            const value = decodePlexXmlAttribute(attrMatch[2]);
+            if (key === 'id') id = value;
             if (key === 'email') email = value;
             if (key === 'username') username = value;
           }
 
-          if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid Plex pending invite ID');
-          pendingInvites.push({ id, email, username });
+          pendingInvites.push({ id: plexInviteId(id), email, username });
         }
 
         return pendingInvites;
@@ -485,10 +509,9 @@ export class PlexAdminClient {
   /**
    * Cancel a pending (not-yet-accepted) Plex invitation by its invite ID.
    */
-  async cancelPendingInvite(inviteId: number): Promise<boolean> {
-    const url = `${PLEX_TV_API}/invites/requested/${inviteId}`;
-
+  async cancelPendingInvite(inviteId: string | number): Promise<boolean> {
     try {
+      const url = `${PLEX_TV_API}/invites/requested/${encodeURIComponent(plexInviteId(inviteId))}`;
       await axios.delete(url, {
         headers: this.headers,
         timeout: 10_000,
