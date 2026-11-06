@@ -123,6 +123,13 @@ export const downloadSearchJobs = sqliteTable('download_search_jobs', {
   updatedAt: integer('updated_at').notNull(),
 });
 
+export const automaticDownloadRetries = sqliteTable('automatic_download_retries', {
+  key: text('key').primaryKey(),
+  downloadId: integer('download_id').notNull().references(() => monitoredDownloads.id, { onDelete: 'cascade' }),
+  failedAt: integer('failed_at').notNull(),
+  retryDeadline: integer('retry_deadline').notNull(),
+});
+
 export const torrentIndexers = sqliteTable('torrent_indexers', {
   audioLanguages: text('audio_languages'),
   hash: text('hash').primaryKey(),

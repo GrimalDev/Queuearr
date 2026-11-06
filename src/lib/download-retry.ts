@@ -5,6 +5,9 @@ import { monitoredDownloads } from '@/lib/db/schema';
 import { acquireMovieAudioLock, releaseMovieAudioLock } from '@/lib/db/movie-audio';
 import { getLatestMonitoredDownloadBySourceMedia, isUserWatching, upsertMonitoredDownload } from '@/lib/db/monitored-downloads';
 import { DOWNLOAD_RETRY_COOLDOWN_MS, downloadRetryAvailableAt } from '@/lib/download-retry-policy';
+import type { DownloadRetryActor } from '@/types';
+import { clearAutomaticDownloadRetries, getAutomaticDownloadRetry } from '@/lib/db/automatic-download-retries';
+import { automaticRetryAt } from '@/lib/automatic-retry-policy';
 
 export class DownloadRetryError extends Error {
   constructor(message: string, public status = 409, public retryAvailableAt?: number) { super(message); }
@@ -22,7 +25,7 @@ export function startDownloadRetryCooldown(source: 'radarr' | 'sonarr', mediaId:
 }
 
 export async function runDownloadRetry(
-  source: 'radarr' | 'sonarr', mediaId: number, actor: { id: string; role: string },
+  source: 'radarr' | 'sonarr', mediaId: number, actor: DownloadRetryActor,
   operation: () => Promise<void>,
 ): Promise<number> {
   if (!Number.isSafeInteger(mediaId) || mediaId <= 0 || mediaId > 2_147_483_647) {
@@ -33,8 +36,16 @@ export async function runDownloadRetry(
   if (!lock) throw new DownloadRetryError('A retry is already in progress.');
   try {
     let download = await getLatestMonitoredDownloadBySourceMedia(source, mediaId);
-    const admin = actor.role === 'admin';
-    if (!admin && (!download || !await isUserWatching(download.id, actor.id))) {
+    const automatic = 'automaticKey' in actor;
+    const admin = !automatic && actor.role === 'admin';
+    if (automatic) {
+      const failure = getAutomaticDownloadRetry(actor.automaticKey);
+      if (!download || download.completedAt !== null || !failure || failure.downloadId !== download.id ||
+          failure.retryDeadline !== downloadRetryAvailableAt(download) ||
+          Date.now() < automaticRetryAt(failure.failedAt, failure.retryDeadline)) {
+        throw new DownloadRetryError('Automatic retry is no longer due.');
+      }
+    } else if (!admin && (!download || !await isUserWatching(download.id, actor.id))) {
       throw new DownloadRetryError('Requester or administrator access required.', 403);
     }
     if (download?.lastStatus === 'cancelling') throw new DownloadRetryError('Finish cancelling this download before retrying.');
@@ -52,6 +63,7 @@ export async function runDownloadRetry(
         current ? downloadRetryAvailableAt(current) : retryAvailableAt);
     }
     // Persist the reservation before external effects, including failed retry attempts.
+    clearAutomaticDownloadRetries(download.id);
     await operation();
     return retryAvailableAt;
   } finally { releaseMovieAudioLock(lock); }

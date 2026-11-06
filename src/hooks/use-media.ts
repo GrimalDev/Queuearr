@@ -5,7 +5,7 @@ import { SearchResult, QueueItem, RadarrMovie, SonarrSeries, RadarrQueueItem, So
 import { mergeMovieAudioQueue } from '@/lib/movie-audio-queue';
 import { mergeDownloadLifecycle } from '@/lib/download-lifecycle';
 import { normalizeAudioLanguages } from '@/lib/audio-languages';
-import { matchesQueueRequest, mergePendingQueueRequests } from '@/lib/queue-requests';
+import { isQueueRetryConfirmed, matchesQueueRequest, mergePendingQueueRequests, mergePendingQueueRetries, QUEUE_RETRY_CONFIRMATION_MS } from '@/lib/queue-requests';
 import { getQueueErrorMessage } from '@/lib/queue-errors';
 
 const STALL_GRACE_PERIOD_SECONDS = 5 * 60;
@@ -228,6 +228,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
   const { queueItems, isLoadingQueue, queueErrors, setQueueItems, setIsLoadingQueue, setQueueErrors, addAlert } = useAppStore();
   const { data: session } = useSession();
   const pendingQueueRequests = useAppStore((state) => state.pendingQueueRequests);
+  const pendingQueueRetries = useAppStore((state) => state.pendingQueueRetries);
   const isAdmin = session?.user?.role === 'admin';
   const isAdminRef = useRef(isAdmin);
   useEffect(() => { isAdminRef.current = isAdmin; }, [isAdmin]);
@@ -236,7 +237,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
   const currentUserRef = useRef(session?.user?.id);
   const currentRoleRef = useRef(session?.user?.role);
   const fetchSequenceRef = useRef(0);
-  const inFlightRef = useRef<{ filter: 'mine' | 'all'; userId?: string; role?: string; sequence: number } | null>(null);
+  const inFlightRef = useRef<{ filter: 'mine' | 'all'; userId?: string; role?: string; sequence: number; controller: AbortController } | null>(null);
   const [queueScope, setQueueScope] = useState<{ filter: 'mine' | 'all'; userId?: string; role?: string } | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const previousProblematicRef = useRef<Set<string>>(new Set());
@@ -262,9 +263,11 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
     const fetchUserId = session?.user?.id;
     const fetchRole = session?.user?.role;
     if (!force && inFlightRef.current?.filter === fetchFilter && inFlightRef.current?.userId === fetchUserId && inFlightRef.current?.role === fetchRole) return;
+    inFlightRef.current?.controller.abort();
+    const controller = new AbortController();
     const fetchSequence = ++fetchSequenceRef.current;
-    inFlightRef.current = { filter: fetchFilter, userId: fetchUserId, role: fetchRole, sequence: fetchSequence };
-    const isCurrent = (): boolean => currentFilterRef.current === fetchFilter && currentUserRef.current === fetchUserId && currentRoleRef.current === fetchRole &&
+    inFlightRef.current = { filter: fetchFilter, userId: fetchUserId, role: fetchRole, sequence: fetchSequence, controller };
+    const isCurrent = (): boolean => !controller.signal.aborted && currentFilterRef.current === fetchFilter && currentUserRef.current === fetchUserId && currentRoleRef.current === fetchRole &&
       fetchSequenceRef.current === fetchSequence;
     
     if (!hasFetchedRef.current) {
@@ -285,11 +288,11 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
         .map((request) => request.item.tmdbId).filter((id) => id != null).slice(0, 20).join(',');
 
       const [radarrRes, sonarrRes, transmissionRes, monitoredRes, audioRes] = await Promise.allSettled([
-        fetch(`/api/radarr/queue?filter=${fetchFilter}${force ? '&refresh=1' : ''}`),
-        fetch(`/api/sonarr/queue?filter=${fetchFilter}${force ? '&refresh=1' : ''}`),
-        fetch(`/api/transmission?filter=${fetchFilter}${force ? '&refresh=1' : ''}`),
-        fetch(`/api/downloads/watch?filter=${fetchFilter}&includeReady=1`),
-        fetch(`/api/radarr/audio/queue?filter=${fetchFilter}&settled=${acceptedIds}&includeReady=1`),
+        fetch(`/api/radarr/queue?filter=${fetchFilter}${force ? '&refresh=1' : ''}`, { cache: 'no-store', signal: controller.signal }),
+        fetch(`/api/sonarr/queue?filter=${fetchFilter}${force ? '&refresh=1' : ''}`, { cache: 'no-store', signal: controller.signal }),
+        fetch(`/api/transmission?filter=${fetchFilter}${force ? '&refresh=1' : ''}`, { cache: 'no-store', signal: controller.signal }),
+        fetch(`/api/downloads/watch?filter=${fetchFilter}&includeReady=1`, { cache: 'no-store', signal: controller.signal }),
+        fetch(`/api/radarr/audio/queue?filter=${fetchFilter}&settled=${acceptedIds}&includeReady=1`, { cache: 'no-store', signal: controller.signal }),
       ]);
 
       // Discard results if filter changed while we were fetching
@@ -424,9 +427,9 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
           }
         }
 
-        // One representative per group (first item), plus items with no hash
+        // Stable representatives keep card state when Sonarr reorders pack rows.
         const representatives = [
-          ...Array.from(byDownloadId.values()).map((group) => group[0]),
+          ...Array.from(byDownloadId.values()).map((group) => group.reduce((first, item) => item.id < first.id ? item : first)),
           ...noHash,
         ];
         items.push(
@@ -469,10 +472,12 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
             }
 
             return {
-              id: `sonarr-${item.id}`,
+              id: `sonarr-${downloadHash || item.id}`,
               sourceId: item.id,
               mediaId: item.seriesId,
               episodeId: item.episodeId,
+              episodeIds: (downloadHash ? byDownloadId.get(downloadHash) ?? [item] : [item])
+                .flatMap((entry) => entry.episodeId ?? entry.episode?.id ?? []),
               source: 'sonarr' as const,
               transmissionId: matchedTorrent?.id,
               transmissionHash: matchedTorrent?.hashString,
@@ -561,8 +566,9 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
 
       // Parsing response bodies also awaits work. A filter or account can change during that time.
       if (!isCurrent()) return;
+      const retryView = mergePendingQueueRetries(items, useAppStore.getState().pendingQueueRetries, fetchUserId, fetchFilter);
       const currentProblematic = new Set(
-        items.filter((item) => item.hasError || item.isStalled).map((item) => item.id)
+        retryView.filter((item) => item.hasError || item.isStalled).map((item) => item.id)
       );
 
       currentProblematic.forEach((id) => {
@@ -582,11 +588,22 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
 
       previousProblematicRef.current = currentProblematic;
       const store = useAppStore.getState();
+      setQueueScope({ filter: fetchFilter, userId: fetchUserId, role: fetchRole });
+      setQueueItems(items);
       for (const request of store.pendingQueueRequests) {
         if (request.accepted && items.some((item) => matchesQueueRequest(item, request.item))) store.finishQueueRequest(request.item.id);
       }
-      setQueueScope({ filter: fetchFilter, userId: fetchUserId, role: fetchRole });
-      setQueueItems(items);
+      for (const retry of store.pendingQueueRetries) {
+        if (retry.userId !== fetchUserId || retry.acceptedAt == null) continue;
+        if (fetchFilter === 'mine' && retry.filter === 'all') continue;
+        const response = retry.item.source === 'radarr' ? radarrRes : sonarrRes;
+        if (response.status !== 'fulfilled' || !response.value.ok || monitoredRes.status !== 'fulfilled' || !monitoredRes.value.ok) continue;
+        const confirmed = isQueueRetryConfirmed(items, retry);
+        if (confirmed || Date.now() - retry.acceptedAt >= QUEUE_RETRY_CONFIRMATION_MS) {
+          store.finishQueueRetry(retry.item.id, retry.userId);
+          if (!confirmed) addAlert({ type: 'error', title: 'Error', message: 'Error', source: retry.item.source, relatedItemId: retry.item.id });
+        }
+      }
       setQueueErrors(errors);
       setLastFetch(new Date());
       if (!hasFetchedRef.current) {
@@ -613,12 +630,14 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
     return () => {
       clearTimeout(kickoff);
       clearInterval(id);
+      inFlightRef.current?.controller.abort();
+      inFlightRef.current = null;
     };
   }, [fetchQueue]);
 
   return {
-    queueItems: mergePendingQueueRequests(queueScope?.filter === filter && queueScope?.userId === session?.user?.id && queueScope?.role === session?.user?.role
-      ? queueItems : [], pendingQueueRequests, session?.user?.id),
+    queueItems: mergePendingQueueRetries(mergePendingQueueRequests(queueScope?.filter === filter && queueScope?.userId === session?.user?.id && queueScope?.role === session?.user?.role
+      ? queueItems : [], pendingQueueRequests, session?.user?.id), pendingQueueRetries, session?.user?.id, filter),
     isLoadingQueue,
     queueErrors,
     lastFetch,

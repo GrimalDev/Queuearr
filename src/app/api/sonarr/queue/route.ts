@@ -1,16 +1,14 @@
+import { retrySonarrQueue } from '@/lib/download-retry-actions';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { createSonarrClient } from '@/lib/api/sonarr';
 import { authOptions } from '@/lib/auth';
-import { DownloadRetryError, downloadRetryErrorResponse, runDownloadRetry } from '@/lib/download-retry';
-import { getMonitoredDownloadBySourceMedia, getLatestMonitoredDownloadBySourceMedia, markDownloadCompleted, getWatchedMediaIds, resetMonitoredDownload } from '@/lib/db/monitored-downloads';
+import { downloadRetryErrorResponse } from '@/lib/download-retry';
+import { getMonitoredDownloadBySourceMedia, markDownloadCompleted, getWatchedMediaIds } from '@/lib/db/monitored-downloads';
 import { getCachedSonarrQueue, invalidateQueueCache } from '@/lib/queue-cache';
-import { ensureDownloadSearchJob, parseDownloadScopes, updateDownloadSearchJob } from '@/lib/db/download-search-jobs';
-import { isImportInProgress } from '@/lib/queue-retry-safety';
 import { rememberTorrentIndexer } from '@/lib/db/torrent-indexers';
 import { rememberDownloadTransfer } from '@/lib/db/download-transfers';
 import { restrictQueueDiagnostics } from '@/lib/queue-errors';
-import { getSonarrRetryItems } from '@/lib/sonarr-search-scopes';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -69,31 +67,7 @@ export async function DELETE(request: NextRequest) {
     };
     let retryAvailableAt: number | undefined;
     if (retry) {
-      if (!Number.isSafeInteger(mediaId) || !mediaId || mediaId <= 0 || !Array.isArray(ids) || !ids.length ||
-          ids.some((id) => !Number.isSafeInteger(id) || id <= 0)) throw new DownloadRetryError('Invalid queue retry.', 400);
-      retryAvailableAt = await runDownloadRetry('sonarr', mediaId, session.user, async () => {
-        const queue = await sonarr.getQueue();
-        if (ids.some((id) => !queue.records.some((item) => item.id === id && item.seriesId === mediaId))) {
-          throw new DownloadRetryError('The queue entries do not belong to this title.');
-        }
-        const monitored = await getLatestMonitoredDownloadBySourceMedia('sonarr', mediaId);
-        const affected = getSonarrRetryItems(queue.records, ids);
-        if (affected.some((item) => item.seriesId !== mediaId)) throw new DownloadRetryError('The transfer contains another series. Review is required.');
-        if (affected.some(isImportInProgress)) throw new DownloadRetryError('Import is in progress.');
-        const episodes = [...new Set(affected.map((item) => item.episodeId ?? item.episode?.id))];
-        if (!episodes.length || episodes.some((id) => !Number.isSafeInteger(id) || id! <= 0)) {
-          throw new DownloadRetryError('The affected episodes could not be identified.');
-        }
-        const saved = ensureDownloadSearchJob(monitored!.id, 'sonarr');
-        // Retain outstanding selections while ensuring the retried transfer is included.
-        const retained = ['pending', 'searching', 'downloading', 'search_failed'].includes(saved.state) ? parseDownloadScopes(saved.scopes) : [];
-        const scopes = [...new Map([...retained, ...episodes.map((episodeId) => ({ type: 'episode' as const, episodeId: episodeId! }))]
-          .map((scope) => [JSON.stringify(scope), scope])).values()];
-        if (scopes.length > 100) throw new DownloadRetryError('Too many pending episode selections.');
-        await sonarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });
-        updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes), state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
-        if (monitored) await resetMonitoredDownload(monitored.id);
-      });
+      retryAvailableAt = await retrySonarrQueue(mediaId!, ids, session.user);
     } else {
       await sonarr.deleteQueueItemBulk(ids, { blocklist: false, skipRedownload: false });
       if (mediaId) {

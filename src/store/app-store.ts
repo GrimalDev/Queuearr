@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { SearchResult, QueueItem, Alert, PendingQueueRequest } from '@/types';
+import { SearchResult, QueueItem, Alert, PendingQueueRequest, PendingQueueRetry } from '@/types';
 
 export interface QueueServiceError {
   service: 'radarr' | 'sonarr' | 'transmission' | 'audio';
@@ -21,6 +21,7 @@ interface AppState {
   isLoadingQueue: boolean;
   queueErrors: QueueServiceError[];
   pendingQueueRequests: PendingQueueRequest[];
+  pendingQueueRetries: PendingQueueRetry[];
 
   alerts: Alert[];
 
@@ -35,6 +36,9 @@ interface AppState {
   setQueueErrors: (errors: QueueServiceError[]) => void;
   startQueueRequest: (request: PendingQueueRequest) => void;
   finishQueueRequest: (id: string) => void;
+  startQueueRetry: (retry: PendingQueueRetry) => void;
+  acceptQueueRetry: (id: string, userId: string, retryAvailableAt?: number) => void;
+  finishQueueRetry: (id: string, userId: string) => void;
 
   addAlert: (alert: Omit<Alert, 'id' | 'timestamp' | 'dismissed'>) => void;
   dismissAlert: (id: string) => void;
@@ -53,6 +57,7 @@ export const useAppStore = create<AppState>((set) => ({
   isLoadingQueue: false,
   queueErrors: [],
   pendingQueueRequests: [],
+  pendingQueueRetries: [],
 
   alerts: [],
 
@@ -70,6 +75,16 @@ export const useAppStore = create<AppState>((set) => ({
   })),
   finishQueueRequest: (id) => set((state) => ({
     pendingQueueRequests: state.pendingQueueRequests.filter((entry) => entry.item.id !== id),
+  })),
+  startQueueRetry: (retry) => set((state) => ({
+    pendingQueueRetries: [...state.pendingQueueRetries.filter((entry) => entry.item.id !== retry.item.id || entry.userId !== retry.userId), retry],
+  })),
+  acceptQueueRetry: (id, userId, retryAvailableAt) => set((state) => ({
+    pendingQueueRetries: state.pendingQueueRetries.map((entry) => entry.item.id === id && entry.userId === userId
+      ? { ...entry, acceptedAt: Date.now(), retryAvailableAt } : entry),
+  })),
+  finishQueueRetry: (id, userId) => set((state) => ({
+    pendingQueueRetries: state.pendingQueueRetries.filter((entry) => entry.item.id !== id || entry.userId !== userId),
   })),
 
   addAlert: (alert) =>

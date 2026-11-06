@@ -22,11 +22,10 @@ export function QueueDashboard() {
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'admin';
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [retryingItems, setRetryingItems] = useState<Map<string, QueueItem>>(new Map());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [passingIds, setPassingIds] = useState<Set<string>>(new Set());
 
-  const updateRetryTime = async (item: QueueItem, response: Response): Promise<void> => {
+  const updateRetryTime = async (item: QueueItem, response: Response): Promise<number | undefined> => {
     const body = await response.json().catch(() => null) as { retryAvailableAt?: unknown } | null;
     if (typeof body?.retryAvailableAt === 'number') {
       const retryAvailableAt = body.retryAvailableAt;
@@ -34,6 +33,7 @@ export function QueueDashboard() {
       setQueueItems(current.map((entry) => entry.id === item.id ? { ...entry, retryAvailableAt } : entry));
     }
     if (!response.ok) throw new Error('Error');
+    return typeof body?.retryAvailableAt === 'number' ? body.retryAvailableAt : undefined;
   };
 
   const handleCancelSearch = async (item: QueueItem, activeDownload = false): Promise<void> => {
@@ -75,67 +75,48 @@ export function QueueDashboard() {
     }
   };
 
-  const handleRetry = async (item: QueueItem) => {
-    if (!item.sourceId || (item.source !== 'radarr' && item.source !== 'sonarr')) return;
-    setRetryingItems((prev) => new Map(prev).set(item.id, item));
+  const performRetry = async (item: QueueItem, request: () => Promise<Response>): Promise<void> => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    const store = useAppStore.getState();
+    if (store.pendingQueueRetries.some((retry) => retry.item.id === item.id && retry.userId === userId)) return;
+    store.startQueueRetry({ item, userId, filter: queueFilter });
     try {
-      const response = await fetch(`/api/${item.source}/queue`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [item.sourceId], retry: true, mediaId: item.mediaId, episodeId: item.episodeId }),
-      });
-      await updateRetryTime(item, response);
-      await refresh();
+      const retryAvailableAt = await updateRetryTime(item, await request());
+      store.acceptQueueRetry(item.id, userId, retryAvailableAt);
     } catch {
-      useAppStore.getState().addAlert({ type: 'error', title: 'Error', message: 'Error', source: item.source, relatedItemId: item.id });
-    } finally {
-      // Always clear the retrying state — on success the new item appears in the
-      // queue with a different id, so we must not keep the stale entry around.
-      setRetryingItems((prev) => {
-        const next = new Map(prev);
-        next.delete(item.id);
-        return next;
-      });
+      store.finishQueueRetry(item.id, userId);
+      store.addAlert({ type: 'error', title: 'Error', message: 'Error', source: item.source, relatedItemId: item.id });
     }
+    await refresh();
+  };
+
+  const handleRetry = async (item: QueueItem): Promise<void> => {
+    if (!item.sourceId || (item.source !== 'radarr' && item.source !== 'sonarr')) return;
+    await performRetry(item, () => fetch(`/api/${item.source}/queue`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [item.sourceId], retry: true, mediaId: item.mediaId, episodeId: item.episodeId }),
+    }));
   };
 
   const handleAudioRetry = async (item: QueueItem): Promise<void> => {
     if (!item.tmdbId) return;
-    setRetryingItems((previous) => new Map(previous).set(item.id, item));
-    try {
-      const response = await fetch('/api/radarr/audio/alternative', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tmdbId: item.tmdbId }),
-      });
-      await updateRetryTime(item, response);
-      await refresh();
-    } catch {
-      useAppStore.getState().addAlert({ type: 'error', title: 'Error', message: 'Error', source: 'radarr', relatedItemId: item.id });
-    } finally {
-      setRetryingItems((previous) => { const next = new Map(previous); next.delete(item.id); return next; });
-    }
+    await performRetry(item, () => fetch('/api/radarr/audio/alternative', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tmdbId: item.tmdbId }),
+    }));
   };
 
   const handleSearchRetry = async (item: QueueItem): Promise<void> => {
     if (!item.mediaId || item.source === 'transmission') return;
-    setRetryingItems((previous) => new Map(previous).set(item.id, item));
-    try {
-      const response = await fetch('/api/downloads/retry', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: item.source, mediaId: item.mediaId }),
-      });
-      await updateRetryTime(item, response);
-      await refresh();
-    } catch {
-      useAppStore.getState().addAlert({ type: 'error', title: 'Error', message: 'Error', source: item.source, relatedItemId: item.id });
-    } finally {
-      setRetryingItems((previous) => { const next = new Map(previous); next.delete(item.id); return next; });
-    }
+    await performRetry(item, () => fetch('/api/downloads/retry', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: item.source, mediaId: item.mediaId }),
+    }));
   };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await refresh();
-    setIsRefreshing(false);
+    try { await refresh(); }
+    finally { setIsRefreshing(false); }
   };
 
   const getRemainingEstimate = (item: QueueItem) => {
@@ -225,15 +206,9 @@ export function QueueDashboard() {
     (item) => item.status === 'queued' || item.status === 'pending' || item.status === 'paused'
   );
 
-  // Items that were retried and left the queue — show them as "retrying" until next refresh brings a new result
-  const retryingOnlyItems = Array.from(retryingItems.values()).filter(
-    (retrying) => !queueItems.some((q) => q.id === retrying.id)
-  );
-  const allProblemItems = [
-    ...problemItems,
-    ...retryingOnlyItems,
-  ];
-  const orderedItems = orderDownloadQueue([...retryingOnlyItems, ...visibleQueueItems], new Set(retryingItems.keys()));
+  const allProblemItems = problemItems;
+  const retryingIds = new Set(visibleQueueItems.filter((item) => item.isRetryPending).map((item) => item.id));
+  const orderedItems = orderDownloadQueue(visibleQueueItems, retryingIds);
 
   // Show error state when services fail to connect
   const hasConnectionErrors = queueErrors.length > 0;
@@ -472,7 +447,7 @@ export function QueueDashboard() {
               key={item.id}
               item={item}
               isAdmin={isAdmin}
-              isRetrying={retryingItems.has(item.id)}
+              isRetrying={item.isRetryPending}
               isDeleting={deletingIds.has(item.id)}
               isPassing={passingIds.has(item.id)}
               onRetry={item.audio?.canRetry ? () => handleAudioRetry(item) : item.canRetrySearch ? () => handleSearchRetry(item) :

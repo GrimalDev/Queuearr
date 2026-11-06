@@ -424,6 +424,7 @@ export interface QueueItem {
   id: string;
   tmdbId?: number;
   isSearching?: boolean;
+  isRetryPending?: boolean;
   isAwaitingDownload?: boolean;
   searchError?: 'in_cinemas';
   requestedAudioLanguages?: RadarrLanguage[];
@@ -441,6 +442,7 @@ export interface QueueItem {
   sourceId?: number;
   mediaId?: number;
   episodeId?: number;
+  episodeIds?: number[];
   source: 'radarr' | 'sonarr' | 'transmission';
   transmissionId?: number;
   transmissionHash?: string;
@@ -504,10 +506,20 @@ export interface MonitoredQueueDownload {
 export type DownloadSearchScope = { type: 'movie' } | { type: 'series' } |
   { type: 'season'; seasonNumber: number } | { type: 'episode'; episodeId: number };
 
+export type DownloadRetryActor = { id: string; role: string } | { automaticKey: string };
+
 export interface PendingQueueRequest {
   item: QueueItem;
   userId: string;
   accepted?: boolean;
+}
+
+export interface PendingQueueRetry {
+  item: QueueItem;
+  userId: string;
+  filter: 'mine' | 'all';
+  acceptedAt?: number;
+  retryAvailableAt?: number;
 }
 
 export interface ReleaseSearchSummary {
