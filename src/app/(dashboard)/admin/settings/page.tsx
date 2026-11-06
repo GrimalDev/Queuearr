@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useSession } from 'next-auth/react';
 import type { NotificationRecord, PendingInvite, PaymentStatus } from '@/types';
 import { PaymentSettings } from '@/components/features/payment-settings';
+import { DownloadStatisticsPanel } from '@/components/features/download-statistics';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { NotificationEditDialog } from '@/components/features/notification-edit-dialog';
 import { INVITE_LIFETIME_DAYS } from '@/lib/invite-policy';
 import { MAX_NOTIFICATION_BODY_LENGTH, MAX_NOTIFICATION_TITLE_LENGTH, parseNotificationContent } from '@/lib/notification-content';
@@ -1024,9 +1026,15 @@ export default function AdminSettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold">Admin Settings</h1>
-        <p className="text-muted-foreground mt-1">Manage users, services, and notifications</p>
+        <p className="text-muted-foreground mt-1">Manage users, services, notifications, and download activity</p>
       </div>
 
+      <Tabs defaultValue="management">
+        <TabsList aria-label="Admin dashboard sections">
+          <TabsTrigger value="management">Management</TabsTrigger>
+          <TabsTrigger value="downloads">Download statistics</TabsTrigger>
+        </TabsList>
+        <TabsContent value="management" className="space-y-6 pt-4">
       <Card>
         <CardHeader>
           <CardTitle>Invite Users</CardTitle>
@@ -1164,6 +1172,9 @@ export default function AdminSettingsPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+        <TabsContent value="downloads" className="pt-4"><DownloadStatisticsPanel /></TabsContent>
+      </Tabs>
     </div>
   );
 }

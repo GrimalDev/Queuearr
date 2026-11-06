@@ -524,6 +524,19 @@ export interface DownloadRequestAttribution extends DownloadInitiator {
   scope: DownloadRequestScope;
 }
 
+export interface UserDownloadStatistic {
+  userId: string | null;
+  username: string;
+  downloads: number;
+}
+
+export interface DownloadStatistics {
+  start: string;
+  end: string;
+  totalDownloads: number;
+  users: UserDownloadStatistic[];
+}
+
 export interface PendingQueueRequest {
   item: QueueItem;
   userId: string;

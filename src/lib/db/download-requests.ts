@@ -1,7 +1,7 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { downloadRequests, monitoredDownloads, users } from '@/lib/db/schema';
-import type { DownloadRequestAttribution, DownloadRequestScope } from '@/types';
+import type { DownloadRequestAttribution, DownloadRequestScope, UserDownloadStatistic } from '@/types';
 import type { MonitoredDownload } from '@/lib/db/schema';
 
 /** Called only when an explicit media selection is saved, never for followers or retries. */
@@ -28,4 +28,13 @@ export function getDownloadRequestAttribution(downloadIds: number[]): Map<number
     }]);
   }
   return result;
+}
+
+export function getUserDownloadStatistics(start: number, end: number): UserDownloadStatistic[] {
+  const downloads = sql<number>`count(*)`.mapWith(Number);
+  const username = sql<string>`coalesce(${users.username}, ${downloadRequests.username}, 'Unknown / external')`;
+  return db.select({ userId: downloadRequests.userId, username, downloads }).from(downloadRequests)
+    .leftJoin(users, eq(downloadRequests.userId, users.id))
+    .where(and(gte(downloadRequests.requestedAt, start), lt(downloadRequests.requestedAt, end)))
+    .groupBy(downloadRequests.userId).orderBy(desc(downloads), asc(username)).all();
 }
