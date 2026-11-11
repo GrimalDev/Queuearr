@@ -10,6 +10,7 @@ import { acquireMovieAudioLock, getMovieAudioJobs, releaseMovieAudioLock } from 
 import { DownloadRetryError, downloadRetryErrorResponse } from '@/lib/download-retry';
 import { readAudioLanguages } from '@/lib/audio-languages';
 import { recoverTorrentIndexers } from '@/lib/torrent-indexer-history';
+import { getImportedSonarrTorrents, recoverImportedSonarrTorrents } from '@/lib/imported-torrent-history';
 
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
@@ -73,9 +74,14 @@ export async function GET(request: NextRequest) {
     const { torrents, stats } = await getCachedTransmissionState(transmission, { forceRefresh });
     const hashes = torrents.map((torrent) => torrent.hashString);
     const indexers = getTorrentIndexerMetadata(hashes);
-    if (session.user.role === 'admin' && request.nextUrl.searchParams.get('filter') === 'all') {
+    const completedHashes = torrents.filter((torrent) => torrent.percentDone >= 1).map((torrent) => torrent.hashString);
+    const includeImports = session.user.role === 'admin' && request.nextUrl.searchParams.get('filter') === 'all';
+    if (includeImports) {
       after(() => recoverTorrentIndexers(hashes).catch(() => {
         console.warn('[indexers] Background history recovery failed.');
+      }));
+      after(() => recoverImportedSonarrTorrents(completedHashes).catch(() => {
+        console.warn('[imports] Background import recovery failed.');
       }));
     }
 
@@ -100,6 +106,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       torrents: torrentsWithProblems,
+      ...(includeImports ? { importedDownloads: getImportedSonarrTorrents(completedHashes) } : {}),
       stats,
     });
   } catch (error) {

@@ -8,6 +8,7 @@ import { normalizeAudioLanguages } from '@/lib/audio-languages';
 import { isQueueRetryConfirmed, matchesQueueRequest, mergePendingQueueRequests, mergePendingQueueRetries, QUEUE_RETRY_CONFIRMATION_MS } from '@/lib/queue-requests';
 import { getQueueErrorMessage } from '@/lib/queue-errors';
 import { getDownloadInitiator } from '@/lib/download-attribution';
+import { mergeImportedSonarrTorrents } from '@/lib/imported-torrent-queue';
 
 const STALL_GRACE_PERIOD_SECONDS = 5 * 60;
 
@@ -279,6 +280,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
       const errors: QueueServiceError[] = [];
       let items: QueueItem[] = [];
       let audioItems: QueueItem[] = [];
+      let importedItems: QueueItem[] = [];
       const transmissionHashMap = new Map<string, TransmissionTorrent & {
         statusString: string;
         isProblematic: boolean;
@@ -317,6 +319,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
 
       if (transmissionRes.status === 'fulfilled' && transmissionRes.value.ok) {
         const data: {
+          importedDownloads?: QueueItem[];
           torrents: (TransmissionTorrent & {
             statusString: string;
             isProblematic: boolean;
@@ -329,6 +332,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
           };
         } = await transmissionRes.value.json();
 
+        importedItems = data.importedDownloads ?? [];
         for (const torrent of data.torrents) {
           transmissionHashMap.set(torrent.hashString.toLowerCase(), torrent);
         }
@@ -534,6 +538,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
 
       // Only add unmatched Transmission torrents for admins when viewing all downloads
       if (isAdminRef.current && fetchFilter === 'all') {
+        items = mergeImportedSonarrTorrents(items, transmissionHashMap, importedItems);
         const unmatchedCount = transmissionHashMap.size;
         console.log(`[useQueue] Adding ${unmatchedCount} unmatched transmission torrents (admin, filter=all)`);
         for (const torrent of transmissionHashMap.values()) {
