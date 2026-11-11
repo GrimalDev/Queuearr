@@ -15,7 +15,7 @@ export function isQueueRetryConfirmed(items: QueueItem[], retry: PendingQueueRet
   const related = items.filter((item) => item.source === retry.item.source && item.mediaId === retry.item.mediaId);
   const old = related.filter((item) => isRetriedQueueTransfer(item, retry.item));
   if (old.length) return old.some((item) => !item.hasError && !item.isStalled &&
-    (item.isSearching || item.audio?.phase === 'searching') &&
+    (item.isSearching || !!item.searchWaitingReason || item.audio?.phase === 'searching') &&
     (item.retryAvailableAt ?? 0) >= (retry.retryAvailableAt ?? 0));
   return related.some((item) => {
     if (retry.item.source !== 'sonarr' || item.id === `request-sonarr-${item.mediaId}`) return true;
@@ -32,6 +32,7 @@ export function mergePendingQueueRetries(
   for (const retry of retries) {
     if (retry.userId !== userId || filter === 'mine' && retry.filter === 'all' || isQueueRetryConfirmed(items, retry)) continue;
     const searching: QueueItem = { ...retry.item, isRetryPending: true, isSearching: true, libraryReady: false,
+      searchWaitingReason: undefined, nextAirAt: undefined,
       hasError: false, errorMessage: undefined, isStalled: false, status: 'pending', progress: 0, size: 0, sizeRemaining: 0,
       estimatedAudioLanguages: [], indexer: undefined, lifecyclePhase: undefined, isAwaitingDownload: false,
       retryAvailableAt: retry.retryAvailableAt ?? retry.item.retryAvailableAt,

@@ -112,6 +112,8 @@ export const monitoredDownloadUsers = sqliteTable(
 );
 
 export const downloadSearchJobs = sqliteTable('download_search_jobs', {
+  remainingEpisodeIds: text('remaining_episode_ids'),
+  nextAirAt: integer('next_air_at'),
   searchFailures: integer('search_failures').notNull().default(0),
   estimatedLanguages: text('estimated_languages').notNull().default('[]'),
   downloadId: integer('download_id').primaryKey().references(() => monitoredDownloads.id, { onDelete: 'cascade' }),

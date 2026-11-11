@@ -21,7 +21,7 @@ export function getSonarrRetryItems(queue: SonarrQueueItem[], ids: number[]): So
 
 /** Search missing episodes without waiting for unrelated transfers in the series. */
 export function getUnqueuedSonarrSearchScopes(
-  scopes: DownloadSearchScope[], episodes: SonarrEpisode[], queue: SonarrQueueItem[],
+  scopes: DownloadSearchScope[], episodes: SonarrEpisode[], queue: SonarrQueueItem[], now = Date.now(),
 ): DownloadSearchScope[] {
   const queued = new Set(queue.flatMap((item) => {
     const id = item.episodeId ?? item.episode?.id;
@@ -32,7 +32,8 @@ export function getUnqueuedSonarrSearchScopes(
   const covered = new Set<number>();
   const searches = scopes.flatMap((scope): DownloadSearchScope[] => {
     const selected = episodes.filter((episode) => episodeMatchesSearchScope(episode, scope) && !episode.hasFile);
-    const missing = selected.filter((episode) => !queued.has(episode.id) && !covered.has(episode.id));
+    const missing = selected.filter((episode) => !queued.has(episode.id) && !covered.has(episode.id) &&
+      !(Date.parse(episode.airDateUtc ?? '') > now));
     if (!missing.length) return [];
     for (const episode of missing) covered.add(episode.id);
     return selected.length === missing.length ? [scope] : missing.map((episode) => ({ type: 'episode', episodeId: episode.id }));

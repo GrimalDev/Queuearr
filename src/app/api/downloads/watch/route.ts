@@ -50,6 +50,9 @@ export async function GET(request: NextRequest) {
     retryAvailableAt: retryTimes.get(`${download.source}:${download.mediaId}`),
     searchState: searchJobs.get(download.id)?.state,
     searchScopes: parseDownloadScopes(searchJobs.get(download.id)?.scopes ?? '[]'),
+    remainingEpisodeIds: searchJobs.get(download.id)?.remainingEpisodeIds != null
+      ? JSON.parse(searchJobs.get(download.id)!.remainingEpisodeIds!) as number[] : undefined,
+    nextAirAt: searchJobs.get(download.id)?.nextAirAt,
     errorMessage: session.user.role === 'admin' ? audio?.detail ?? getDownloadSearchErrorDetail(searchJobs.get(download.id)) : undefined,
     searchIndexer: audio?.donorIndexer ?? searchJobs.get(download.id)?.indexer ?? savedTransfer.find((transfer) => transfer?.indexer)?.indexer,
     retryRequiresReview: searchJobs.get(download.id)?.state === 'needs_review' && searchJobs.get(download.id)?.submittedAt !== null,

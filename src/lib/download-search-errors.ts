@@ -30,8 +30,10 @@ export function describeRejectedMovieReleases(releases: Release[]): string {
 
 /** Legacy failures have no recorded cause. Do not invent one from their status alone. */
 export function getDownloadSearchErrorDetail(job: { state: string; detail?: string | null } | undefined): string | undefined {
-  if (!job || !['search_failed', 'needs_review', 'needs_selection', 'in_cinemas'].includes(job.state)) return undefined;
+  if (!job || !['search_failed', 'needs_review', 'needs_selection', 'in_cinemas', 'waiting_for_release', 'waiting_for_airdate'].includes(job.state)) return undefined;
   if (job.detail?.trim()) return job.detail;
+  if (job.state === 'waiting_for_release') return 'Sonarr finished searching without selecting an eligible release. The remaining episodes will be searched again automatically.';
+  if (job.state === 'waiting_for_airdate') return 'The remaining episodes have not aired yet. Searching resumes automatically after their scheduled airdate.';
   if (job.state === 'needs_selection') return 'This saved request needs an explicit movie, season or episode selection before searching.';
   if (job.state === 'needs_review') return 'This saved request requires review before another release can be submitted. No detailed reason was saved by the previous version.';
   if (job.state === 'in_cinemas') return 'The movie is still in cinemas and the last search did not select an eligible release. No detailed reason was saved by the previous version.';

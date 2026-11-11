@@ -242,6 +242,11 @@ export interface SonarrEpisode {
   unverifiedSceneNumbering?: boolean;
 }
 
+export interface SonarrSearchStatus {
+  active: boolean;
+  failedCommandIds: number[];
+}
+
 export interface SonarrQualityProfile {
   id: number;
   name: string;
@@ -430,6 +435,8 @@ export interface QueueItem {
   isRetryPending?: boolean;
   isAwaitingDownload?: boolean;
   searchError?: 'in_cinemas';
+  searchWaitingReason?: 'airdate' | 'release';
+  nextAirAt?: number;
   requestedAudioLanguages?: RadarrLanguage[];
   estimatedAudioLanguages?: RadarrLanguage[];
   availableAudioLanguages?: RadarrLanguage[];
@@ -484,6 +491,8 @@ export interface QueueItem {
 }
 
 export interface MonitoredQueueDownload {
+  remainingEpisodeIds?: number[];
+  nextAirAt?: number | null;
   requestAttribution?: DownloadRequestAttribution[];
   searchScopes?: DownloadSearchScope[];
   estimatedAudioLanguages?: RadarrLanguage[];

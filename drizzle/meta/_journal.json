@@ -169,6 +169,13 @@
       "when": 1794355200000,
       "tag": "0023_download_search_details",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1794416400000,
+      "tag": "0024_pending_episode_searches",
+      "breakpoints": true
     }
   ]
 }

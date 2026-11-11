@@ -3,6 +3,7 @@ import { createHttpsAgentForService } from '@/lib/api/tls';
 import {
   SonarrSeries,
   SonarrEpisode,
+  SonarrSearchStatus,
   SonarrQueueItem,
   SonarrQualityProfile,
   SonarrLanguageProfile,
@@ -143,11 +144,19 @@ export class SonarrClient {
   }
 
   async hasActiveSeriesSearch(seriesId: number, episodeIds: number[]): Promise<boolean> {
-    const response = await this.client.get<{ name: string; status: string; body?: { seriesId?: number; episodeIds?: number[] } }[]>('/api/v3/command');
+    return (await this.getSeriesSearchStatus(seriesId, episodeIds, null)).active;
+  }
+
+  async getSeriesSearchStatus(seriesId: number, episodeIds: number[], submittedAt: number | null): Promise<SonarrSearchStatus> {
+    const response = await this.client.get<{ id: number; name: string; status: string; queued?: string;
+      body?: { seriesId?: number; episodeIds?: number[] } }[]>('/api/v3/command');
     const selected = new Set(episodeIds);
-    return response.data.some((command) => ['queued', 'started'].includes(command.status) &&
-      ((command.name === 'SeriesSearch' || command.name === 'SeasonSearch') && command.body?.seriesId === seriesId ||
-       command.name === 'EpisodeSearch' && command.body?.episodeIds?.some((id) => selected.has(id))));
+    const matching = response.data.filter((command) =>
+      (command.name === 'SeriesSearch' || command.name === 'SeasonSearch') && command.body?.seriesId === seriesId ||
+      command.name === 'EpisodeSearch' && command.body?.episodeIds?.some((id) => selected.has(id)));
+    return { active: matching.some((command) => ['queued', 'started'].includes(command.status)),
+      failedCommandIds: matching.filter((command) => submittedAt !== null && Date.parse(command.queued ?? '') >= submittedAt &&
+        ['failed', 'aborted', 'cancelled'].includes(command.status)).map((command) => command.id) };
   }
 
   async triggerSeasonSearch(seriesId: number, seasonNumber: number): Promise<void> {

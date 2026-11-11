@@ -82,7 +82,7 @@ export async function retrySonarrQueue(mediaId: number, ids: number[], actor: Do
       }
       const saved = ensureDownloadSearchJob(monitored!.id, 'sonarr');
       // Retain outstanding selections while ensuring the retried transfer is included.
-      const retained = monitored!.lastStatus !== 'cancelled' && ['pending', 'searching', 'downloading', 'search_failed'].includes(saved.state)
+      const retained = monitored!.lastStatus !== 'cancelled' && ['pending', 'searching', 'downloading', 'search_failed', 'waiting_for_airdate', 'waiting_for_release'].includes(saved.state)
         ? parseDownloadScopes(saved.scopes) : [];
       const scopes = [...new Map([...retained, ...episodes.map((episodeId) => ({ type: 'episode' as const, episodeId: episodeId! }))]
         .map((scope) => [JSON.stringify(scope), scope])).values()];

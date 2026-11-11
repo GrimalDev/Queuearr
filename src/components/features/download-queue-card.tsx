@@ -56,13 +56,15 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
   const languageSource = searchingForLanguages ? 'Requested audio' : confirmedLanguages.length ? 'Available audio' : estimatedLanguages.length ? 'Estimated audio' : 'Requested audio';
   const Icon = audio ? AudioLines : item.source === 'radarr' ? Film : item.source === 'sonarr' ? Tv : Download;
   const phase = isRetrying ? 'searching' : item.hasError || item.isStalled || ['failed', 'warning'].includes(item.status) ? 'error' :
-    item.libraryReady ? 'ready' : item.isSearching ? 'searching' : item.isAwaitingDownload ? 'submitting' : item.lifecyclePhase ?? item.audio?.phase ??
+    item.libraryReady ? 'ready' : item.searchWaitingReason === 'airdate' ? 'waiting_for_airdate' : item.searchWaitingReason === 'release' ? 'waiting_for_release' :
+    item.isSearching ? 'searching' : item.isAwaitingDownload ? 'submitting' : item.lifecyclePhase ?? item.audio?.phase ??
     (item.metadataPercentComplete != null && item.metadataPercentComplete < 1 ? 'metadata' :
       item.status === 'completed' || item.status === 'seeding' ? item.libraryReady === false || item.source !== 'transmission' ? 'importing' : 'downloaded' : item.status === 'importing' ? 'importing' :
         item.status === 'pending' ? 'validating' : 'downloading');
   const labels = {
     searching: audio ? 'Searching for audio' : item.isRegrab || isRetrying && !item.canRetrySearch ? 'Searching for a replacement release' : 'Searching for a release',
     submitting: 'Waiting for the download client',
+    waiting_for_airdate: 'Waiting for episode to air', waiting_for_release: 'Waiting for an eligible release',
     metadata: 'Fetching torrent metadata', downloading: audio ? 'Downloading audio' : 'Downloading',
     validating: audio ? 'Checking audio and synchronization' : 'Checking download', merging: 'Merging audio', verifying: 'Verifying merged audio',
     checking_audio: 'Checking requested audio', importing: 'Waiting for library import', ready: 'Ready',
@@ -74,8 +76,9 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
   const label = phase === 'error' ? item.searchError === 'in_cinemas' ? IN_CINEMAS_SEARCH_MESSAGE : 'Error' : waiting ? item.status === 'paused' ? 'Paused' : waitingForSlot ? 'Waiting for a download slot' : 'Queued'
     : phase === 'downloading' && item.progress >= 100 ? audio ? 'Waiting for audio checks' : 'Waiting for import' : labels[phase];
   const hasAudioRequest = audio || !!item.requestedAudioLanguages?.length;
+  const searchWaiting = phase === 'waiting_for_airdate' || phase === 'waiting_for_release';
   const steps = hasAudioRequest ? ['Search', 'Download', 'Import', 'Audio', 'Ready'] : ['Search', 'Download', 'Import', 'Ready'];
-  const step = audio && phase !== 'ready' ? 3 : phase === 'searching' ? 0 : phase === 'submitting' || phase === 'metadata' || phase === 'downloading' ? 1 :
+  const step = audio && phase !== 'ready' ? 3 : phase === 'searching' || searchWaiting ? 0 : phase === 'submitting' || phase === 'metadata' || phase === 'downloading' ? 1 :
     phase === 'downloaded' || phase === 'importing' ? 2 : phase === 'ready' ? steps.length - 1 : hasAudioRequest ? 3 : 2;
   const indeterminate = !waiting && (phase === 'searching' || phase === 'metadata');
   return (
@@ -106,20 +109,23 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
         </div>
         {indeterminate ? <AudioSearchIndicator label={`${label}…`} audio={audio} /> : (
           <div role={phase === 'error' ? 'alert' : 'status'} className={cn('flex items-center gap-2 text-sm', phase === 'error' && 'text-destructive')}>
-            {phase === 'error' ? <CircleAlert className="size-4" aria-hidden="true" /> : waiting ? <Clock className="size-4" aria-hidden="true" /> :
+            {phase === 'error' ? <CircleAlert className="size-4" aria-hidden="true" /> : waiting || searchWaiting ? <Clock className="size-4" aria-hidden="true" /> :
               phase === 'ready' ? <Check className="size-4" aria-hidden="true" /> : <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />}
             {label}
-            {phase === 'error' && isAdmin && <Button variant="ghost" size="xs"
-              aria-label={`${showError ? 'Hide' : 'Show'} error details for ${item.title}`}
+            {(phase === 'error' || searchWaiting) && isAdmin && <Button variant="ghost" size="xs"
+              aria-label={`${showError ? 'Hide' : 'Show'} ${searchWaiting ? 'search' : 'error'} details for ${item.title}`}
               aria-expanded={showError} aria-controls={errorDetailsId} onClick={() => setShowError((value) => !value)}>
               Details <ChevronDown className={cn('size-3', showError && 'rotate-180')} aria-hidden="true" />
             </Button>}
           </div>
         )}
-        {phase === 'error' && isAdmin && showError && <pre id={errorDetailsId}
-          className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs">
+        {(phase === 'error' || searchWaiting) && isAdmin && showError && <pre id={errorDetailsId}
+          className={cn('max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border p-3 text-xs', phase === 'error' ? 'border-destructive/30 bg-destructive/5' : 'bg-muted/30')}>
           {item.errorMessage && item.errorMessage !== 'Error' ? item.errorMessage : 'No detailed error was recorded for this download.'}
         </pre>}
+        {phase === 'waiting_for_airdate' && item.nextAirAt != null && <p className="text-xs text-muted-foreground">
+          Scheduled for {new Date(item.nextAirAt).toLocaleString()}
+        </p>}
         {phase === 'ready' && <p className="text-xs text-muted-foreground">Ready for Plex to pick up.</p>}
         {phase === 'downloaded' && <p className="text-xs text-muted-foreground">Library readiness has not been confirmed.</p>}
         {!waiting && phase === 'metadata' && <p className="text-xs text-muted-foreground">Waiting for peers to provide the torrent details. The download has not started yet.</p>}
