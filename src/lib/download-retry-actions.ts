@@ -8,7 +8,7 @@ import { ensureDownloadSearchJob, getDownloadSearchJobs, parseDownloadScopes, up
 import { invalidateQueueCache } from '@/lib/queue-cache';
 import { isImportInProgress } from '@/lib/queue-retry-safety';
 import { getSonarrRetryItems, sonarrQueueItemMatchesScope } from '@/lib/sonarr-search-scopes';
-import { automaticSearchRetryKey, isAutomaticRetryFailure } from '@/lib/automatic-retry-policy';
+import { automaticSearchRetryKey, getDownloadRestartReason, isAutomaticRetryFailure, isLocalStorageFailure } from '@/lib/automatic-retry-policy';
 import { isMovieRegrab } from '@/lib/movie-audio-releases';
 import { rejectedAudioDonors } from '@/lib/movie-audio-attempts';
 import { createTransmissionClient } from '@/lib/api/transmission';
@@ -49,7 +49,8 @@ export async function retryRadarrQueue(mediaId: number, ids: number[], actor: Do
         ensureDownloadSearchJob(monitored.id, 'radarr');
         updateDownloadSearchJob(monitored.id, { state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
       }
-      if (monitored) await resetMonitoredDownload(monitored.id);
+      if (monitored) await resetMonitoredDownload(monitored.id,
+        getDownloadRestartReason(queue.records.filter((item) => ids.includes(item.id))));
     });
   } finally {
     invalidateQueueCache(['radarr-queue', 'transmission-state']);
@@ -76,6 +77,7 @@ export async function retrySonarrQueue(mediaId: number, ids: number[], actor: Do
       const affected = getSonarrRetryItems(queue.records, ids);
       if (affected.some((item) => item.seriesId !== mediaId)) throw new DownloadRetryError('The transfer contains another series. Review is required.');
       if (affected.some(isImportInProgress)) throw new DownloadRetryError('Import is in progress.');
+      if ('automaticKey' in actor && affected.some(isLocalStorageFailure)) throw new DownloadRetryError('The transfer requires a local storage fix.');
       const episodes = [...new Set(affected.map((item) => item.episodeId ?? item.episode?.id))];
       if (!episodes.length || episodes.some((id) => !Number.isSafeInteger(id) || id! <= 0)) {
         throw new DownloadRetryError('The affected episodes could not be identified.');
@@ -94,7 +96,7 @@ export async function retrySonarrQueue(mediaId: number, ids: number[], actor: Do
         }
         updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes), state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
       });
-      if (monitored) await resetMonitoredDownload(monitored.id);
+      if (monitored) await resetMonitoredDownload(monitored.id, getDownloadRestartReason(affected));
     }, { restartCancelledQueue: true });
   } finally { invalidateQueueCache(['sonarr-queue', 'transmission-state']); }
 }

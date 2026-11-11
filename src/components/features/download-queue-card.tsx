@@ -126,6 +126,10 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
         {phase === 'waiting_for_airdate' && item.nextAirAt != null && <p className="text-xs text-muted-foreground">
           Scheduled for {new Date(item.nextAirAt).toLocaleString()}
         </p>}
+        {item.restartReason && phase !== 'ready' && <p role="status" className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+          {item.restartReason === 'suspicious_files' ? 'Search restarted because the previous download contained suspicious files.' :
+            'Search restarted because the previous download had a file error.'}
+        </p>}
         {phase === 'ready' && <p className="text-xs text-muted-foreground">Ready for Plex to pick up.</p>}
         {phase === 'downloaded' && <p className="text-xs text-muted-foreground">Library readiness has not been confirmed.</p>}
         {!waiting && phase === 'metadata' && <p className="text-xs text-muted-foreground">Waiting for peers to provide the torrent details. The download has not started yet.</p>}

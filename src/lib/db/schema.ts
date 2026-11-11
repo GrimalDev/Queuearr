@@ -83,6 +83,7 @@ export const monitoredDownloads = sqliteTable(
     lastActivityAt: integer('last_activity_at'),
     lastBytesAt: integer('last_bytes_at'),
     retryAfter: integer('retry_after').notNull().default(0),
+    restartReason: text('restart_reason', { enum: ['suspicious_files', 'file_error'] }),
   },
   (t) => ({
     sourceMediaIdUnique: uniqueIndex('monitored_downloads_source_media_id_unique').on(

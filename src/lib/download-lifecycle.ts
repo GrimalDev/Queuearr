@@ -61,6 +61,7 @@ export function mergeDownloadLifecycle(
       if (item.source !== download.source || item.mediaId !== download.mediaId) continue;
       const ready = download.libraryReady === true && item.libraryReady !== false && matchesSelection(item);
       result[i] = { ...item,
+        restartReason: download.restartReason,
         id: item.source === 'radarr' ? `request-radarr-${download.mediaId}` : item.id,
         libraryReady: ready, requestedAudioLanguages: item.requestedAudioLanguages ?? download.requestedAudioLanguages,
         estimatedAudioLanguages: item.estimatedAudioLanguages?.length ? item.estimatedAudioLanguages : download.estimatedAudioLanguages,

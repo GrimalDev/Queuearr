@@ -7,7 +7,7 @@ import { getMovieAudioJobs, getMovieAudioPolicies } from '@/lib/db/movie-audio';
 import { clearSettledAutomaticDownloadRetries, getAutomaticDownloadRetry, observeAutomaticDownloadFailures } from '@/lib/db/automatic-download-retries';
 import { DownloadRetryError, getDownloadRetryTimes } from '@/lib/download-retry';
 import { retryAudioAlternative, retryDownloadSearch, retryRadarrQueue, retrySonarrQueue } from '@/lib/download-retry-actions';
-import { automaticRetryAt, automaticSearchRetryKey, isAutomaticRetryFailure } from '@/lib/automatic-retry-policy';
+import { automaticRetryAt, automaticSearchRetryKey, getDownloadFileFailureReason, isAutomaticRetryFailure } from '@/lib/automatic-retry-policy';
 import { logMovieAudioError } from '@/lib/movie-audio-errors';
 import { sonarrQueueItemMatchesScope } from '@/lib/sonarr-search-scopes';
 
@@ -64,7 +64,8 @@ async function retryFailedDownloads(): Promise<void> {
             ? series!.filter((item) => item.seriesId === download.mediaId && isAutomaticRetryFailure(item) &&
               scopes.some((scope) => sonarrQueueItemMatchesScope(item, scope))) : items.filter(isAutomaticRetryFailure);
           const transfers = new Set<string>();
-          for (const item of failed) {
+          // Prioritize unusable files when choosing this title's next replacement search.
+          for (const item of failed.sort((a, b) => Number(!!getDownloadFileFailureReason(b)) - Number(!!getDownloadFileFailureReason(a)))) {
             const transfer = item.downloadId?.toLowerCase() || String(item.id);
             if (transfers.has(transfer)) continue;
             transfers.add(transfer);

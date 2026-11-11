@@ -4,7 +4,7 @@ import { monitoredDownloads, monitoredDownloadUsers, downloadTransfers } from '@
 import type { MonitoredDownload } from '@/lib/db/schema';
 import { DOWNLOAD_RETRY_COOLDOWN_MS } from '@/lib/download-retry-policy';
 import { recordDownloadRequest } from '@/lib/db/download-requests';
-import type { DownloadRequestScope } from '@/types';
+import type { DownloadRequestScope, DownloadRestartReason } from '@/types';
 
 export async function upsertMonitoredDownload(
   source: 'radarr' | 'sonarr',
@@ -43,7 +43,7 @@ export function saveTrackedRequest(source: 'radarr' | 'sonarr', mediaId: number,
   const row = db.insert(monitoredDownloads).values({ source, mediaId, title, createdAt: now, lastActivityAt: now, lastBytesAt: now,
     retryAfter: now + DOWNLOAD_RETRY_COOLDOWN_MS })
     .onConflictDoUpdate({ target: [monitoredDownloads.source, monitoredDownloads.mediaId], set: {
-      title, completedAt: null, lastStatus: null, lastActivityAt: now, lastBytesAt: now,
+      title, completedAt: null, lastStatus: null, lastActivityAt: now, lastBytesAt: now, restartReason: null,
       retryAfter: Math.max(prior?.retryAfter ?? 0, now + DOWNLOAD_RETRY_COOLDOWN_MS),
       ...(prior?.completedAt != null ? { createdAt: now } : {}),
     } }).returning().get();
@@ -68,6 +68,7 @@ export async function reopenMonitoredDownload(
 }
 
 export interface ActiveMonitoredDownload {
+  restartReason: DownloadRestartReason | null;
   id: number;
   source: string;
   mediaId: number;
@@ -117,7 +118,7 @@ async function listMonitoredDownloads(userId?: string, includeRecent = false): P
     id: monitoredDownloads.id, source: monitoredDownloads.source, mediaId: monitoredDownloads.mediaId,
     title: monitoredDownloads.title, lastStatus: monitoredDownloads.lastStatus, createdAt: monitoredDownloads.createdAt,
     completedAt: monitoredDownloads.completedAt, lastActivityAt: monitoredDownloads.lastActivityAt,
-    lastBytesAt: monitoredDownloads.lastBytesAt, userId: monitoredDownloadUsers.userId,
+    lastBytesAt: monitoredDownloads.lastBytesAt, restartReason: monitoredDownloads.restartReason, userId: monitoredDownloadUsers.userId,
   }).from(monitoredDownloads).leftJoin(monitoredDownloadUsers, eq(monitoredDownloads.id, monitoredDownloadUsers.downloadId))
     .where(and(userId ? eq(monitoredDownloadUsers.userId, userId) : undefined,
       includeRecent ? or(isNull(monitoredDownloads.completedAt), and(
@@ -223,9 +224,9 @@ export async function updateDownloadActivity(
     .where(eq(monitoredDownloads.id, id));
 }
 
-export async function resetMonitoredDownload(id: number): Promise<void> {
+export async function resetMonitoredDownload(id: number, restartReason: DownloadRestartReason | null = null): Promise<void> {
   await db
     .update(monitoredDownloads)
-    .set({ lastStatus: null, completedAt: null, lastActivityAt: Date.now(), lastBytesAt: Date.now() })
+    .set({ lastStatus: null, completedAt: null, lastActivityAt: Date.now(), lastBytesAt: Date.now(), restartReason })
     .where(eq(monitoredDownloads.id, id));
 }

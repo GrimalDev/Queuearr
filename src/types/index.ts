@@ -426,7 +426,10 @@ export interface SearchResult {
   releaseDate?: string;
 }
 
+export type DownloadRestartReason = 'suspicious_files' | 'file_error';
+
 export interface QueueItem {
+  restartReason?: DownloadRestartReason | null;
   id: string;
   /** Original request attribution, exposed only to administrators. */
   initiatedBy?: DownloadInitiator;
@@ -491,6 +494,7 @@ export interface QueueItem {
 }
 
 export interface MonitoredQueueDownload {
+  restartReason?: DownloadRestartReason | null;
   remainingEpisodeIds?: number[];
   nextAirAt?: number | null;
   requestAttribution?: DownloadRequestAttribution[];
