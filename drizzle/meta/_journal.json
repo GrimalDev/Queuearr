@@ -162,6 +162,13 @@
       "when": 1794000000000,
       "tag": "0022_download_request_history",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1794355200000,
+      "tag": "0023_download_search_details",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,7 @@ import { getDownloadTransferHashes } from '@/lib/db/download-transfers';
 import { readAudioLanguages } from '@/lib/audio-languages';
 import { getTorrentIndexerMetadata } from '@/lib/db/torrent-indexers';
 import { getDownloadRequestAttribution } from '@/lib/db/download-requests';
+import { getDownloadSearchErrorDetail } from '@/lib/download-search-errors';
 import {
   getMonitoredDownloadBySourceMedia,
   getActiveMonitoredDownloads,
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
     retryAvailableAt: retryTimes.get(`${download.source}:${download.mediaId}`),
     searchState: searchJobs.get(download.id)?.state,
     searchScopes: parseDownloadScopes(searchJobs.get(download.id)?.scopes ?? '[]'),
-    errorMessage: session.user.role === 'admin' ? audio?.detail : undefined,
+    errorMessage: session.user.role === 'admin' ? audio?.detail ?? getDownloadSearchErrorDetail(searchJobs.get(download.id)) : undefined,
     searchIndexer: audio?.donorIndexer ?? searchJobs.get(download.id)?.indexer ?? savedTransfer.find((transfer) => transfer?.indexer)?.indexer,
     retryRequiresReview: searchJobs.get(download.id)?.state === 'needs_review' && searchJobs.get(download.id)?.submittedAt !== null,
   }; }).filter((download) => download.completedAt == null || download.libraryReady));

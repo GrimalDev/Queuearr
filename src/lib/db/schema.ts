@@ -117,6 +117,7 @@ export const downloadSearchJobs = sqliteTable('download_search_jobs', {
   downloadId: integer('download_id').primaryKey().references(() => monitoredDownloads.id, { onDelete: 'cascade' }),
   scopes: text('scopes').notNull().default('[]'),
   state: text('state').notNull().default('pending'),
+  detail: text('detail'),
   indexer: text('indexer'),
   submittedAt: integer('submitted_at'),
   nextAttemptAt: integer('next_attempt_at').notNull().default(0),
