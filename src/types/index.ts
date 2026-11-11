@@ -309,11 +309,12 @@ export interface TransmissionTorrent {
 }
 
 export interface DownloadGrabHistory {
+  sourceTitle?: string;
   languages?: RadarrLanguage[];
   language?: RadarrLanguage;
   downloadId?: string;
   eventType?: string;
-  data?: { indexer?: string };
+  data?: { indexer?: string; guid?: string };
 }
 
 export enum TransmissionStatus {
@@ -583,6 +584,13 @@ export interface ReleaseSearchRetry {
 }
 
 export interface Release {
+  fullSeason?: boolean;
+  seasonNumber?: number;
+  mappedSeasonNumber?: number;
+  episodeNumbers?: number[];
+  mappedEpisodeNumbers?: number[];
+  mappedSeriesId?: number;
+  mappedEpisodeInfo?: { id: number; seasonNumber: number; episodeNumber: number }[];
   guid: string;
   indexerId: number;
   indexer?: string;
@@ -604,6 +612,17 @@ export interface Release {
   edition?: string;
   mappedMovieId?: number;
   tmdbId?: number;
+}
+
+export interface ReleaseBlocklistEntry {
+  id: number;
+  movieId?: number;
+  seriesId?: number;
+  episodeIds?: number[];
+  sourceTitle: string;
+  indexer?: string;
+  date: string;
+  message?: string;
 }
 
 export type QueueItemStatus =

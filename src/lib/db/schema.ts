@@ -113,6 +113,11 @@ export const monitoredDownloadUsers = sqliteTable(
 );
 
 export const downloadSearchJobs = sqliteTable('download_search_jobs', {
+  rankedSearch: integer('ranked_search', { mode: 'boolean' }).notNull().default(false),
+  releaseRound: integer('release_round').notNull().default(0),
+  nextRoundAt: integer('next_round_at').notNull().default(0),
+  searchCursor: integer('search_cursor').notNull().default(0),
+  pendingEpisodeIds: text('pending_episode_ids'),
   remainingEpisodeIds: text('remaining_episode_ids'),
   nextAirAt: integer('next_air_at'),
   searchFailures: integer('search_failures').notNull().default(0),
@@ -126,6 +131,21 @@ export const downloadSearchJobs = sqliteTable('download_search_jobs', {
   nextAttemptAt: integer('next_attempt_at').notNull().default(0),
   updatedAt: integer('updated_at').notNull(),
 });
+
+export const downloadReleaseAttempts = sqliteTable('download_release_attempts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  downloadId: integer('download_id').notNull().references(() => monitoredDownloads.id, { onDelete: 'cascade' }),
+  cycleStartedAt: integer('cycle_started_at').notNull(),
+  identity: text('identity').notNull(),
+  titleDigest: text('title_digest').notNull(),
+  round: integer('round').notNull(),
+  kind: text('kind', { enum: ['submitted', 'temporary', 'permanent', 'unknown'] }).notNull(),
+  attemptedAt: integer('attempted_at').notNull(),
+  retryAt: integer('retry_at').notNull().default(0),
+  ownedBlocklistIds: text('owned_blocklist_ids').notNull().default('[]'),
+}, (table) => ({
+  attemptUnique: uniqueIndex('download_release_attempt_unique').on(table.downloadId, table.cycleStartedAt, table.identity),
+}));
 
 export const automaticDownloadRetries = sqliteTable('automatic_download_retries', {
   key: text('key').primaryKey(),

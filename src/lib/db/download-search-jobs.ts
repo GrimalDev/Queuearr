@@ -30,7 +30,7 @@ export function getDownloadSearchJobs(): DownloadSearchJob[] {
 export function updateDownloadSearchJob(downloadId: number, changes: Partial<Omit<DownloadSearchJob, 'downloadId'>>): void {
   const clearDetail = changes.state && ['pending', 'searching', 'downloading', 'complete', 'cancelled'].includes(changes.state);
   db.update(downloadSearchJobs).set({ ...(clearDetail ? { detail: null } : {}),
-    ...(changes.state === 'pending' ? { remainingEpisodeIds: null, nextAirAt: null } : {}), ...changes, updatedAt: Date.now() })
+    ...(changes.state === 'pending' ? { remainingEpisodeIds: null, nextAirAt: null, pendingEpisodeIds: null } : {}), ...changes, updatedAt: Date.now() })
     .where(eq(downloadSearchJobs.downloadId, downloadId)).run();
 }
 
@@ -54,8 +54,9 @@ export function queueDownloadSearch(source: 'radarr' | 'sonarr', mediaId: number
     if (scopes.length > 100) throw new Error('Too many pending download selections.');
     const tracked = saveTrackedRequest(source, mediaId, title, userId, scope);
     const values = { scopes: JSON.stringify(scopes), state: 'pending', detail: null, remainingEpisodeIds: null, nextAirAt: null, searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0, updatedAt: Date.now() };
-    db.insert(downloadSearchJobs).values({ downloadId: tracked.id, ...values })
-      .onConflictDoUpdate({ target: downloadSearchJobs.downloadId, set: values }).run();
+    const round = prior?.completedAt != null || !existing ? { rankedSearch: false, releaseRound: 0, nextRoundAt: 0, searchCursor: 0 } : {};
+    db.insert(downloadSearchJobs).values({ downloadId: tracked.id, ...values, ...round })
+      .onConflictDoUpdate({ target: downloadSearchJobs.downloadId, set: { ...values, ...round, pendingEpisodeIds: null } }).run();
   }); } finally { releaseMovieAudioLock(lock); }
 }
 

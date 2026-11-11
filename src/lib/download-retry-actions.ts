@@ -13,6 +13,7 @@ import { isMovieRegrab } from '@/lib/movie-audio-releases';
 import { rejectedAudioDonors } from '@/lib/movie-audio-attempts';
 import { createTransmissionClient } from '@/lib/api/transmission';
 import { db } from '@/lib/db';
+import { rejectDownloadSources } from '@/lib/download-release-failures';
 
 export async function retryRadarrQueue(mediaId: number, ids: number[], actor: DownloadRetryActor): Promise<number> {
   const radarr = createRadarrClient();
@@ -43,11 +44,15 @@ export async function retryRadarrQueue(mediaId: number, ids: number[], actor: Do
         throw new DownloadRetryError('The failed transfer has changed or recovered.');
       }
 
-      await radarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });
+      const search = monitored && !policy ? ensureDownloadSearchJob(monitored.id, 'radarr') : undefined;
+      const remove = (): Promise<void> => radarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });
+      if (monitored && search) await rejectDownloadSources(monitored, search.releaseRound,
+        queue.records.filter((item) => ids.includes(item.id)), radarr, remove);
+      else await remove();
       if (policy) updateMovieAudioJob(policy.tmdbId, { state: 'pending', searchFailures: 0, detail: 'Searching for another movie release.', nextAttemptAt: 0 });
       else if (monitored) {
         ensureDownloadSearchJob(monitored.id, 'radarr');
-        updateDownloadSearchJob(monitored.id, { state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
+        updateDownloadSearchJob(monitored.id, { rankedSearch: true, state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
       }
       if (monitored) await resetMonitoredDownload(monitored.id,
         getDownloadRestartReason(queue.records.filter((item) => ids.includes(item.id))));
@@ -89,12 +94,13 @@ export async function retrySonarrQueue(mediaId: number, ids: number[], actor: Do
       const scopes = [...new Map([...retained, ...episodes.map((episodeId) => ({ type: 'episode' as const, episodeId: episodeId! }))]
         .map((scope) => [JSON.stringify(scope), scope])).values()];
       if (scopes.length > 100) throw new DownloadRetryError('Too many pending episode selections.');
-      await sonarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true });
+      await rejectDownloadSources(monitored!, saved.releaseRound, affected, sonarr,
+        () => sonarr.deleteQueueItemBulk(ids, { blocklist: true, skipRedownload: true }));
       db.transaction(() => {
         if (monitored?.lastStatus === 'cancelled' && !('automaticKey' in actor)) {
           for (const scope of scopes) saveTrackedRequest('sonarr', mediaId, monitored.title, actor.id, scope);
         }
-        updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes), state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
+        updateDownloadSearchJob(saved.downloadId, { rankedSearch: true, scopes: JSON.stringify(scopes), state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
       });
       if (monitored) await resetMonitoredDownload(monitored.id, getDownloadRestartReason(affected));
     }, { restartCancelledQueue: true });
@@ -137,6 +143,7 @@ export async function retryDownloadSearch(source: 'radarr' | 'sonarr', mediaId: 
           throw new DownloadRetryError('A download already exists for this selection. Refresh its queue entry.');
         }
         updateDownloadSearchJob(saved.downloadId, { scopes: JSON.stringify(scopes.length ? scopes : [{ type: 'series' }]),
+          rankedSearch: saved.rankedSearch || saved.state === 'waiting_for_release' || saved.state === 'search_failed',
           state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
       } else {
         const client = createRadarrClient();
@@ -166,7 +173,7 @@ export async function retryDownloadSearch(source: 'radarr' | 'sonarr', mediaId: 
             if (saved.state === 'grab_pending' || saved.state === 'needs_review' && saved.submittedAt !== null) {
               throw new DownloadRetryError('The previous release submission needs review.');
             }
-            updateDownloadSearchJob(saved.downloadId, { state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
+            updateDownloadSearchJob(saved.downloadId, { rankedSearch: true, state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });
           }
         }
       }

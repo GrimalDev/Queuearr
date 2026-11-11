@@ -10,6 +10,7 @@ import {
   SonarrRootFolder,
   Release,
   DownloadGrabHistory,
+  ReleaseBlocklistEntry,
 } from '@/types';
 
 interface SonarrConfig {
@@ -173,6 +174,14 @@ export class SonarrClient {
       timeout: 60_000,
     });
     return response.data;
+  }
+
+  async getBlocklist(seriesId: number): Promise<ReleaseBlocklistEntry[]> {
+    const { data } = await this.client.get<{ records: ReleaseBlocklistEntry[]; totalRecords: number }>('/api/v3/blocklist', {
+      params: { seriesIds: seriesId, page: 1, pageSize: 1000 },
+    });
+    if (!Number.isSafeInteger(data.totalRecords) || data.totalRecords > data.records.length) throw new Error('The blocklist could not be fully verified.');
+    return data.records.filter((entry) => entry.seriesId === seriesId);
   }
 
   async grabRelease(guid: string, indexerId: number): Promise<void> {

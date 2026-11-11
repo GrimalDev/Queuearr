@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { createHttpsAgentForService } from '@/lib/api/tls';
 import {
+  ReleaseBlocklistEntry,
   RadarrMovie,
   RadarrQueueItem,
   RadarrQualityProfile,
@@ -203,6 +204,14 @@ export class RadarrClient {
 
   async grabRelease(guid: string, indexerId: number): Promise<void> {
     await this.client.post('/api/v3/release', { guid, indexerId });
+  }
+
+  async getBlocklist(movieId: number): Promise<ReleaseBlocklistEntry[]> {
+    const { data } = await this.client.get<{ records: ReleaseBlocklistEntry[]; totalRecords: number }>('/api/v3/blocklist', {
+      params: { movieIds: movieId, page: 1, pageSize: 1000 },
+    });
+    if (!Number.isSafeInteger(data.totalRecords) || data.totalRecords > data.records.length) throw new Error('The blocklist could not be fully verified.');
+    return data.records.filter((entry) => entry.movieId === movieId);
   }
 
   async getQualityProfiles(): Promise<RadarrQualityProfile[]> {

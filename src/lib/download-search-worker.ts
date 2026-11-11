@@ -10,6 +10,9 @@ import { isMovieInCinemas } from '@/lib/movie-release-status';
 import { releaseSearchRetry, summarizeReleaseSearch } from '@/lib/release-search-retry';
 import { episodeMatchesSearchScope, getUnqueuedSonarrSearchScopes } from '@/lib/sonarr-search-scopes';
 import { describeDownloadSearchError, describeRejectedMovieReleases } from '@/lib/download-search-errors';
+import { chooseRankedRelease, recoverRejectedRelease, runRankedSonarrSearch, waitForRankedRelease } from '@/lib/ranked-download-search';
+import { reserveDownloadRelease } from '@/lib/db/download-release-attempts';
+import { db } from '@/lib/db';
 
 const ACTIVE_SEARCH_STATES = ['pending', 'searching', 'grab_pending', 'downloading', 'search_failed', 'in_cinemas', 'waiting_for_airdate', 'waiting_for_release'];
 
@@ -78,11 +81,14 @@ export async function runDownloadSearchJobs(): Promise<void> {
           if (await client.hasActiveMovieSearch(download.mediaId)) { later(job, 'searching'); continue; }
           operation = 'Searching movie releases';
           const releases = await client.getReleases(download.mediaId);
-          const candidate = pickBestRelease(releases);
+          const ranked = job.rankedSearch || ['waiting_for_release', 'search_failed'].includes(job.state);
+          const selection = ranked ? await chooseRankedRelease(job, download, releases, () => client.getBlocklist(download.mediaId)) : undefined;
+          const candidate = selection ? selection.candidate : pickBestRelease(releases);
           if (!candidate) {
             const retry = releaseSearchRetry(job.searchFailures);
             const inCinemas = isMovieInCinemas(movie);
             console.warn(`[downloads] radarr ${download.mediaId}: no accepted release`, { ...summarizeReleaseSearch(releases), attempt: retry.failures });
+            if (ranked && !inCinemas && selection) { waitForRankedRelease(job, selection); continue; }
             updateDownloadSearchJob(job.downloadId, { searchFailures: retry.failures });
             later(job, inCinemas ? 'in_cinemas' : retry.confirming ? 'searching' : 'search_failed', inCinemas ? 15 * 60_000 : retry.delay,
               (inCinemas ? 'The movie is still in cinemas. ' : '') + describeRejectedMovieReleases(releases)); continue;
@@ -92,11 +98,18 @@ export async function runDownloadSearchJobs(): Promise<void> {
           if ((await client.getQueue(false)).records.some((item) => item.movieId === download.mediaId)) { later(job, 'downloading'); continue; }
           operation = 'Checking the movie before submitting a release';
           if ((await client.getMovie(download.mediaId)).hasFile) { later(job, 'complete'); continue; }
-          updateDownloadSearchJob(job.downloadId, { state: 'grab_pending', detail: null, searchFailures: 0, indexer: candidate.indexer || `Indexer ${candidate.indexerId}`, estimatedLanguages: JSON.stringify(candidate.languages ?? []),
-            submittedAt: Date.now(), nextAttemptAt: Date.now() + 30_000 });
+          db.transaction(() => {
+            reserveDownloadRelease(download.id, download.createdAt, selection?.round ?? job.releaseRound, candidate);
+            updateDownloadSearchJob(job.downloadId, { state: 'grab_pending', rankedSearch: ranked,
+              releaseRound: selection?.round ?? job.releaseRound, nextRoundAt: 0,
+              detail: null, searchFailures: 0, indexer: candidate.indexer || `Indexer ${candidate.indexerId}`, estimatedLanguages: JSON.stringify(candidate.languages ?? []),
+              submittedAt: Date.now(), nextAttemptAt: Date.now() + 30_000 });
+          });
           try { await client.grabRelease(candidate.guid, candidate.indexerId); }
           catch (cause) {
-            updateDownloadSearchJob(job.downloadId, { detail: describeDownloadSearchError('Radarr', 'Submitting the selected release', cause) });
+            if (!await recoverRejectedRelease(job, download, client, candidate, selection?.round ?? job.releaseRound, [], cause)) {
+              updateDownloadSearchJob(job.downloadId, { detail: describeDownloadSearchError('Radarr', 'Submitting the selected release', cause) });
+            }
             logMovieAudioError(`radarr ${download.mediaId} submission`, cause);
           }
           invalidateQueueCache(['radarr-queue']);
@@ -114,6 +127,17 @@ export async function runDownloadSearchJobs(): Promise<void> {
           if (selected.length && selected.every((episode) => episode.hasFile)) { later(job, 'complete'); continue; }
           operation = 'Reading the download queue';
           const queue = (await client.getQueue()).records.filter((item) => item.seriesId === download.mediaId);
+          if (job.state === 'grab_pending') {
+            const pending: number[] = JSON.parse(job.pendingEpisodeIds ?? '[]');
+            if (pending.some((id) => selected.some((episode) => episode.id === id && episode.hasFile) ||
+                queue.some((item) => (item.episodeId ?? item.episode?.id) === id))) {
+              updateDownloadSearchJob(job.downloadId, { state: 'downloading', pendingEpisodeIds: null, submittedAt: null, nextAttemptAt: Date.now() + 30_000 });
+            } else if (Date.now() - (job.submittedAt ?? job.updatedAt) >= 5 * 60_000) {
+              later(job, 'needs_review', 30_000, 'A ranked release submission has no matching download after five minutes. Review Sonarr before submitting it again.' +
+                (job.detail ? ` Last diagnostic: ${job.detail}` : ''));
+            }
+            continue;
+          }
           const searches = getUnqueuedSonarrSearchScopes(scopes, episodes, queue);
           if (!searches.length) {
             const waitingForAirdate = future.some(({ episode }) => !queue.some((item) => (item.episodeId ?? item.episode?.id) === episode.id)) &&
@@ -136,6 +160,11 @@ export async function runDownloadSearchJobs(): Promise<void> {
           if (commandStatus.failedCommandIds.length && ['searching', 'downloading'].includes(job.state)) {
             later(job, 'search_failed', 15 * 60_000,
               `Sonarr search command(s) ${commandStatus.failedCommandIds.join(', ')} failed or were cancelled. Check Sonarr logs for the command failure.`);
+            continue;
+          }
+          if (job.rankedSearch || job.state === 'waiting_for_release') {
+            operation = 'Searching and submitting ranked episode releases';
+            await runRankedSonarrSearch(job, download, client, episodes, scopes, queue, () => lostLease);
             continue;
           }
           if (job.submittedAt !== null && ['searching', 'downloading'].includes(job.state)) {
