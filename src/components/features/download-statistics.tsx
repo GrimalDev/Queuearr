@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from 'react';
 import { CalendarDays, ChartPie, Loader2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { defaultDownloadStatsDates, downloadPiePath, downloadStatsDateBounds } from '@/lib/download-statistics';
@@ -56,10 +57,13 @@ export function DownloadStatisticsPanel(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [includeUnknown, setIncludeUnknown] = useState(false);
   const prefix = useId();
   const bounds = downloadStatsDateBounds(dates.from, dates.to);
   const start = bounds?.start;
   const end = bounds?.end;
+  const visibleUsers = data?.users.filter((user) => includeUnknown || user.userId !== null) ?? [];
+  const visibleData = data ? { ...data, users: visibleUsers, totalDownloads: visibleUsers.reduce((total, user) => total + user.downloads, 0) } : null;
   useEffect(() => {
     if (!start || !end) return;
     const controller = new AbortController();
@@ -99,15 +103,19 @@ export function DownloadStatisticsPanel(): React.JSX.Element {
           <CalendarDays className="size-4" aria-hidden="true" />Last 7 days
         </Button>
       </div>
+      <div className="flex items-center gap-2">
+        <Checkbox id={`${prefix}-include-unknown`} checked={includeUnknown} onCheckedChange={setIncludeUnknown} />
+        <Label htmlFor={`${prefix}-include-unknown`}>Include unknown / external</Label>
+      </div>
       {!bounds ? <p role="alert" className="text-sm text-destructive">Choose a valid start and end date.</p> : loading ?
         <div role="status" className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
           <Loader2 className="size-5 motion-safe:animate-spin" aria-hidden="true" />Loading download statistics…
         </div> : error ? <div role="alert" className="flex items-center gap-3 py-8 text-sm text-destructive">
           Error<Button variant="outline" size="sm" onClick={() => setRevision((value) => value + 1)}><RotateCcw className="size-4" />Retry</Button>
-        </div> : data && <>
-          <div><p className="text-3xl font-semibold tabular-nums">{data.totalDownloads.toLocaleString()}</p>
-            <p className="text-sm text-muted-foreground">download requests · {data.users.filter((user) => user.userId !== null).length} known users</p></div>
-          <DownloadStatisticsChart data={data} />
+        </div> : visibleData && <>
+          <div><p className="text-3xl font-semibold tabular-nums">{visibleData.totalDownloads.toLocaleString()}</p>
+            <p className="text-sm text-muted-foreground">download requests · {visibleUsers.filter((user) => user.userId !== null).length} known users</p></div>
+          <DownloadStatisticsChart data={visibleData} />
         </>}
       <p className="text-xs leading-relaxed text-muted-foreground">Counts each movie, series, season, episode, or audio selection once. Retries and followers are excluded. History from before requester tracking began is partial and may appear as Unknown / external.</p>
     </CardContent>
