@@ -1,6 +1,6 @@
 import type { MovieAudioLanguage, RadarrLanguage, RadarrMovie } from '@/types';
 import type { MovieAudioPolicy } from '@/lib/db/movie-audio';
-import { IN_CINEMAS_SEARCH_MESSAGE } from '@/lib/movie-release-status';
+import { IN_CINEMAS_SEARCH_MESSAGE, UNRELEASED_MOVIE_SEARCH_MESSAGE } from '@/lib/movie-release-status';
 
 export const MOVIE_AUDIO_OPTIONS: { value: MovieAudioLanguage; label: string }[] = [
   { value: 'original', label: 'Original' },
@@ -47,6 +47,7 @@ export function resolveAudioLanguage(choice: MovieAudioLanguage, movie: RadarrMo
 }
 
 export function getPublicMovieAudioDetail(state?: string, detail?: string): string | undefined {
+  if (state === 'waiting_for_movie_release') return UNRELEASED_MOVIE_SEARCH_MESSAGE;
   if (state === 'in_cinemas') return IN_CINEMAS_SEARCH_MESSAGE;
   if (state === 'needs_review' || state === 'waiting_for_configuration' || state === 'error' || state === 'failed' || state === 'search_failed' || state === 'cancelling' ||
       detail === 'A service or shared folder is unavailable. Queuearr will retry in 15 minutes.') {

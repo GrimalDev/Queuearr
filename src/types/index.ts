@@ -439,7 +439,7 @@ export interface QueueItem {
   isRetryPending?: boolean;
   isAwaitingDownload?: boolean;
   searchError?: 'in_cinemas';
-  searchWaitingReason?: 'airdate' | 'release';
+  searchWaitingReason?: 'airdate' | 'release' | 'availability';
   nextAirAt?: number;
   requestedAudioLanguages?: RadarrLanguage[];
   estimatedAudioLanguages?: RadarrLanguage[];

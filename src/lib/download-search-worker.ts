@@ -6,7 +6,7 @@ import { getDownloadSearchJobs, parseDownloadScopes, recoverDownloadSearchJobs, 
 import { logMovieAudioError } from '@/lib/movie-audio-errors';
 import { pickBestRelease } from '@/lib/smart-grab';
 import { invalidateQueueCache } from '@/lib/queue-cache';
-import { isMovieInCinemas } from '@/lib/movie-release-status';
+import { isMovieInCinemas, isMovieUnreleased, UNRELEASED_MOVIE_SEARCH_MESSAGE } from '@/lib/movie-release-status';
 import { releaseSearchRetry, summarizeReleaseSearch } from '@/lib/release-search-retry';
 import { episodeMatchesSearchScope, getUnqueuedSonarrSearchScopes } from '@/lib/sonarr-search-scopes';
 import { describeDownloadSearchError, describeRejectedMovieReleases } from '@/lib/download-search-errors';
@@ -14,7 +14,7 @@ import { chooseRankedRelease, recoverRejectedRelease, runRankedSonarrSearch, wai
 import { reserveDownloadRelease } from '@/lib/db/download-release-attempts';
 import { db } from '@/lib/db';
 
-const ACTIVE_SEARCH_STATES = ['pending', 'searching', 'grab_pending', 'downloading', 'search_failed', 'in_cinemas', 'waiting_for_airdate', 'waiting_for_release'];
+const ACTIVE_SEARCH_STATES = ['pending', 'searching', 'grab_pending', 'downloading', 'search_failed', 'in_cinemas', 'waiting_for_airdate', 'waiting_for_release', 'waiting_for_movie_release'];
 
 function later(job: DownloadSearchJob, state: string, delay = 30_000, detail: string | null = null): void {
   updateDownloadSearchJob(job.downloadId, { state, detail, nextAttemptAt: Date.now() + delay });
@@ -76,6 +76,10 @@ export async function runDownloadSearchJobs(): Promise<void> {
                 (job.detail ? ` Last submission diagnostic: ${job.detail}` : ''));
             }
             continue;
+          }
+          if (isMovieUnreleased(movie)) {
+            updateDownloadSearchJob(job.downloadId, { searchFailures: 0 });
+            later(job, 'waiting_for_movie_release', 6 * 60 * 60_000, UNRELEASED_MOVIE_SEARCH_MESSAGE); continue;
           }
           operation = 'Checking the movie search command';
           if (await client.hasActiveMovieSearch(download.mediaId)) { later(job, 'searching'); continue; }

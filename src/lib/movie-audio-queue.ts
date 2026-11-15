@@ -40,15 +40,16 @@ export function getMovieAudioQueue(
         ? job.state === 'validating' ? 'checking_audio' : job.state as 'merging' | 'replacing' | 'verifying'
         : movie.hasFile && !job.donorHash && job.state === 'downloading' ? 'checking_audio' : undefined,
       source: 'radarr', mediaId: policy.radarrMovieId, isRegrab,
-      isSearching: !hasError && !['downloading', 'regrabbing', 'grab_pending', 'validating', 'merging', 'replacing', 'verifying'].includes(job.state),
+      isSearching: !hasError && !['downloading', 'regrabbing', 'grab_pending', 'validating', 'merging', 'replacing', 'verifying', 'waiting_for_movie_release'].includes(job.state),
+      searchWaitingReason: job.state === 'waiting_for_movie_release' ? 'availability' : undefined,
       canCancelDownload: (!!job.donorHash || ['downloading', 'regrabbing', 'needs_review', 'cancelling'].includes(job.state)) &&
         !job.outputPath && job.restoreMonitored == null && !job.replaceDonor &&
-        ['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed', 'in_cinemas', 'needs_review', 'cancelling'].includes(job.state),
+        ['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed', 'in_cinemas', 'waiting_for_movie_release', 'needs_review', 'cancelling'].includes(job.state),
       isAwaitingDownload: job.state === 'grab_pending',
       searchError: job.state === 'in_cinemas' ? 'in_cinemas' : undefined,
       requestedAudioLanguages: additionalAudio ? languages : policy.requiredLanguages,
       canRetrySearch: !job.donorHash && !job.outputPath && job.restoreMonitored == null && !job.replaceDonor &&
-        ['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed', 'in_cinemas'].includes(job.state),
+        ['pending', 'downloading', 'regrabbing', 'waiting_for_configuration', 'search_failed', 'in_cinemas', 'waiting_for_movie_release'].includes(job.state),
       title: movie.title, subtitle: movie.year?.toString(), transmissionHash: job.donorHash ?? undefined,
       audio: additionalAudio ? { phase, languages,
         canRetry: !!job.donorHash && !job.outputPath && job.restoreMonitored == null && !job.replaceDonor &&
@@ -56,7 +57,7 @@ export function getMovieAudioQueue(
       indexer: job.donorIndexer ?? undefined,
       status: hasError ? 'failed' : !additionalAudio || phase === 'searching' ? 'pending' : phase === 'downloading' ? 'downloading' : 'importing',
       progress: 0, size: 0, sizeRemaining: 0, isStalled: false, hasError,
-      errorMessage: hasError ? job.detail : undefined,
+      errorMessage: hasError ? job.detail : job.state === 'waiting_for_movie_release' ? getPublicMovieAudioDetail(job.state, job.detail) : undefined,
     }];
   });
 }

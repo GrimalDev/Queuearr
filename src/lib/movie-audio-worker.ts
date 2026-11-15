@@ -15,7 +15,7 @@ import { rememberDownloadTransfer } from '@/lib/db/download-transfers';
 import { getMovieAudioTorrentSource } from '@/lib/movie-audio-download';
 import { audioReleaseKey, isRejectedAudioRelease, rejectedAudioDonors } from '@/lib/movie-audio-attempts';
 import { pickBestRelease } from '@/lib/smart-grab';
-import { isMovieInCinemas, IN_CINEMAS_SEARCH_MESSAGE } from '@/lib/movie-release-status';
+import { isMovieInCinemas, isMovieUnreleased, IN_CINEMAS_SEARCH_MESSAGE, UNRELEASED_MOVIE_SEARCH_MESSAGE } from '@/lib/movie-release-status';
 import { releaseSearchRetry, summarizeReleaseSearch } from '@/lib/release-search-retry';
 import type { Release } from '@/types';
 
@@ -159,6 +159,11 @@ async function processJob(
       // A lost grab response must not submit the same or another release again.
       if (Date.now() - job.updatedAt < 5 * 60_000) return;
       throw new AudioReviewError('Radarr did not expose a download within five minutes of the grab. Review its download client and history before retrying.');
+    }
+    if (isMovieUnreleased(movie)) {
+      updateMovieAudioJob(id, { searchFailures: 0 });
+      later(id, UNRELEASED_MOVIE_SEARCH_MESSAGE, 'waiting_for_movie_release', 6 * 60 * 60_000);
+      return;
     }
     if (await client.hasActiveMovieSearch(policy.radarrMovieId)) {
       later(id, 'Radarr is searching for the initial movie release.', 'pending', 30_000);

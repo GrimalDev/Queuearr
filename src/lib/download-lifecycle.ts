@@ -8,8 +8,8 @@ export function mergeDownloadLifecycle(
   for (const download of downloads) {
     if (download.lastStatus === 'cancelled') continue;
     const state = download.audioState ?? download.searchState;
-    const searchWaitingReason = state === 'waiting_for_airdate' ? 'airdate' : state === 'waiting_for_release' ? 'release' : undefined;
-    const searchStates = ['pending', 'searching', 'search_failed', 'needs_selection', 'waiting_for_airdate', 'waiting_for_release'];
+    const searchWaitingReason = state === 'waiting_for_airdate' ? 'airdate' : state === 'waiting_for_release' ? 'release' : state === 'waiting_for_movie_release' ? 'availability' : undefined;
+    const searchStates = ['pending', 'searching', 'search_failed', 'needs_selection', 'waiting_for_airdate', 'waiting_for_release', 'waiting_for_movie_release'];
     const scopes = download.searchScopes ?? [];
     const matchesSelection = (item: QueueItem): boolean => download.source !== 'sonarr' || !scopes.length || scopes.some((scope) =>
       scope.type === 'series' || scope.type === 'season' && item.seasonNumber === scope.seasonNumber ||
@@ -59,7 +59,9 @@ export function mergeDownloadLifecycle(
     for (let i = 0; i < result.length; i++) {
       const item = result[i];
       if (item.source !== download.source || item.mediaId !== download.mediaId) continue;
-      const ready = download.libraryReady === true && item.libraryReady !== false && matchesSelection(item);
+      // The synthesized summary represents the saved scope even after its remaining episode IDs become empty.
+      const requestSummary = item.id === `request-${download.source}-${download.mediaId}`;
+      const ready = download.libraryReady === true && item.libraryReady !== false && (requestSummary || matchesSelection(item));
       result[i] = { ...item,
         restartReason: download.restartReason,
         id: item.source === 'radarr' ? `request-radarr-${download.mediaId}` : item.id,

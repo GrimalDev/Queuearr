@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type { Release } from '@/types';
 import { summarizeReleaseSearch } from '@/lib/release-search-retry';
+import { UNRELEASED_MOVIE_SEARCH_MESSAGE } from '@/lib/movie-release-status';
 
 /** Persist only controlled text and diagnostic codes, never HTTP bodies or signed URLs. */
 export function describeDownloadSearchError(service: string, operation: string, cause: unknown): string {
@@ -30,7 +31,8 @@ export function describeRejectedMovieReleases(releases: Release[]): string {
 
 /** Legacy failures have no recorded cause. Do not invent one from their status alone. */
 export function getDownloadSearchErrorDetail(job: { state: string; detail?: string | null } | undefined): string | undefined {
-  if (!job || !['search_failed', 'needs_review', 'needs_selection', 'in_cinemas', 'waiting_for_release', 'waiting_for_airdate'].includes(job.state)) return undefined;
+  if (!job || !['search_failed', 'needs_review', 'needs_selection', 'in_cinemas', 'waiting_for_release', 'waiting_for_airdate', 'waiting_for_movie_release'].includes(job.state)) return undefined;
+  if (job.state === 'waiting_for_movie_release') return UNRELEASED_MOVIE_SEARCH_MESSAGE;
   if (job.detail?.trim()) return job.detail;
   if (job.state === 'waiting_for_release') return 'Sonarr finished searching without selecting an eligible release. The remaining episodes will be searched again automatically.';
   if (job.state === 'waiting_for_airdate') return 'The remaining episodes have not aired yet. Searching resumes automatically after their scheduled airdate.';

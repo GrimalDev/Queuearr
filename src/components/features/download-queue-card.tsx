@@ -56,7 +56,7 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
   const languageSource = searchingForLanguages ? 'Requested audio' : confirmedLanguages.length ? 'Available audio' : estimatedLanguages.length ? 'Estimated audio' : 'Requested audio';
   const Icon = audio ? AudioLines : item.source === 'radarr' ? Film : item.source === 'sonarr' ? Tv : Download;
   const phase = isRetrying ? 'searching' : item.hasError || item.isStalled || ['failed', 'warning'].includes(item.status) ? 'error' :
-    item.libraryReady ? 'ready' : item.searchWaitingReason === 'airdate' ? 'waiting_for_airdate' : item.searchWaitingReason === 'release' ? 'waiting_for_release' :
+    item.libraryReady ? 'ready' : item.searchWaitingReason === 'availability' ? 'waiting_for_movie_release' : item.searchWaitingReason === 'airdate' ? 'waiting_for_airdate' : item.searchWaitingReason === 'release' ? 'waiting_for_release' :
     item.isSearching ? 'searching' : item.isAwaitingDownload ? 'submitting' : item.lifecyclePhase ?? item.audio?.phase ??
     (item.metadataPercentComplete != null && item.metadataPercentComplete < 1 ? 'metadata' :
       item.status === 'completed' || item.status === 'seeding' ? item.libraryReady === false || item.source !== 'transmission' ? 'importing' : 'downloaded' : item.status === 'importing' ? 'importing' :
@@ -65,6 +65,7 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
     searching: audio ? 'Searching for audio' : item.isRegrab || isRetrying && !item.canRetrySearch ? 'Searching for a replacement release' : 'Searching for a release',
     submitting: 'Waiting for the download client',
     waiting_for_airdate: 'Waiting for episode to air', waiting_for_release: 'Waiting for an eligible release',
+    waiting_for_movie_release: 'Waiting for movie release',
     metadata: 'Fetching torrent metadata', downloading: audio ? 'Downloading audio' : 'Downloading',
     validating: audio ? 'Checking audio and synchronization' : 'Checking download', merging: 'Merging audio', verifying: 'Verifying merged audio',
     checking_audio: 'Checking requested audio', importing: 'Waiting for library import', ready: 'Ready',
@@ -76,7 +77,7 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
   const label = phase === 'error' ? item.searchError === 'in_cinemas' ? IN_CINEMAS_SEARCH_MESSAGE : 'Error' : waiting ? item.status === 'paused' ? 'Paused' : waitingForSlot ? 'Waiting for a download slot' : 'Queued'
     : phase === 'downloading' && item.progress >= 100 ? audio ? 'Waiting for audio checks' : 'Waiting for import' : labels[phase];
   const hasAudioRequest = audio || !!item.requestedAudioLanguages?.length;
-  const searchWaiting = phase === 'waiting_for_airdate' || phase === 'waiting_for_release';
+  const searchWaiting = phase === 'waiting_for_airdate' || phase === 'waiting_for_release' || phase === 'waiting_for_movie_release';
   const steps = hasAudioRequest ? ['Search', 'Download', 'Import', 'Audio', 'Ready'] : ['Search', 'Download', 'Import', 'Ready'];
   const step = audio && phase !== 'ready' ? 3 : phase === 'searching' || searchWaiting ? 0 : phase === 'submitting' || phase === 'metadata' || phase === 'downloading' ? 1 :
     phase === 'downloaded' || phase === 'importing' ? 2 : phase === 'ready' ? steps.length - 1 : hasAudioRequest ? 3 : 2;
