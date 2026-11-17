@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Release, ReleaseBlocklistEntry } from '@/types';
 import type { DownloadReleaseAttempt } from '@/lib/db/download-release-attempts';
+import { releaseHasAudioDescription } from '@/lib/audio-description';
 
 export const RELEASE_ROUND_COOLDOWN_MS = 30 * 60_000;
 
@@ -50,7 +51,7 @@ export function selectReleaseForRound(
   const knownBlockIds = new Set(attempts.flatMap((attempt) => readOwnedBlocklistIds(attempt.ownedBlocklistIds)));
   const ranked = [...releases].sort((a, b) => {
     const seeders = (value?: number): number => Number.isFinite(value) ? Math.max(0, value!) : 0;
-    return seeders(b.seeders) - seeders(a.seeders) || (b.qualityWeight ?? 0) - (a.qualityWeight ?? 0) ||
+    return Number(releaseHasAudioDescription(a)) - Number(releaseHasAudioDescription(b)) || seeders(b.seeders) - seeders(a.seeders) || (b.qualityWeight ?? 0) - (a.qualityWeight ?? 0) ||
       (b.customFormatScore ?? 0) - (a.customFormatScore ?? 0) || a.guid.localeCompare(b.guid);
   });
   const candidates = ranked.flatMap((release) => {

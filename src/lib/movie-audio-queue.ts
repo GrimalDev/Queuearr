@@ -40,6 +40,7 @@ export function getMovieAudioQueue(
         ? job.state === 'validating' ? 'checking_audio' : job.state as 'merging' | 'replacing' | 'verifying'
         : movie.hasFile && !job.donorHash && job.state === 'downloading' ? 'checking_audio' : undefined,
       source: 'radarr', mediaId: policy.radarrMovieId, isRegrab,
+      audioDescriptionSuspected: job.audioDescription && job.state !== 'pending',
       isSearching: !hasError && !['downloading', 'regrabbing', 'grab_pending', 'validating', 'merging', 'replacing', 'verifying', 'waiting_for_movie_release'].includes(job.state),
       searchWaitingReason: job.state === 'waiting_for_movie_release' ? 'availability' : undefined,
       canCancelDownload: (!!job.donorHash || ['downloading', 'regrabbing', 'needs_review', 'cancelling'].includes(job.state)) &&
@@ -78,6 +79,7 @@ export function mergeMovieAudioQueue(
     if (!item.audio) return movieDownload ? {
       ...movieDownload, id: item.id, tmdbId: item.tmdbId, isRegrab: item.isRegrab, isSearching: false,
       requestedAudioLanguages: item.requestedAudioLanguages,
+      audioDescriptionSuspected: item.audioDescriptionSuspected || movieDownload.audioDescriptionSuspected,
       estimatedAudioLanguages: movieDownload.estimatedAudioLanguages?.length ? movieDownload.estimatedAudioLanguages : item.estimatedAudioLanguages,
       libraryReady: false, lifecyclePhase: item.lifecyclePhase,
       hasError: item.hasError || movieDownload.hasError,

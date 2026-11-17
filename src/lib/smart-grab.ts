@@ -1,6 +1,7 @@
 import { createRadarrClient } from '@/lib/api/radarr';
 import { createSonarrClient } from '@/lib/api/sonarr';
 import type { Release } from '@/types';
+import { releaseHasAudioDescription } from '@/lib/audio-description';
 
 interface SmartGrabOptions {
   source: 'radarr' | 'sonarr';
@@ -91,10 +92,11 @@ export function pickBestRelease(releases: Release[]): Release | null {
   // take the top 5, then pick the one with the biggest peer swarm.
   const top5ByScore = eligible
     .sort((a, b) =>
+      Number(releaseHasAudioDescription(a)) - Number(releaseHasAudioDescription(b)) ||
       ((b.qualityWeight ?? 0) + (b.customFormatScore ?? 0)) -
       ((a.qualityWeight ?? 0) + (a.customFormatScore ?? 0))
     )
     .slice(0, 5);
 
-  return top5ByScore.sort((a, b) => (b.seeders ?? 0) - (a.seeders ?? 0))[0] ?? null;
+  return top5ByScore.sort((a, b) => Number(releaseHasAudioDescription(a)) - Number(releaseHasAudioDescription(b)) || (b.seeders ?? 0) - (a.seeders ?? 0))[0] ?? null;
 }

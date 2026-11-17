@@ -1,3 +1,4 @@
+import { releaseHasAudioDescription } from '@/lib/audio-description';
 import type { SonarrClient } from '@/lib/api/sonarr';
 import type { RadarrClient } from '@/lib/api/radarr';
 import { resetMonitoredDownload, type ActiveMonitoredDownload } from '@/lib/db/monitored-downloads';
@@ -107,7 +108,7 @@ export async function runRankedSonarrSearch(
     reserveDownloadRelease(download.id, download.createdAt, selection.round, candidate);
     updateDownloadSearchJob(job.downloadId, { rankedSearch: true, releaseRound: selection.round, nextRoundAt: 0,
       state: 'grab_pending', submittedAt: Date.now(), pendingEpisodeIds: JSON.stringify(ids), searchFailures: 0,
-      indexer: candidate.indexer || `Indexer ${candidate.indexerId}`, estimatedLanguages: JSON.stringify(candidate.languages ?? []),
+      audioDescription: releaseHasAudioDescription(candidate), indexer: candidate.indexer || `Indexer ${candidate.indexerId}`, estimatedLanguages: JSON.stringify(candidate.languages ?? []),
       detail: null, nextAttemptAt: Date.now() + 30_000 });
   });
   try { await client.grabRelease(candidate.guid, candidate.indexerId); }

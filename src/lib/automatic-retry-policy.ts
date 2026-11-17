@@ -32,6 +32,7 @@ export function isLocalStorageFailure(item: FileFailureEvidence): boolean {
 
 export function getDownloadFileFailureReason(item: FileFailureEvidence): DownloadRestartReason | undefined {
   if (isLocalStorageFailure(item)) return undefined;
+  if (fileFailureMessages(item).includes('The requested language is only available as audio description.')) return 'audio_description';
   if (isSuspiciousDownload(item)) return 'suspicious_files';
   const message = fileFailureMessages(item);
   const file = '(?:files?|archives?|video|media|container)';
@@ -43,7 +44,7 @@ export function getDownloadFileFailureReason(item: FileFailureEvidence): Downloa
 
 export function getDownloadRestartReason(items: FileFailureEvidence[]): DownloadRestartReason | null {
   const reasons = items.map(getDownloadFileFailureReason);
-  return reasons.includes('suspicious_files') ? 'suspicious_files' : reasons.includes('file_error') ? 'file_error' : null;
+  return reasons.includes('suspicious_files') ? 'suspicious_files' : reasons.includes('audio_description') ? 'audio_description' : reasons.includes('file_error') ? 'file_error' : null;
 }
 
 export function isAutomaticRetryFailure(item: {

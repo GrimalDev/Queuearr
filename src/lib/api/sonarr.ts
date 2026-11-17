@@ -1,4 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
+import { applyDownloadMediaFailures } from '@/lib/db/download-media-checks';
+import { releaseHasAudioDescription } from '@/lib/audio-description';
 import { createHttpsAgentForService } from '@/lib/api/tls';
 import {
   SonarrSeries,
@@ -103,7 +105,7 @@ export class SonarrClient {
     const response = await this.client.get<{ records: SonarrQueueItem[] }>('/api/v3/queue', {
       params: { includeSeries, includeEpisode, pageSize: 1000 },
     });
-    return response.data;
+    return { ...response.data, records: applyDownloadMediaFailures('sonarr', response.data.records) };
   }
 
   async deleteQueueItem(
@@ -173,7 +175,7 @@ export class SonarrClient {
       params: { episodeId },
       timeout: 60_000,
     });
-    return response.data;
+    return response.data.map((release) => ({ ...release, audioDescriptionSuspected: releaseHasAudioDescription(release) }));
   }
 
   async getBlocklist(seriesId: number): Promise<ReleaseBlocklistEntry[]> {

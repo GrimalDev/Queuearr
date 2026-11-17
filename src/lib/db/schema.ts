@@ -39,6 +39,7 @@ export const movieAudioLocks = sqliteTable('movie_audio_locks', {
 });
 
 export const movieAudioJobs = sqliteTable('movie_audio_jobs', {
+  audioDescription: integer('audio_description', { mode: 'boolean' }).notNull().default(false),
   searchFailures: integer('search_failures').notNull().default(0),
   donorMetadata: text('donor_metadata'),
   estimatedLanguages: text('estimated_languages').notNull().default('[]'),
@@ -83,7 +84,7 @@ export const monitoredDownloads = sqliteTable(
     lastActivityAt: integer('last_activity_at'),
     lastBytesAt: integer('last_bytes_at'),
     retryAfter: integer('retry_after').notNull().default(0),
-    restartReason: text('restart_reason', { enum: ['suspicious_files', 'file_error'] }),
+    restartReason: text('restart_reason', { enum: ['suspicious_files', 'file_error', 'audio_description'] }),
   },
   (t) => ({
     sourceMediaIdUnique: uniqueIndex('monitored_downloads_source_media_id_unique').on(
@@ -113,6 +114,7 @@ export const monitoredDownloadUsers = sqliteTable(
 );
 
 export const downloadSearchJobs = sqliteTable('download_search_jobs', {
+  audioDescription: integer('audio_description', { mode: 'boolean' }).notNull().default(false),
   rankedSearch: integer('ranked_search', { mode: 'boolean' }).notNull().default(false),
   releaseRound: integer('release_round').notNull().default(0),
   nextRoundAt: integer('next_round_at').notNull().default(0),
@@ -146,6 +148,22 @@ export const downloadReleaseAttempts = sqliteTable('download_release_attempts', 
 }, (table) => ({
   attemptUnique: uniqueIndex('download_release_attempt_unique').on(table.downloadId, table.cycleStartedAt, table.identity),
 }));
+
+export const downloadMediaChecks = sqliteTable('download_media_checks', {
+  key: text('key').primaryKey(),
+  downloadId: integer('download_id').notNull().references(() => monitoredDownloads.id, { onDelete: 'cascade' }),
+  hash: text('hash').notNull(),
+  cycleStartedAt: integer('cycle_started_at').notNull(),
+  state: text('state', { enum: ['checking', 'unverified', 'no_description_marked', 'description_included', 'description_only', 'unsafe_files', 'retrying'] }).notNull(),
+  detail: text('detail').notNull(),
+  startedAt: integer('started_at').notNull(),
+  checkedBytes: integer('checked_bytes').notNull().default(0),
+  sequentialChanged: integer('sequential_changed', { mode: 'boolean' }).notNull().default(false),
+  speedChanged: integer('speed_changed', { mode: 'boolean' }).notNull().default(false),
+  previousLimit: integer('previous_limit').notNull().default(0),
+  previousLimited: integer('previous_limited', { mode: 'boolean' }).notNull().default(false),
+  updatedAt: integer('updated_at').notNull(),
+});
 
 export const automaticDownloadRetries = sqliteTable('automatic_download_retries', {
   key: text('key').primaryKey(),

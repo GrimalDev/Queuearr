@@ -1,3 +1,4 @@
+import { releaseHasAudioDescription } from '@/lib/audio-description';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useAppStore, QueueServiceError, SearchSortKey, SearchSortDir } from '@/store/app-store';
@@ -371,6 +372,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
 
             return {
               id: `radarr-${item.id}`,
+              audioDescriptionSuspected: releaseHasAudioDescription(item),
               sourceId: item.id,
               mediaId: item.movieId,
               source: 'radarr' as const,
@@ -478,6 +480,7 @@ export function useQueue(filter: 'mine' | 'all' = 'mine') {
 
             return {
               id: `sonarr-${downloadHash || item.id}`,
+              audioDescriptionSuspected: releaseHasAudioDescription(item),
               sourceId: item.id,
               mediaId: item.seriesId,
               episodeId: item.episodeId,

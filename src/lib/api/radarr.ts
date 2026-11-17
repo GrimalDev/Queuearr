@@ -1,4 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
+import { applyDownloadMediaFailures } from '@/lib/db/download-media-checks';
+import { releaseHasAudioDescription } from '@/lib/audio-description';
 import { createHttpsAgentForService } from '@/lib/api/tls';
 import {
   ReleaseBlocklistEntry,
@@ -148,7 +150,7 @@ export class RadarrClient {
     const response = await this.client.get<{ records: RadarrQueueItem[] }>('/api/v3/queue', {
       params: { includeMovie, pageSize: 1000 },
     });
-    return response.data;
+    return { ...response.data, records: applyDownloadMediaFailures('radarr', response.data.records) };
   }
 
   async deleteQueueItem(
@@ -199,7 +201,7 @@ export class RadarrClient {
       params: { movieId },
       timeout: 60_000,
     });
-    return response.data;
+    return response.data.map((release) => ({ ...release, audioDescriptionSuspected: releaseHasAudioDescription(release) }));
   }
 
   async grabRelease(guid: string, indexerId: number): Promise<void> {

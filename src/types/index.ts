@@ -427,9 +427,17 @@ export interface SearchResult {
   releaseDate?: string;
 }
 
-export type DownloadRestartReason = 'suspicious_files' | 'file_error';
+export type DownloadRestartReason = 'suspicious_files' | 'file_error' | 'audio_description';
+
+export interface DownloadAudioCheck {
+  hash: string;
+  detail?: string;
+  state: 'checking' | 'unverified' | 'no_description_marked' | 'description_included' | 'description_only' | 'unsafe_files' | 'retrying';
+}
 
 export interface QueueItem {
+  audioDescriptionSuspected?: boolean;
+  audioCheck?: DownloadAudioCheck;
   restartReason?: DownloadRestartReason | null;
   id: string;
   /** Original request attribution, exposed only to administrators. */
@@ -495,6 +503,8 @@ export interface QueueItem {
 }
 
 export interface MonitoredQueueDownload {
+  audioDescriptionSuspected?: boolean;
+  audioChecks?: DownloadAudioCheck[];
   restartReason?: DownloadRestartReason | null;
   remainingEpisodeIds?: number[];
   nextAirAt?: number | null;
@@ -584,6 +594,7 @@ export interface ReleaseSearchRetry {
 }
 
 export interface Release {
+  audioDescriptionSuspected?: boolean;
   fullSeason?: boolean;
   seasonNumber?: number;
   mappedSeasonNumber?: number;

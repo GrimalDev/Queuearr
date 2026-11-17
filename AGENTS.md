@@ -310,3 +310,19 @@ tmux split-window -v -t '=queuarr' -c /Users/grimaldev/code/projects/queuarr fis
   of unused observations to protect profile creation by separate deployments.
 - Validate using temporary synthetic media and mocked service responses. Follow
   the existing rule against adding test infrastructure without authorization.
+
+## Early download inspection
+
+- Flag explicit audio-description release labels before transfer. A missing label
+  means unknown, never confirmed normal audio. Prefer unflagged eligible releases.
+- Inspect only verified contiguous torrent data with a complete track header.
+  Never infer available tracks from file size, completion percentage or sparse holes.
+- A requested language available only as descriptive audio requires another release.
+  A release containing a normal track and an optional descriptive track can remain.
+- Use the read-only `/data/transmission` mount for Transmission's `/data` tree.
+  Missing mounts or incomplete metadata must produce an unverified result.
+- Temporary sequential downloading and the 128 KiB/s inspection cap are per torrent,
+  persisted before RPC, restored after checking or timeout. Preserve lower limits.
+  Never resume paused torrents or change global settings.
+- Preserve import/publication locks, completed library files, shared torrents and
+  cancelled requests. Rejected sources use the existing blocklist/retry workflow.

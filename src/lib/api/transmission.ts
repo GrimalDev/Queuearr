@@ -16,6 +16,17 @@ export interface AudioDonorTorrent {
   files: { name: string; length: number; bytesCompleted: number }[];
 }
 
+export interface InspectionTorrent extends AudioDonorTorrent {
+  status: number;
+  metadataPercentComplete: number;
+  pieces: string;
+  pieceSize: number;
+  sequential_download?: boolean;
+  downloadLimit?: number;
+  downloadLimited?: boolean;
+  fileStats: { wanted: boolean }[];
+}
+
 function normalizeTransmissionUrl(baseUrl: string): string {
   try {
     const url = new URL(baseUrl);
@@ -255,6 +266,30 @@ export class TransmissionClient {
       fields: ['hashString', 'downloadDir', 'percentDone', 'labels', 'files'],
     });
     return response.arguments?.torrents ?? [];
+  }
+
+  async getInspectionTorrents(): Promise<InspectionTorrent[]> {
+    const response = await this.rpcRequest<{ arguments?: { torrents?: InspectionTorrent[] } }>('torrent-get', {
+      fields: ['hashString', 'downloadDir', 'percentDone', 'labels', 'files', 'fileStats', 'status',
+        'metadataPercentComplete', 'pieces', 'pieceSize', 'sequential_download', 'downloadLimit', 'downloadLimited'],
+    });
+    if (!Array.isArray(response.arguments?.torrents)) throw new Error('Transmission inspection metadata is unavailable.');
+    return response.arguments.torrents;
+  }
+
+  async setSequentialDownload(hash: string, enabled: boolean): Promise<void> {
+    if (!/^[a-f\d]{40,64}$/i.test(hash)) throw new Error('Invalid inspection torrent hash.');
+    await this.rpcRequest('torrent-set', { ids: [hash], sequential_download: enabled });
+  }
+
+  async setInspectionSpeedLimit(hash: string, limit: number, enabled: boolean): Promise<void> {
+    if (!/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(hash) || !Number.isSafeInteger(limit) || limit < 0) throw new Error('Invalid inspection speed limit.');
+    await this.rpcRequest('torrent-set', { ids: [hash], downloadLimit: limit, downloadLimited: enabled });
+  }
+
+  async getIncompleteDirectory(): Promise<string | undefined> {
+    const response = await this.rpcRequest<{ arguments?: { 'incomplete-dir-enabled'?: boolean; 'incomplete-dir'?: string } }>('session-get');
+    return response.arguments?.['incomplete-dir-enabled'] ? response.arguments['incomplete-dir'] : undefined;
   }
 
   async getVersion(): Promise<string> {

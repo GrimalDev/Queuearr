@@ -9,6 +9,7 @@ import { readAudioLanguages } from '@/lib/audio-languages';
 import { getTorrentIndexerMetadata } from '@/lib/db/torrent-indexers';
 import { getDownloadRequestAttribution } from '@/lib/db/download-requests';
 import { getDownloadSearchErrorDetail } from '@/lib/download-search-errors';
+import { getDownloadMediaChecks } from '@/lib/db/download-media-checks';
 import {
   getMonitoredDownloadBySourceMedia,
   getActiveMonitoredDownloads,
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest) {
   const hashes = getDownloadTransferHashes(downloads.map((download) => download.id));
   const transferMetadata = getTorrentIndexerMetadata([...hashes.values()].flat());
   const attribution = session.user.role === 'admin' ? getDownloadRequestAttribution(downloads.map((download) => download.id)) : undefined;
+  const mediaChecks = getDownloadMediaChecks(downloads.map((download) => download.id));
   return NextResponse.json(downloads.map((download) => {
     const policy = download.source === 'radarr' ? audioPolicies.get(download.mediaId) : undefined;
     const audio = policy ? audioJobs.get(policy.tmdbId) : undefined;
@@ -45,6 +47,10 @@ export async function GET(request: NextRequest) {
     return { ...download,
     ...(attribution ? { requestAttribution: attribution.get(download.id) ?? [] } : {}),
     libraryReady: ready, audioState: audio?.state, requestedAudioLanguages: policy?.requiredLanguages,
+    audioDescriptionSuspected: audio?.audioDescription ?? searchJobs.get(download.id)?.audioDescription,
+    audioChecks: mediaChecks.filter((check) => check.downloadId === download.id && check.cycleStartedAt === download.createdAt)
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .map(({ hash, state, detail }) => ({ hash, state, ...(session.user.role === 'admin' ? { detail } : {}) })),
     estimatedAudioLanguages: estimated.length ? estimated : savedTransfer.map((transfer) => readAudioLanguages(transfer?.audioLanguages)).find((languages) => languages.length) ?? [],
     downloadHashes: hashes.get(download.id) ?? [],
     retryAvailableAt: retryTimes.get(`${download.source}:${download.mediaId}`),

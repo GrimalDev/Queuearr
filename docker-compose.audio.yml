@@ -4,6 +4,12 @@ services:
   queuearr:
     volumes:
       - type: bind
+        source: /mnt/plex/myflix/downloads
+        target: /data/transmission
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: /mnt/plex/myflix/movies
         target: /movies
         bind:

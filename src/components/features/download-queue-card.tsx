@@ -1,4 +1,5 @@
 'use client';
+import { AudioDescriptionBadge } from '@/components/features/audio-description-badge';
 
 import { AudioLines, ArrowUpToLine, Bug, Check, ChevronDown, CircleAlert, Clock, Download, Film, Languages, Loader2, RotateCcw, Trash2, Tv, Users } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
@@ -9,6 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { AudioSearchIndicator } from '@/components/features/audio-search-indicator';
 import { IN_CINEMAS_SEARCH_MESSAGE } from '@/lib/movie-release-status';
 import { audioLanguageMarker, normalizeAudioLanguages } from '@/lib/audio-languages';
+import { getDownloadTimeline } from '@/lib/download-timeline';
 import { cn } from '@/lib/utils';
 import type { QueueItem } from '@/types';
 
@@ -55,9 +57,11 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
   const displayLanguages = searchingForLanguages ? requestedLanguages : confirmedLanguages.length ? confirmedLanguages : estimatedLanguages.length ? estimatedLanguages : requestedLanguages;
   const languageSource = searchingForLanguages ? 'Requested audio' : confirmedLanguages.length ? 'Available audio' : estimatedLanguages.length ? 'Estimated audio' : 'Requested audio';
   const Icon = audio ? AudioLines : item.source === 'radarr' ? Film : item.source === 'sonarr' ? Tv : Download;
+  const checkingFiles = item.audioCheck?.state === 'checking' && !item.lifecyclePhase && !['importing', 'paused', 'queued'].includes(item.status) &&
+    (!item.audio || item.audio.phase === 'downloading' || item.audio.phase === 'metadata');
   const phase = isRetrying ? 'searching' : item.hasError || item.isStalled || ['failed', 'warning'].includes(item.status) ? 'error' :
     item.libraryReady ? 'ready' : item.searchWaitingReason === 'availability' ? 'waiting_for_movie_release' : item.searchWaitingReason === 'airdate' ? 'waiting_for_airdate' : item.searchWaitingReason === 'release' ? 'waiting_for_release' :
-    item.isSearching ? 'searching' : item.isAwaitingDownload ? 'submitting' : item.lifecyclePhase ?? item.audio?.phase ??
+    item.isSearching ? 'searching' : item.isAwaitingDownload ? 'submitting' : checkingFiles ? 'file_checking' : item.lifecyclePhase ?? item.audio?.phase ??
     (item.metadataPercentComplete != null && item.metadataPercentComplete < 1 ? 'metadata' :
       item.status === 'completed' || item.status === 'seeding' ? item.libraryReady === false || item.source !== 'transmission' ? 'importing' : 'downloaded' : item.status === 'importing' ? 'importing' :
         item.status === 'pending' ? 'validating' : 'downloading');
@@ -67,6 +71,7 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
     waiting_for_airdate: 'Waiting for episode to air', waiting_for_release: 'Waiting for an eligible release',
     waiting_for_movie_release: 'Waiting for movie release',
     metadata: 'Fetching torrent metadata', downloading: audio ? 'Downloading audio' : 'Downloading',
+    file_checking: 'Checking downloaded files and audio',
     validating: audio ? 'Checking audio and synchronization' : 'Checking download', merging: 'Merging audio', verifying: 'Verifying merged audio',
     checking_audio: 'Checking requested audio', importing: 'Waiting for library import', ready: 'Ready',
     replacing: 'Replacing movie with all requested audio',
@@ -78,9 +83,7 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
     : phase === 'downloading' && item.progress >= 100 ? audio ? 'Waiting for audio checks' : 'Waiting for import' : labels[phase];
   const hasAudioRequest = audio || !!item.requestedAudioLanguages?.length;
   const searchWaiting = phase === 'waiting_for_airdate' || phase === 'waiting_for_release' || phase === 'waiting_for_movie_release';
-  const steps = hasAudioRequest ? ['Search', 'Download', 'Import', 'Audio', 'Ready'] : ['Search', 'Download', 'Import', 'Ready'];
-  const step = audio && phase !== 'ready' ? 3 : phase === 'searching' || searchWaiting ? 0 : phase === 'submitting' || phase === 'metadata' || phase === 'downloading' ? 1 :
-    phase === 'downloaded' || phase === 'importing' ? 2 : phase === 'ready' ? steps.length - 1 : hasAudioRequest ? 3 : 2;
+  const steps = getDownloadTimeline(item, phase, hasAudioRequest);
   const indeterminate = !waiting && (phase === 'searching' || phase === 'metadata');
   return (
     <Card className={cn(phase === 'error' && 'border-destructive/50')}>
@@ -108,6 +111,8 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
             {item.indexer || (phase === 'searching' ? 'Choosing an indexer' : 'Indexer unavailable')}
           </Badge>
         </div>
+        <AudioDescriptionBadge suspected={!isRetrying && item.audioDescriptionSuspected} check={isRetrying || item.isSearching ? undefined :
+          item.audioCheck?.state === 'checking' && (!checkingFiles || item.libraryReady) ? { ...item.audioCheck, state: 'unverified' } : item.audioCheck} />
         {indeterminate ? <AudioSearchIndicator label={`${label}…`} audio={audio} /> : (
           <div role={phase === 'error' ? 'alert' : 'status'} className={cn('flex items-center gap-2 text-sm', phase === 'error' && 'text-destructive')}>
             {phase === 'error' ? <CircleAlert className="size-4" aria-hidden="true" /> : waiting || searchWaiting ? <Clock className="size-4" aria-hidden="true" /> :
@@ -128,7 +133,7 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
           Scheduled for {new Date(item.nextAirAt).toLocaleString()}
         </p>}
         {item.restartReason && phase !== 'ready' && <p role="status" className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-          {item.restartReason === 'suspicious_files' ? 'Search restarted because the previous download contained suspicious files.' :
+          {item.restartReason === 'audio_description' ? 'Search restarted because the requested language was only available as audio description.' : item.restartReason === 'suspicious_files' ? 'Search restarted because the previous download contained suspicious files.' :
             'Search restarted because the previous download had a file error.'}
         </p>}
         {phase === 'ready' && <p className="text-xs text-muted-foreground">Ready for Plex to pick up.</p>}
@@ -182,16 +187,19 @@ export function DownloadQueueCard({ item, onRetry, onCancelSearch, onCancelDownl
           <pre className="max-h-64 overflow-auto text-xs">{JSON.stringify(
             Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'errorMessage')), null, 2)}</pre>
         </div>}
-        <ol aria-label={hasAudioRequest ? 'Movie and audio readiness stages' : 'Download stages'} className={cn('grid gap-2 border-t pt-4', hasAudioRequest ? 'grid-cols-5' : 'grid-cols-4')}>
-          {steps.map((name, index) => (
-            <li key={name} aria-current={phase !== 'error' && index === step ? 'step' : undefined}
-              className={cn('flex flex-col items-center gap-1.5 text-[11px] sm:flex-row sm:text-xs', index > step || phase === 'error' ? 'text-muted-foreground' : 'text-foreground')}>
+        <ol aria-label={hasAudioRequest ? 'Movie and audio readiness stages' : 'Download stages'} className={cn('grid grid-cols-3 gap-x-2 gap-y-4 border-t pt-4', hasAudioRequest ? 'sm:grid-cols-6' : 'sm:grid-cols-5')}>
+          {steps.map(({ name, state, current }, index) => (
+            <li key={name} aria-current={current ? 'step' : undefined} aria-label={`${name}: ${state === 'active' ? 'in progress' : state}`}
+              className={cn('flex min-w-0 flex-col items-center gap-1.5 text-center text-[11px] sm:text-xs',
+                state === 'pending' || state === 'unverified' ? 'text-muted-foreground' : state === 'failed' ? 'text-destructive' : 'text-foreground')}>
               <span className={cn('flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px]',
-                (index < step || phase === 'ready') && phase !== 'error' && 'border-foreground bg-foreground text-background',
-                index === step && phase !== 'error' && 'border-foreground')}>
-                {(index < step || phase === 'ready') && phase !== 'error' ? <Check className="size-3" aria-hidden="true" /> : index + 1}
+                state === 'complete' && 'border-foreground bg-foreground text-background',
+                state === 'active' && 'border-foreground', state === 'failed' && 'border-destructive')}>
+                {state === 'complete' ? <Check className="size-3" aria-hidden="true" /> :
+                  state === 'active' ? waiting ? <Clock className="size-3" aria-hidden="true" /> : <Loader2 className="size-3 motion-safe:animate-spin" aria-hidden="true" /> :
+                    state === 'failed' ? <CircleAlert className="size-3" aria-hidden="true" /> : index + 1}
               </span>
-              {name}
+              <span>{name}{state === 'unverified' && <span className="block text-[10px]">Unverified</span>}</span>
             </li>
           ))}
         </ol>

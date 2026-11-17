@@ -1,3 +1,4 @@
+import { releaseHasAudioDescription } from '@/lib/audio-description';
 import { createRadarrClient } from '@/lib/api/radarr';
 import { createSonarrClient } from '@/lib/api/sonarr';
 import { acquireMovieAudioLock, releaseMovieAudioLock, renewMovieAudioLock, getMovieAudioPolicies } from '@/lib/db/movie-audio';
@@ -106,7 +107,7 @@ export async function runDownloadSearchJobs(): Promise<void> {
             reserveDownloadRelease(download.id, download.createdAt, selection?.round ?? job.releaseRound, candidate);
             updateDownloadSearchJob(job.downloadId, { state: 'grab_pending', rankedSearch: ranked,
               releaseRound: selection?.round ?? job.releaseRound, nextRoundAt: 0,
-              detail: null, searchFailures: 0, indexer: candidate.indexer || `Indexer ${candidate.indexerId}`, estimatedLanguages: JSON.stringify(candidate.languages ?? []),
+              detail: null, searchFailures: 0, audioDescription: releaseHasAudioDescription(candidate), indexer: candidate.indexer || `Indexer ${candidate.indexerId}`, estimatedLanguages: JSON.stringify(candidate.languages ?? []),
               submittedAt: Date.now(), nextAttemptAt: Date.now() + 30_000 });
           });
           try { await client.grabRelease(candidate.guid, candidate.indexerId); }

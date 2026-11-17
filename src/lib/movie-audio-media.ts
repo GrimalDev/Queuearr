@@ -4,6 +4,7 @@ import { constants } from 'node:fs';
 import { copyFile, realpath, stat, mkdir, mkdtemp, rmdir, rename, unlink, chmod, link } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { RadarrLanguage } from '@/types';
+import { isMainAudioStream } from '@/lib/audio-description';
 
 export class AudioReviewError extends Error {}
 
@@ -13,7 +14,7 @@ interface MediaStream {
   codec_name: string;
   start_time?: string;
   tags?: { language?: string; title?: string };
-  disposition?: { attached_pic?: number; comment?: number; default?: number };
+  disposition?: { attached_pic?: number; comment?: number; default?: number; visual_impaired?: number; descriptions?: number };
 }
 interface MediaInfo {
   streams: MediaStream[];
@@ -88,7 +89,7 @@ export async function inspectMedia(path: string, signal: AbortSignal): Promise<M
 }
 export async function verifyAudio(path: string, required: RadarrLanguage[], signal: AbortSignal): Promise<void> {
   const info = await inspectMedia(path, signal);
-  if (!required.every((language) => info.streams.some((stream) => matchesLanguage(stream, language)))) {
+  if (!required.every((language) => info.streams.some((stream) => matchesLanguage(stream, language) && isMainAudioStream(stream)))) {
     throw new AudioReviewError('The file does not contain all requested, language-tagged audio tracks.');
   }
 }
@@ -194,7 +195,7 @@ export async function prepareAudioMerge(
     throw new AudioReviewError('The releases have different durations or starting offsets. Audio synchronization needs review.');
   }
   const audio = donorInfo.streams.filter((stream) => matchesLanguage(stream, language) &&
-    !stream.disposition?.comment && !/commentary|description|descriptive/i.test(stream.tags?.title ?? ''))
+    isMainAudioStream(stream))
     .sort((a, b) => (b.disposition?.default ?? 0) - (a.disposition?.default ?? 0))[0];
   if (!audio) throw new AudioReviewError(`The downloaded release has no usable, tagged ${language.name} audio track.`);
   const baseFingerprint = await videoFingerprint(source, baseVideo.index, signal);
@@ -303,5 +304,5 @@ export async function prepareMovieReplacement(
 export async function containsAudioLanguages(path: string, required: RadarrLanguage[], signal: AbortSignal): Promise<boolean> {
   const info = await inspectMedia(path, signal);
   return required.length > 0 && required.every((language) => info.streams.some((stream) => matchesLanguage(stream, language) &&
-    !stream.disposition?.comment && !/commentary|description|descriptive/i.test(stream.tags?.title ?? '')));
+    isMainAudioStream(stream)));
 }

@@ -49,7 +49,8 @@ export async function retryRadarrQueue(mediaId: number, ids: number[], actor: Do
       if (monitored && search) await rejectDownloadSources(monitored, search.releaseRound,
         queue.records.filter((item) => ids.includes(item.id)), radarr, remove);
       else await remove();
-      if (policy) updateMovieAudioJob(policy.tmdbId, { state: 'pending', searchFailures: 0, detail: 'Searching for another movie release.', nextAttemptAt: 0 });
+      if (policy) updateMovieAudioJob(policy.tmdbId, { state: 'pending', searchFailures: 0, regrabFileId: null, regrabRequestedAt: null,
+        audioDescription: false, detail: 'Searching for another movie release.', nextAttemptAt: 0 });
       else if (monitored) {
         ensureDownloadSearchJob(monitored.id, 'radarr');
         updateDownloadSearchJob(monitored.id, { rankedSearch: true, state: 'pending', searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0 });

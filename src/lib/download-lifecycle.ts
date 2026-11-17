@@ -63,6 +63,8 @@ export function mergeDownloadLifecycle(
       const requestSummary = item.id === `request-${download.source}-${download.mediaId}`;
       const ready = download.libraryReady === true && item.libraryReady !== false && (requestSummary || matchesSelection(item));
       result[i] = { ...item,
+        audioDescriptionSuspected: item.audioDescriptionSuspected || requestSummary && !item.isSearching && download.audioDescriptionSuspected,
+        audioCheck: download.audioChecks?.find((check) => check.hash === item.transmissionHash?.toLowerCase()),
         restartReason: download.restartReason,
         id: item.source === 'radarr' ? `request-radarr-${download.mediaId}` : item.id,
         libraryReady: ready, requestedAudioLanguages: item.requestedAudioLanguages ?? download.requestedAudioLanguages,
