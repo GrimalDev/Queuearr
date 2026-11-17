@@ -9,7 +9,7 @@ import { pickBestRelease } from '@/lib/smart-grab';
 import { invalidateQueueCache } from '@/lib/queue-cache';
 import { isMovieInCinemas, isMovieUnreleased, UNRELEASED_MOVIE_SEARCH_MESSAGE } from '@/lib/movie-release-status';
 import { releaseSearchRetry, summarizeReleaseSearch } from '@/lib/release-search-retry';
-import { episodeMatchesSearchScope, getUnqueuedSonarrSearchScopes } from '@/lib/sonarr-search-scopes';
+import { episodeMatchesSearchScope, getUnqueuedSonarrSearchScopes, sonarrQueueItemCoversEpisode } from '@/lib/sonarr-search-scopes';
 import { describeDownloadSearchError, describeRejectedMovieReleases } from '@/lib/download-search-errors';
 import { chooseRankedRelease, recoverRejectedRelease, runRankedSonarrSearch, waitForRankedRelease } from '@/lib/ranked-download-search';
 import { reserveDownloadRelease } from '@/lib/db/download-release-attempts';
@@ -135,7 +135,7 @@ export async function runDownloadSearchJobs(): Promise<void> {
           if (job.state === 'grab_pending') {
             const pending: number[] = JSON.parse(job.pendingEpisodeIds ?? '[]');
             if (pending.some((id) => selected.some((episode) => episode.id === id && episode.hasFile) ||
-                queue.some((item) => (item.episodeId ?? item.episode?.id) === id))) {
+                queue.some((item) => selected.some((episode) => episode.id === id && sonarrQueueItemCoversEpisode(item, episode))))) {
               updateDownloadSearchJob(job.downloadId, { state: 'downloading', pendingEpisodeIds: null, submittedAt: null, nextAttemptAt: Date.now() + 30_000 });
             } else if (Date.now() - (job.submittedAt ?? job.updatedAt) >= 5 * 60_000) {
               later(job, 'needs_review', 30_000, 'A ranked release submission has no matching download after five minutes. Review Sonarr before submitting it again.' +
@@ -145,8 +145,7 @@ export async function runDownloadSearchJobs(): Promise<void> {
           }
           const searches = getUnqueuedSonarrSearchScopes(scopes, episodes, queue);
           if (!searches.length) {
-            const waitingForAirdate = future.some(({ episode }) => !queue.some((item) => (item.episodeId ?? item.episode?.id) === episode.id)) &&
-              !queue.some((item) => !(item.episodeId ?? item.episode?.id));
+            const waitingForAirdate = future.some(({ episode }) => !queue.some((item) => sonarrQueueItemCoversEpisode(item, episode)));
             if (waitingForAirdate && nextAirAt !== null) {
               updateDownloadSearchJob(job.downloadId, { state: 'waiting_for_airdate', submittedAt: null,
                 detail: 'The remaining episodes have not aired yet. Searching resumes automatically after their scheduled airdate.',
@@ -157,7 +156,9 @@ export async function runDownloadSearchJobs(): Promise<void> {
               'The saved selection does not match any missing episodes in Sonarr. Check the selected episodes and their monitoring settings.'); continue;
           }
           operation = 'Checking the episode search commands';
-          const commandStatus = await client.getSeriesSearchStatus(download.mediaId, selected.map((episode) => episode.id), job.submittedAt);
+          const searching = remaining.filter((episode) => searches.some((scope) => episodeMatchesSearchScope(episode, scope)));
+          const commandStatus = await client.getSeriesSearchStatus(download.mediaId, searching.map((episode) => episode.id), job.submittedAt,
+            [...new Set(searching.map((episode) => episode.seasonNumber))]);
           if (commandStatus.active) {
             updateDownloadSearchJob(job.downloadId, { state: 'searching', submittedAt: job.submittedAt ?? Date.now(), nextAttemptAt: Date.now() + 30_000 });
             continue;

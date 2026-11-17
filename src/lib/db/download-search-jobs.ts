@@ -3,7 +3,8 @@ import { db } from '@/lib/db';
 import { downloadSearchJobs, monitoredDownloads, monitoredDownloadUsers, movieAudioJobs, movieAudioPolicies } from '@/lib/db/schema';
 import { saveTrackedRequest } from '@/lib/db/monitored-downloads';
 import { acquireMovieAudioLock, releaseMovieAudioLock } from '@/lib/db/movie-audio';
-import type { DownloadSearchScope } from '@/types';
+import type { DownloadSearchScope, SonarrEpisode, SonarrQueueItem } from '@/types';
+import { activeSonarrSearchScopes, episodeMatchesSearchScope, withSonarrEpisodeActivity } from '@/lib/sonarr-search-scopes';
 
 export type DownloadSearchJob = typeof downloadSearchJobs.$inferSelect;
 
@@ -40,23 +41,37 @@ export function ensureDownloadSearchJob(downloadId: number, source: 'radarr' | '
   return db.select().from(downloadSearchJobs).where(eq(downloadSearchJobs.downloadId, downloadId)).get()!;
 }
 
-export function queueDownloadSearch(source: 'radarr' | 'sonarr', mediaId: number, title: string, userId: string, scope: DownloadSearchScope): void {
+export function queueDownloadSearch(source: 'radarr' | 'sonarr', mediaId: number, title: string, userId: string, scope: DownloadSearchScope,
+  selection?: { episodes: SonarrEpisode[]; queue: SonarrQueueItem[] }): boolean {
   if ((source === 'radarr') !== (scope.type === 'movie')) throw new Error('Invalid download scope for service.');
   const lock = acquireMovieAudioLock(-(mediaId * 2 + (source === 'sonarr' ? 1 : 0)));
   if (!lock) throw new Error('This request is already being processed.');
-  try { db.transaction(() => {
+  try { return db.transaction(() => {
     const prior = db.select().from(monitoredDownloads).where(and(eq(monitoredDownloads.source, source), eq(monitoredDownloads.mediaId, mediaId))).get();
     const existing = prior ? db.select().from(downloadSearchJobs).where(eq(downloadSearchJobs.downloadId, prior.id)).get() : undefined;
-    if (existing?.state === 'grab_pending') throw new Error('A release submission is already pending.');
-    const retained = prior?.completedAt === null && existing && !['cancelled', 'complete', 'needs_selection'].includes(existing.state)
+    if (source === 'radarr' && existing?.state === 'grab_pending') throw new Error('A release submission is already pending.');
+    const active = prior?.completedAt === null && !['cancelled', 'cancelling'].includes(prior.lastStatus ?? '');
+    if (source === 'sonarr' && selection) {
+      const episodes = withSonarrEpisodeActivity(selection.episodes, selection.queue.filter((item) => item.seriesId === mediaId), activeSonarrSearchScopes(active ? existing : undefined));
+      if (!episodes.some((episode) => episodeMatchesSearchScope(episode, scope) && !episode.hasFile && !episode.isDownloading && !episode.isSearching)) return false;
+    }
+    const protectedSubmission = active && existing && (existing.state === 'grab_pending' || existing.state === 'needs_review' && existing.submittedAt !== null);
+    if (protectedSubmission && (source !== 'sonarr' || !selection)) throw new Error('A release submission is already pending.');
+    const retained = active && existing && !['cancelled', 'complete', 'needs_selection'].includes(existing.state)
       ? parseDownloadScopes(existing.scopes) : [];
     const scopes = [...new Map([...retained, scope].map((item) => [JSON.stringify(item), item])).values()];
     if (scopes.length > 100) throw new Error('Too many pending download selections.');
     const tracked = saveTrackedRequest(source, mediaId, title, userId, scope);
+    if (protectedSubmission) {
+      // Accept disjoint work without clearing an in-flight grab's uncertainty/reservation.
+      updateDownloadSearchJob(tracked.id, { scopes: JSON.stringify(scopes) });
+      return true;
+    }
     const values = { scopes: JSON.stringify(scopes), state: 'pending', detail: null, remainingEpisodeIds: null, nextAirAt: null, searchFailures: 0, indexer: null, estimatedLanguages: '[]', submittedAt: null, nextAttemptAt: 0, updatedAt: Date.now() };
     const round = prior?.completedAt != null || !existing ? { rankedSearch: false, releaseRound: 0, nextRoundAt: 0, searchCursor: 0 } : {};
     db.insert(downloadSearchJobs).values({ downloadId: tracked.id, ...values, ...round })
       .onConflictDoUpdate({ target: downloadSearchJobs.downloadId, set: { ...values, ...round, pendingEpisodeIds: null } }).run();
+    return true;
   }); } finally { releaseMovieAudioLock(lock); }
 }
 

@@ -224,12 +224,12 @@ export function SearchResults() {
               {result.type === 'series' ? (
                 /* ── Series: season-first flow ── */
                 <div className="space-y-2">
-                  {result.isDownloading ? (
-                    <div className="flex gap-2">
-                      <Button className="flex-1" variant="secondary" disabled>
-                        <Download className="h-4 w-4 mr-2" />
-                        Downloading
-                      </Button>
+                  <div className="flex gap-2">
+                    <Button className="flex-1" variant={result.inLibrary ? 'secondary' : 'default'} onClick={() => setBrowsingSeries(result)}>
+                      <List className="h-4 w-4 mr-2" />
+                      {result.inLibrary ? 'Choose Season(s)' : 'Pick Season(s) to Download'}
+                    </Button>
+                    {result.isDownloading && (
                       <Button
                         variant={isWatching ? 'default' : 'outline'}
                         size="icon"
@@ -238,20 +238,8 @@ export function SearchResults() {
                       >
                         {isWatching ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
                       </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      className="w-full"
-                      variant={result.inLibrary ? 'secondary' : 'default'}
-                      onClick={() => setBrowsingSeries(result)}
-                    >
-                      {result.inLibrary ? (
-                        <><List className="h-4 w-4 mr-2" />Choose Season(s)</>
-                      ) : (
-                        <><List className="h-4 w-4 mr-2" />Pick Season(s) to Download</>
-                      )}
-                    </Button>
-                  )}
+                    )}
+                  </div>
                   <p className="px-1 text-xs text-muted-foreground">
                     Download only the needed season(s) instead of grabbing the whole series.
                   </p>

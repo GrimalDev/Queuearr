@@ -150,12 +150,14 @@ export class SonarrClient {
     return (await this.getSeriesSearchStatus(seriesId, episodeIds, null)).active;
   }
 
-  async getSeriesSearchStatus(seriesId: number, episodeIds: number[], submittedAt: number | null): Promise<SonarrSearchStatus> {
+  async getSeriesSearchStatus(seriesId: number, episodeIds: number[], submittedAt: number | null, seasonNumbers?: number[]): Promise<SonarrSearchStatus> {
     const response = await this.client.get<{ id: number; name: string; status: string; queued?: string;
-      body?: { seriesId?: number; episodeIds?: number[] } }[]>('/api/v3/command');
+      body?: { seriesId?: number; seasonNumber?: number; episodeIds?: number[] } }[]>('/api/v3/command');
     const selected = new Set(episodeIds);
     const matching = response.data.filter((command) =>
-      (command.name === 'SeriesSearch' || command.name === 'SeasonSearch') && command.body?.seriesId === seriesId ||
+      command.name === 'SeriesSearch' && command.body?.seriesId === seriesId ||
+      command.name === 'SeasonSearch' && command.body?.seriesId === seriesId &&
+        (seasonNumbers === undefined || command.body.seasonNumber == null || seasonNumbers.includes(command.body.seasonNumber)) ||
       command.name === 'EpisodeSearch' && command.body?.episodeIds?.some((id) => selected.has(id)));
     return { active: matching.some((command) => ['queued', 'started'].includes(command.status)),
       failedCommandIds: matching.filter((command) => submittedAt !== null && Date.parse(command.queued ?? '') >= submittedAt &&

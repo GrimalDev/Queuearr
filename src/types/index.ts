@@ -223,6 +223,8 @@ export interface SonarrQueueItem {
 }
 
 export interface SonarrEpisode {
+  isDownloading?: boolean;
+  isSearching?: boolean;
   id: number;
   seriesId: number;
   tvdbId?: number;

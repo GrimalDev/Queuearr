@@ -9,7 +9,7 @@ import { updateDownloadSearchJob, type DownloadSearchJob } from '@/lib/db/downlo
 import { releaseIdentities, selectReleaseForRound, type ReleaseRoundSelection } from '@/lib/download-release-rounds';
 import { invalidateQueueCache } from '@/lib/queue-cache';
 import type { DownloadSearchScope, Release, ReleaseBlocklistEntry, SonarrEpisode, SonarrQueueItem } from '@/types';
-import { episodeMatchesSearchScope } from '@/lib/sonarr-search-scopes';
+import { episodeMatchesSearchScope, sonarrQueueItemCoversEpisode } from '@/lib/sonarr-search-scopes';
 import { getDownloadFileFailureReason } from '@/lib/automatic-retry-policy';
 
 /** A verified file rejection can advance to another source; ambiguous POST failures require review. */
@@ -75,7 +75,7 @@ export async function runRankedSonarrSearch(
 ): Promise<void> {
   const pending = episodes.filter((episode) => !episode.hasFile && !(Date.parse(episode.airDateUtc ?? '') > Date.now()) &&
     scopes.some((scope) => episodeMatchesSearchScope(episode, scope)) &&
-    !queue.some((item) => (item.episodeId ?? item.episode?.id) === episode.id));
+    !queue.some((item) => sonarrQueueItemCoversEpisode(item, episode)));
   if (!pending.length) return;
   const target = pending[job.searchCursor % pending.length];
   updateDownloadSearchJob(job.downloadId, { rankedSearch: true, searchCursor: job.searchCursor + 1 });
@@ -98,7 +98,7 @@ export async function runRankedSonarrSearch(
   const ids = releaseEpisodeIds(candidate, episodes, download.mediaId);
   const freshQueue = (await client.getQueue()).records.filter((item) => item.seriesId === download.mediaId);
   const freshEpisodes = await client.getEpisodes(download.mediaId);
-  if (freshQueue.some((item) => !(item.episodeId ?? item.episode?.id) || ids.includes((item.episodeId ?? item.episode?.id)!)) ||
+  if (freshQueue.some((item) => freshEpisodes.some((episode) => ids.includes(episode.id) && sonarrQueueItemCoversEpisode(item, episode))) ||
       freshEpisodes.some((episode) => ids.includes(episode.id) && (episode.hasFile || Date.parse(episode.airDateUtc ?? '') > Date.now()))) {
     updateDownloadSearchJob(job.downloadId, { state: 'downloading', submittedAt: null, nextAttemptAt: Date.now() + 30_000 });
     return;

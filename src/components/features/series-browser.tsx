@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Check,
   Download,
@@ -34,7 +34,7 @@ interface SeasonData {
   episodes: SonarrEpisode[];
 }
 
-export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
+export function SeriesBrowser({ result, onClose }: SeriesBrowserProps): React.JSX.Element | null {
   const { addAlert } = useAppStore();
 
   // libraryId may change if we add the series during this session
@@ -44,9 +44,12 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
   const [addingToLibrary, setAddingToLibrary] = useState(false);
   const [grabbingSeasons, setGrabbingSeasons] = useState<Set<number>>(new Set());
   const [grabbingEpisodes, setGrabbingEpisodes] = useState<Set<number>>(new Set());
+  const visibleSeriesId = useRef(result?.id);
+  const episodesRequest = useRef(0);
 
   // Reset state whenever the selected series changes
   useEffect(() => {
+    visibleSeriesId.current = result?.id;
     if (!result) return;
     setLibraryId(result.libraryId ?? null);
     setSeasonData(new Map());
@@ -56,12 +59,15 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
     setGrabbingEpisodes(new Set());
   }, [result]);
 
-  const fetchEpisodes = useCallback(async (sid: number) => {
-    setLoadingEpisodes(true);
+  const fetchEpisodes = useCallback(async (sid: number, signal?: AbortSignal, background = false, expectedSeriesId = visibleSeriesId.current): Promise<void> => {
+    if (expectedSeriesId !== visibleSeriesId.current) return;
+    const sequence = ++episodesRequest.current;
+    if (!background) setLoadingEpisodes(true);
     try {
-      const res = await fetch(`/api/sonarr/series/${sid}/episodes`);
+      const res = await fetch(`/api/sonarr/series/${sid}/episodes`, { cache: 'no-store', signal });
       if (!res.ok) throw new Error('Failed to fetch episodes');
       const eps: SonarrEpisode[] = await res.json();
+      if (signal?.aborted || sequence !== episodesRequest.current || expectedSeriesId !== visibleSeriesId.current) return;
 
       // Group by season (skip specials)
       const bySeason = new Map<number, SonarrEpisode[]>();
@@ -75,31 +81,23 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
       }
 
       const seasonNums = Array.from(bySeason.keys()).sort((a, b) => a - b);
-      const newData = new Map<number, SeasonData>();
-      for (const sn of seasonNums) {
-        newData.set(sn, { expanded: false, episodes: bySeason.get(sn)! });
-      }
-      setSeasonData(newData);
+      setSeasonData((previous) => new Map(seasonNums.map((sn) => [sn, {
+        expanded: previous.get(sn)?.expanded ?? false, episodes: bySeason.get(sn)!,
+      }])));
     } catch {
-      addAlert({ type: 'error', title: 'Failed to load episodes', message: 'Could not load episode list.', source: 'sonarr' });
+      if (!signal?.aborted && sequence === episodesRequest.current && expectedSeriesId === visibleSeriesId.current && !background) addAlert({ type: 'error', title: 'Failed to load episodes', message: 'Could not load episode list.', source: 'sonarr' });
     } finally {
-      setLoadingEpisodes(false);
+      if (!signal?.aborted && sequence === episodesRequest.current && expectedSeriesId === visibleSeriesId.current) setLoadingEpisodes(false);
     }
   }, [addAlert]);
 
-  // Auto-fetch episodes when series is in library
   useEffect(() => {
-    if (result?.inLibrary && result.libraryId) {
-      fetchEpisodes(result.libraryId);
-    }
-  }, [result?.id, result?.inLibrary, result?.libraryId, fetchEpisodes]);
-
-  // Also fetch when libraryId is set during this session (after add)
-  useEffect(() => {
-    if (libraryId && !(result?.inLibrary && result?.libraryId)) {
-      fetchEpisodes(libraryId);
-    }
-  }, [fetchEpisodes, libraryId, result?.inLibrary, result?.libraryId]);
+    if (!result || !libraryId || result.inLibrary && result.libraryId !== libraryId) return;
+    const controller = new AbortController();
+    void fetchEpisodes(libraryId, controller.signal);
+    const timer = setInterval(() => { void fetchEpisodes(libraryId, controller.signal, true); }, 10_000);
+    return () => { controller.abort(); clearInterval(timer); };
+  }, [fetchEpisodes, libraryId, result]);
 
   const toggleSeason = (seasonNumber: number) => {
     setSeasonData((prev) => {
@@ -150,6 +148,7 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
         body: JSON.stringify({ type: 'season', seasonNumber }),
       });
       if (!res.ok) throw new Error('Failed to grab');
+      await fetchEpisodes(sid, undefined, true, result?.id);
       addAlert({
         type: 'success',
         title: 'Season queued',
@@ -158,9 +157,8 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
       });
     } catch {
       addAlert({ type: 'error', title: 'Download failed', message: `Could not download Season ${seasonNumber}.`, source: 'sonarr' });
-      // Only unblock on failure so the user can retry. On success the button
-      // stays disabled until the sheet closes or the page refreshes.
-      setGrabbingSeasons((prev) => { const n = new Set(prev); n.delete(seasonNumber); return n; });
+    } finally {
+      if (visibleSeriesId.current === result?.id) setGrabbingSeasons((prev) => { const n = new Set(prev); n.delete(seasonNumber); return n; });
     }
   };
 
@@ -178,6 +176,7 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
         body: JSON.stringify({ type: 'episode', episodeId: ep.id }),
       });
       if (!res.ok) throw new Error('Failed to grab');
+      await fetchEpisodes(sid, undefined, true, result?.id);
       const code = `S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')}`;
       addAlert({
         type: 'success',
@@ -187,8 +186,8 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
       });
     } catch {
       addAlert({ type: 'error', title: 'Download failed', message: 'Could not download episode.', source: 'sonarr' });
-      // Only unblock on failure so the user can retry.
-      setGrabbingEpisodes((prev) => { const n = new Set(prev); n.delete(ep.id); return n; });
+    } finally {
+      if (visibleSeriesId.current === result?.id) setGrabbingEpisodes((prev) => { const n = new Set(prev); n.delete(ep.id); return n; });
     }
   };
 
@@ -257,7 +256,7 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
         <ScrollArea className="flex-1 min-h-0">
           <div className="p-4 space-y-2">
             <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              Choose only the season(s) you need. Completed seasons are marked and do not show a download action.
+              Choose the episodes or seasons you need. Downloads already queued or being searched are excluded.
             </div>
             {(loadingEpisodes || addingToLibrary) ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
@@ -288,7 +287,9 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
                 }
 
                 const allDownloaded = total > 0 && downloaded === total;
-                const missingEpisodes = Math.max(total - downloaded, 0);
+                const activeEpisodes = episodes.filter((episode) => !episode.hasFile && (episode.isDownloading || episode.isSearching || grabbingEpisodes.has(episode.id)));
+                const missingEpisodes = data ? episodes.filter((episode) => !episode.hasFile && !episode.isDownloading && !episode.isSearching && !grabbingEpisodes.has(episode.id)).length : Math.max(total - downloaded, 0);
+                const allMissingActive = !!data && !allDownloaded && missingEpisodes === 0;
                 const seasonActionLabel = isInLibrary && total > 0
                   ? `Download ${missingEpisodes} Missing`
                   : 'Download Season';
@@ -321,7 +322,7 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
                         )}
                         {isInLibrary && total > 0 && !allDownloaded && (
                           <Badge variant="outline" className="text-xs py-0">
-                            {missingEpisodes} missing
+                            {Math.max(total - downloaded, 0)} missing{activeEpisodes.length > 0 ? ` · ${activeEpisodes.length} active` : ''}
                           </Badge>
                         )}
                         {allDownloaded && (
@@ -337,11 +338,13 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
                           size="sm"
                           variant="outline"
                           className="h-7 px-2 text-xs shrink-0"
-                          disabled={isGrabbingSeason || addingToLibrary}
+                          disabled={isGrabbingSeason || addingToLibrary || allMissingActive}
                           onClick={() => handleGrabSeason(seasonNumber)}
                         >
                           {isGrabbingSeason ? (
                             <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Searching…</>
+                          ) : allMissingActive ? (
+                            <>{activeEpisodes.some((episode) => episode.isDownloading) ? 'Downloading' : 'Searching…'}</>
                           ) : (
                             <><Download className="h-3 w-3 mr-1" />{seasonActionLabel}</>
                           )}
@@ -356,7 +359,7 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
                         <div className="divide-y">
                           {episodes.map((ep) => {
                             const code = `S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')}`;
-                            const isGrabbingEp = grabbingEpisodes.has(ep.id);
+                            const isGrabbingEp = grabbingEpisodes.has(ep.id) || isGrabbingSeason || !!ep.isSearching;
                             return (
                               <div
                                 key={ep.id}
@@ -379,18 +382,24 @@ export function SeriesBrowser({ result, onClose }: SeriesBrowserProps) {
                                     <Check className="h-3 w-3" />
                                   </Badge>
                                 ) : (
+                                  <>
+                                  {(ep.isDownloading || isGrabbingEp) && <Badge variant="outline" className="shrink-0 text-[10px]">
+                                    {ep.isDownloading ? 'Downloading' : 'Searching'}
+                                  </Badge>}
                                   <Button
                                     size="sm"
                                     variant="ghost"
                                     className="h-6 w-6 p-0 shrink-0"
-                                    disabled={isGrabbingEp}
-                                    title={`Grab ${code}`}
+                                    disabled={isGrabbingEp || ep.isDownloading}
+                                    aria-label={`${ep.isDownloading ? 'Downloading' : isGrabbingEp ? 'Searching for' : 'Download'} ${code}`}
+                                    title={ep.isDownloading ? `${code} is already downloading` : isGrabbingEp ? `${code} is already being searched` : `Grab ${code}`}
                                     onClick={() => handleGrabEpisode(ep)}
                                   >
                                     {isGrabbingEp
                                       ? <Loader2 className="h-3 w-3 animate-spin" />
                                       : <Download className="h-3 w-3" />}
                                   </Button>
+                                  </>
                                 )}
                               </div>
                             );

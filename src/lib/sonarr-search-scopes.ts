@@ -1,5 +1,31 @@
 import type { DownloadSearchScope, SonarrEpisode, SonarrQueueItem } from '@/types';
 
+export function sonarrQueueItemCoversEpisode(item: SonarrQueueItem, episode: SonarrEpisode): boolean {
+  const id = item.episodeId ?? item.episode?.id;
+  if (id) return id === episode.id;
+  const season = item.episode?.seasonNumber ?? item.seasonNumber;
+  // A pack with a known season must not block unrelated seasons.
+  return season == null || season === episode.seasonNumber;
+}
+
+export function activeSonarrSearchScopes(job: { state: string; scopes: string; submittedAt: number | null; pendingEpisodeIds?: string | null } | undefined): DownloadSearchScope[] {
+  if (!job) return [];
+  if (job.state === 'needs_review' && job.submittedAt !== null) {
+    return JSON.parse(job.scopes) as DownloadSearchScope[];
+  }
+  return ['pending', 'searching', 'downloading', 'grab_pending', 'waiting_for_airdate', 'waiting_for_release'].includes(job.state)
+    ? JSON.parse(job.scopes) as DownloadSearchScope[] : [];
+}
+
+/** Preserve the array response while exposing activity for each individual episode. */
+export function withSonarrEpisodeActivity(episodes: SonarrEpisode[], queue: SonarrQueueItem[], scopes: DownloadSearchScope[]): SonarrEpisode[] {
+  return episodes.map((episode) => {
+    const isDownloading = !episode.hasFile && queue.some((item) => sonarrQueueItemCoversEpisode(item, episode));
+    return { ...episode, isDownloading, isSearching: !episode.hasFile && !isDownloading &&
+      scopes.some((scope) => episodeMatchesSearchScope(episode, scope)) };
+  });
+}
+
 export function sonarrQueueItemMatchesScope(item: SonarrQueueItem, scope: DownloadSearchScope): boolean {
   return scope.type === 'series' && item.episode?.monitored !== false ||
     scope.type === 'season' && (item.episode?.seasonNumber ?? item.seasonNumber) === scope.seasonNumber ||
@@ -23,16 +49,10 @@ export function getSonarrRetryItems(queue: SonarrQueueItem[], ids: number[]): So
 export function getUnqueuedSonarrSearchScopes(
   scopes: DownloadSearchScope[], episodes: SonarrEpisode[], queue: SonarrQueueItem[], now = Date.now(),
 ): DownloadSearchScope[] {
-  const queued = new Set(queue.flatMap((item) => {
-    const id = item.episodeId ?? item.episode?.id;
-    return id ? [id] : [];
-  }));
-  // An unidentified pack may cover any episode. Wait rather than submit duplicates.
-  if (queue.some((item) => !(item.episodeId ?? item.episode?.id))) return [];
   const covered = new Set<number>();
   const searches = scopes.flatMap((scope): DownloadSearchScope[] => {
     const selected = episodes.filter((episode) => episodeMatchesSearchScope(episode, scope) && !episode.hasFile);
-    const missing = selected.filter((episode) => !queued.has(episode.id) && !covered.has(episode.id) &&
+    const missing = selected.filter((episode) => !queue.some((item) => sonarrQueueItemCoversEpisode(item, episode)) && !covered.has(episode.id) &&
       !(Date.parse(episode.airDateUtc ?? '') > now));
     if (!missing.length) return [];
     for (const episode of missing) covered.add(episode.id);

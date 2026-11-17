@@ -35,15 +35,16 @@ export async function POST(
         (body.type === 'episode' && (!Number.isSafeInteger(body.episodeId) || body.episodeId <= 0))) {
       return NextResponse.json({ error: 'Invalid grab type' }, { status: 400 });
     }
-    const series = await sonarr.getSeriesById(seriesId);
-    if (body.type === 'episode' && !(await sonarr.getEpisodes(seriesId)).some((episode) => episode.id === body.episodeId)) {
+    const [series, episodes, queue] = await Promise.all([sonarr.getSeriesById(seriesId), sonarr.getEpisodes(seriesId), sonarr.getQueue()]);
+    if (body.type === 'episode' && !episodes.some((episode) => episode.id === body.episodeId) ||
+        body.type === 'season' && !episodes.some((episode) => episode.seasonNumber === body.seasonNumber)) {
       return NextResponse.json({ error: 'Error' }, { status: 400 });
     }
-    queueDownloadSearch('sonarr', seriesId, series.title, session.user.id, body);
+    const queued = queueDownloadSearch('sonarr', seriesId, series.title, session.user.id, body, { episodes, queue: queue.records });
 
     invalidateQueueCache(['sonarr-queue', 'transmission-state']);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, alreadyRequested: !queued });
   } catch (error) {
     console.error('Sonarr grab error:', error);
     return NextResponse.json({ error: 'Failed to trigger search' }, { status: 500 });
